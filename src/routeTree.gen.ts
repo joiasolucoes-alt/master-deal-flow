@@ -13,9 +13,14 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppSimulacoesRouteImport } from './routes/_app.simulacoes'
+import { Route as AppRelatoriosRouteImport } from './routes/_app.relatorios'
 import { Route as AppPedidosRouteImport } from './routes/_app.pedidos'
 import { Route as AppNegociacoesRouteImport } from './routes/_app.negociacoes'
+import { Route as AppFretesRouteImport } from './routes/_app.fretes'
+import { Route as AppFinanceiroRouteImport } from './routes/_app.financeiro'
+import { Route as AppEntregasRouteImport } from './routes/_app.entregas'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppConfiguracoesRouteImport } from './routes/_app.configuracoes'
 import { Route as AppAprovacoesRouteImport } from './routes/_app.aprovacoes'
 import { Route as AppSimulacoesIdRouteImport } from './routes/_app.simulacoes.$id'
 import { Route as AppPedidosIdRouteImport } from './routes/_app.pedidos.$id'
@@ -39,6 +44,11 @@ const AppSimulacoesRoute = AppSimulacoesRouteImport.update({
   path: '/simulacoes',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRelatoriosRoute = AppRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPedidosRoute = AppPedidosRouteImport.update({
   id: '/pedidos',
   path: '/pedidos',
@@ -49,9 +59,29 @@ const AppNegociacoesRoute = AppNegociacoesRouteImport.update({
   path: '/negociacoes',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFretesRoute = AppFretesRouteImport.update({
+  id: '/fretes',
+  path: '/fretes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFinanceiroRoute = AppFinanceiroRouteImport.update({
+  id: '/financeiro',
+  path: '/financeiro',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEntregasRoute = AppEntregasRouteImport.update({
+  id: '/entregas',
+  path: '/entregas',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppConfiguracoesRoute = AppConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAprovacoesRoute = AppAprovacoesRouteImport.update({
@@ -74,9 +104,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/aprovacoes': typeof AppAprovacoesRoute
+  '/configuracoes': typeof AppConfiguracoesRoute
   '/dashboard': typeof AppDashboardRoute
+  '/entregas': typeof AppEntregasRoute
+  '/financeiro': typeof AppFinanceiroRoute
+  '/fretes': typeof AppFretesRoute
   '/negociacoes': typeof AppNegociacoesRoute
   '/pedidos': typeof AppPedidosRouteWithChildren
+  '/relatorios': typeof AppRelatoriosRoute
   '/simulacoes': typeof AppSimulacoesRouteWithChildren
   '/pedidos/$id': typeof AppPedidosIdRoute
   '/simulacoes/$id': typeof AppSimulacoesIdRoute
@@ -85,9 +120,14 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/aprovacoes': typeof AppAprovacoesRoute
+  '/configuracoes': typeof AppConfiguracoesRoute
   '/dashboard': typeof AppDashboardRoute
+  '/entregas': typeof AppEntregasRoute
+  '/financeiro': typeof AppFinanceiroRoute
+  '/fretes': typeof AppFretesRoute
   '/negociacoes': typeof AppNegociacoesRoute
   '/pedidos': typeof AppPedidosRouteWithChildren
+  '/relatorios': typeof AppRelatoriosRoute
   '/simulacoes': typeof AppSimulacoesRouteWithChildren
   '/pedidos/$id': typeof AppPedidosIdRoute
   '/simulacoes/$id': typeof AppSimulacoesIdRoute
@@ -98,9 +138,14 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/aprovacoes': typeof AppAprovacoesRoute
+  '/_app/configuracoes': typeof AppConfiguracoesRoute
   '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/entregas': typeof AppEntregasRoute
+  '/_app/financeiro': typeof AppFinanceiroRoute
+  '/_app/fretes': typeof AppFretesRoute
   '/_app/negociacoes': typeof AppNegociacoesRoute
   '/_app/pedidos': typeof AppPedidosRouteWithChildren
+  '/_app/relatorios': typeof AppRelatoriosRoute
   '/_app/simulacoes': typeof AppSimulacoesRouteWithChildren
   '/_app/pedidos/$id': typeof AppPedidosIdRoute
   '/_app/simulacoes/$id': typeof AppSimulacoesIdRoute
@@ -111,9 +156,14 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/aprovacoes'
+    | '/configuracoes'
     | '/dashboard'
+    | '/entregas'
+    | '/financeiro'
+    | '/fretes'
     | '/negociacoes'
     | '/pedidos'
+    | '/relatorios'
     | '/simulacoes'
     | '/pedidos/$id'
     | '/simulacoes/$id'
@@ -122,9 +172,14 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/aprovacoes'
+    | '/configuracoes'
     | '/dashboard'
+    | '/entregas'
+    | '/financeiro'
+    | '/fretes'
     | '/negociacoes'
     | '/pedidos'
+    | '/relatorios'
     | '/simulacoes'
     | '/pedidos/$id'
     | '/simulacoes/$id'
@@ -134,9 +189,14 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/_app/aprovacoes'
+    | '/_app/configuracoes'
     | '/_app/dashboard'
+    | '/_app/entregas'
+    | '/_app/financeiro'
+    | '/_app/fretes'
     | '/_app/negociacoes'
     | '/_app/pedidos'
+    | '/_app/relatorios'
     | '/_app/simulacoes'
     | '/_app/pedidos/$id'
     | '/_app/simulacoes/$id'
@@ -178,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSimulacoesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/relatorios': {
+      id: '/_app/relatorios'
+      path: '/relatorios'
+      fullPath: '/relatorios'
+      preLoaderRoute: typeof AppRelatoriosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/pedidos': {
       id: '/_app/pedidos'
       path: '/pedidos'
@@ -192,11 +259,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppNegociacoesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/fretes': {
+      id: '/_app/fretes'
+      path: '/fretes'
+      fullPath: '/fretes'
+      preLoaderRoute: typeof AppFretesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/financeiro': {
+      id: '/_app/financeiro'
+      path: '/financeiro'
+      fullPath: '/financeiro'
+      preLoaderRoute: typeof AppFinanceiroRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/entregas': {
+      id: '/_app/entregas'
+      path: '/entregas'
+      fullPath: '/entregas'
+      preLoaderRoute: typeof AppEntregasRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard': {
       id: '/_app/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AppDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/configuracoes': {
+      id: '/_app/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/configuracoes'
+      preLoaderRoute: typeof AppConfiguracoesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/aprovacoes': {
@@ -249,17 +344,27 @@ const AppSimulacoesRouteWithChildren = AppSimulacoesRoute._addFileChildren(
 
 interface AppRouteChildren {
   AppAprovacoesRoute: typeof AppAprovacoesRoute
+  AppConfiguracoesRoute: typeof AppConfiguracoesRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppEntregasRoute: typeof AppEntregasRoute
+  AppFinanceiroRoute: typeof AppFinanceiroRoute
+  AppFretesRoute: typeof AppFretesRoute
   AppNegociacoesRoute: typeof AppNegociacoesRoute
   AppPedidosRoute: typeof AppPedidosRouteWithChildren
+  AppRelatoriosRoute: typeof AppRelatoriosRoute
   AppSimulacoesRoute: typeof AppSimulacoesRouteWithChildren
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAprovacoesRoute: AppAprovacoesRoute,
+  AppConfiguracoesRoute: AppConfiguracoesRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppEntregasRoute: AppEntregasRoute,
+  AppFinanceiroRoute: AppFinanceiroRoute,
+  AppFretesRoute: AppFretesRoute,
   AppNegociacoesRoute: AppNegociacoesRoute,
   AppPedidosRoute: AppPedidosRouteWithChildren,
+  AppRelatoriosRoute: AppRelatoriosRoute,
   AppSimulacoesRoute: AppSimulacoesRouteWithChildren,
 }
 
