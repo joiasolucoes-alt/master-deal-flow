@@ -16,7 +16,7 @@ import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import { BadgeDollarSign, CheckCircle2, FileSpreadsheet, TriangleAlert } from "lucide-react";
 import type { Simulation } from "@/data/types";
 
-export const Route = createFileRoute("/_app/simulacoes")({
+export const Route = createFileRoute("/_app/simulacoes/")({
   component: SimulationsPage,
 });
 
