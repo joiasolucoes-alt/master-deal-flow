@@ -7,10 +7,6 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
-  // Force Nitro during production builds and emit Vercel-compatible output.
-  // Without this explicit option, the Lovable wrapper skips Nitro outside the
-  // Lovable sandbox, so Vercel cannot serve the TanStack Start SSR app.
-  nitro: { preset: "vercel" },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
