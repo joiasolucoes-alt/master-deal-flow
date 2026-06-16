@@ -13,8 +13,12 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppSimulacoesRouteImport } from './routes/_app.simulacoes'
+import { Route as AppPedidosRouteImport } from './routes/_app.pedidos'
 import { Route as AppNegociacoesRouteImport } from './routes/_app.negociacoes'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppAprovacoesRouteImport } from './routes/_app.aprovacoes'
+import { Route as AppSimulacoesIdRouteImport } from './routes/_app.simulacoes.$id'
+import { Route as AppPedidosIdRouteImport } from './routes/_app.pedidos.$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -35,6 +39,11 @@ const AppSimulacoesRoute = AppSimulacoesRouteImport.update({
   path: '/simulacoes',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPedidosRoute = AppPedidosRouteImport.update({
+  id: '/pedidos',
+  path: '/pedidos',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppNegociacoesRoute = AppNegociacoesRouteImport.update({
   id: '/negociacoes',
   path: '/negociacoes',
@@ -45,43 +54,92 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAprovacoesRoute = AppAprovacoesRouteImport.update({
+  id: '/aprovacoes',
+  path: '/aprovacoes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSimulacoesIdRoute = AppSimulacoesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppSimulacoesRoute,
+} as any)
+const AppPedidosIdRoute = AppPedidosIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppPedidosRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/aprovacoes': typeof AppAprovacoesRoute
   '/dashboard': typeof AppDashboardRoute
   '/negociacoes': typeof AppNegociacoesRoute
-  '/simulacoes': typeof AppSimulacoesRoute
+  '/pedidos': typeof AppPedidosRouteWithChildren
+  '/simulacoes': typeof AppSimulacoesRouteWithChildren
+  '/pedidos/$id': typeof AppPedidosIdRoute
+  '/simulacoes/$id': typeof AppSimulacoesIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/aprovacoes': typeof AppAprovacoesRoute
   '/dashboard': typeof AppDashboardRoute
   '/negociacoes': typeof AppNegociacoesRoute
-  '/simulacoes': typeof AppSimulacoesRoute
+  '/pedidos': typeof AppPedidosRouteWithChildren
+  '/simulacoes': typeof AppSimulacoesRouteWithChildren
+  '/pedidos/$id': typeof AppPedidosIdRoute
+  '/simulacoes/$id': typeof AppSimulacoesIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/aprovacoes': typeof AppAprovacoesRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/negociacoes': typeof AppNegociacoesRoute
-  '/_app/simulacoes': typeof AppSimulacoesRoute
+  '/_app/pedidos': typeof AppPedidosRouteWithChildren
+  '/_app/simulacoes': typeof AppSimulacoesRouteWithChildren
+  '/_app/pedidos/$id': typeof AppPedidosIdRoute
+  '/_app/simulacoes/$id': typeof AppSimulacoesIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/dashboard' | '/negociacoes' | '/simulacoes'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/aprovacoes'
+    | '/dashboard'
+    | '/negociacoes'
+    | '/pedidos'
+    | '/simulacoes'
+    | '/pedidos/$id'
+    | '/simulacoes/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/dashboard' | '/negociacoes' | '/simulacoes'
+  to:
+    | '/'
+    | '/login'
+    | '/aprovacoes'
+    | '/dashboard'
+    | '/negociacoes'
+    | '/pedidos'
+    | '/simulacoes'
+    | '/pedidos/$id'
+    | '/simulacoes/$id'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/login'
+    | '/_app/aprovacoes'
     | '/_app/dashboard'
     | '/_app/negociacoes'
+    | '/_app/pedidos'
     | '/_app/simulacoes'
+    | '/_app/pedidos/$id'
+    | '/_app/simulacoes/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -120,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSimulacoesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/pedidos': {
+      id: '/_app/pedidos'
+      path: '/pedidos'
+      fullPath: '/pedidos'
+      preLoaderRoute: typeof AppPedidosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/negociacoes': {
       id: '/_app/negociacoes'
       path: '/negociacoes'
@@ -134,19 +199,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/aprovacoes': {
+      id: '/_app/aprovacoes'
+      path: '/aprovacoes'
+      fullPath: '/aprovacoes'
+      preLoaderRoute: typeof AppAprovacoesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/simulacoes/$id': {
+      id: '/_app/simulacoes/$id'
+      path: '/$id'
+      fullPath: '/simulacoes/$id'
+      preLoaderRoute: typeof AppSimulacoesIdRouteImport
+      parentRoute: typeof AppSimulacoesRoute
+    }
+    '/_app/pedidos/$id': {
+      id: '/_app/pedidos/$id'
+      path: '/$id'
+      fullPath: '/pedidos/$id'
+      preLoaderRoute: typeof AppPedidosIdRouteImport
+      parentRoute: typeof AppPedidosRoute
+    }
   }
 }
 
+interface AppPedidosRouteChildren {
+  AppPedidosIdRoute: typeof AppPedidosIdRoute
+}
+
+const AppPedidosRouteChildren: AppPedidosRouteChildren = {
+  AppPedidosIdRoute: AppPedidosIdRoute,
+}
+
+const AppPedidosRouteWithChildren = AppPedidosRoute._addFileChildren(
+  AppPedidosRouteChildren,
+)
+
+interface AppSimulacoesRouteChildren {
+  AppSimulacoesIdRoute: typeof AppSimulacoesIdRoute
+}
+
+const AppSimulacoesRouteChildren: AppSimulacoesRouteChildren = {
+  AppSimulacoesIdRoute: AppSimulacoesIdRoute,
+}
+
+const AppSimulacoesRouteWithChildren = AppSimulacoesRoute._addFileChildren(
+  AppSimulacoesRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppAprovacoesRoute: typeof AppAprovacoesRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppNegociacoesRoute: typeof AppNegociacoesRoute
-  AppSimulacoesRoute: typeof AppSimulacoesRoute
+  AppPedidosRoute: typeof AppPedidosRouteWithChildren
+  AppSimulacoesRoute: typeof AppSimulacoesRouteWithChildren
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAprovacoesRoute: AppAprovacoesRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppNegociacoesRoute: AppNegociacoesRoute,
-  AppSimulacoesRoute: AppSimulacoesRoute,
+  AppPedidosRoute: AppPedidosRouteWithChildren,
+  AppSimulacoesRoute: AppSimulacoesRouteWithChildren,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
