@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AUTH_STORAGE_KEY, SIMULATION_STORAGE_KEY } from "@/lib/constants";
+import { AUTH_STORAGE_KEY, SIMULATION_STORAGE_KEY, THEME_STORAGE_KEY } from "@/lib/constants";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
 import { simulationsSeed } from "@/data/simulations";
@@ -12,6 +12,7 @@ interface AuthState {
 }
 
 interface AppContextValue {
+  hydrated: boolean;
   auth: AuthState;
   login: () => void;
   logout: () => void;
@@ -29,6 +30,7 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [hydrated, setHydrated] = useState(false);
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [auth, setAuth] = useState<AuthState>({ isAuthenticated: false, user: null });
   const [simulations, setSimulationsState] = useState<Simulation[]>(simulationsSeed);
@@ -48,20 +50,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const storedSimulations = readLocalStorage<Simulation[]>(SIMULATION_STORAGE_KEY, simulationsSeed);
     setSimulationsState(storedSimulations);
+    setSelectedApprovalId(storedSimulations[0]?.id ?? null);
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
     applyTheme(themeMode);
-    writeLocalStorage("master-flow-theme", themeMode);
+    writeLocalStorage(THEME_STORAGE_KEY, themeMode);
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const handle = () => applyTheme(themeMode);
     media.addEventListener("change", handle);
     return () => media.removeEventListener("change", handle);
-  }, [themeMode]);
+  }, [themeMode, hydrated]);
 
   const setThemeMode = (mode: ThemeMode) => {
     setThemeModeState(mode);
-    writeLocalStorage("master-flow-theme", mode);
+    writeLocalStorage(THEME_STORAGE_KEY, mode);
   };
 
   const login = () => {
@@ -94,6 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppContextValue>(
     () => ({
+      hydrated,
       auth,
       login,
       logout,
@@ -107,7 +113,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectedOrderId,
       setSelectedOrderId,
     }),
-    [auth, themeMode, simulations, selectedApprovalId, selectedOrderId],
+    [hydrated, auth, themeMode, simulations, selectedApprovalId, selectedOrderId],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
