@@ -1,0 +1,10 @@
+import type { Product } from "./types";
+
+export const products: Product[] = [
+  { id: "prd-1", code: "PRD-001", name: "Vergalhão CA-50 8.0mm", unitLabel: "un", defaultUnitsPerBox: 20, costUnit: 58.2, saleUnit: 78.9 },
+  { id: "prd-2", code: "PRD-002", name: "Vergalhão CA-50 10.0mm", unitLabel: "un", defaultUnitsPerBox: 15, costUnit: 78.4, saleUnit: 105.9 },
+  { id: "prd-3", code: "PRD-003", name: "Vergalhão CA-50 12.5mm", unitLabel: "un", defaultUnitsPerBox: 10, costUnit: 112.5, saleUnit: 149.9 },
+  { id: "prd-4", code: "PRD-004", name: "Arame Recozido 18 BWG", unitLabel: "un", defaultUnitsPerBox: 25, costUnit: 16.8, saleUnit: 23.9 },
+  { id: "prd-5", code: "PRD-005", name: "Tela Soldada Q-138", unitLabel: "m²", defaultUnitsPerBox: 5, costUnit: 23.5, saleUnit: 31.9 },
+  { id: "prd-6", code: "PRD-006", name: "Vergalhão CA-50 16mm", unitLabel: "un", defaultUnitsPerBox: 20, costUnit: 8.1, saleUnit: 10.9 },
+];
