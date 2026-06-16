@@ -1,0 +1,113 @@
+import { useEffect, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useAppContext } from "@/features/app/app-context";
+import logoAsset from "@/assets/logo-master.png.asset.json";
+import truckIllustration from "@/assets/master-flow-truck.png";
+
+export const Route = createFileRoute("/login")({
+  component: LoginPage,
+});
+
+function LoginPage() {
+  const { login, auth, hydrated } = useAppContext();
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("joao.silva@masterflow.com.br");
+  const [password, setPassword] = useState("masterflow");
+  const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(true);
+
+  useEffect(() => {
+    if (hydrated && auth.isAuthenticated) navigate({ to: "/dashboard" });
+  }, [hydrated, auth.isAuthenticated, navigate]);
+
+  return (
+    <div className="grid min-h-dvh bg-background lg:grid-cols-2">
+      <aside className="hidden flex-col justify-between bg-sidebar p-12 text-sidebar-foreground lg:flex">
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-10 overflow-hidden rounded-md">
+            <img src={logoAsset.url} alt="Master" className="h-full max-w-none object-cover object-left" />
+          </div>
+          <div>
+            <p className="text-2xl font-semibold leading-none">master</p>
+            <p className="text-2xl font-semibold leading-none text-primary">Flow</p>
+          </div>
+        </div>
+        <div className="space-y-6">
+          <img src={truckIllustration} alt="Caminhão Master" className="mx-auto w-2/3" />
+          <div className="space-y-3">
+            <h2 className="text-3xl font-semibold">Gestão completa de negociações</h2>
+            <p className="text-sidebar-foreground/70">
+              Simule, aprove e acompanhe pedidos em uma única plataforma — do orçamento à entrega.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 text-sm text-sidebar-foreground/70">
+          <ShieldCheck className="h-5 w-5 text-primary" />
+          Plataforma interna Master Distribuidora e Logística
+        </div>
+      </aside>
+
+      <main className="grid place-items-center px-6 py-12">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            login();
+            navigate({ to: "/dashboard" });
+          }}
+          className="w-full max-w-md space-y-6"
+        >
+          <div className="space-y-2 text-center lg:text-left">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">Bem-vindo de volta</h1>
+            <p className="text-sm text-muted-foreground">Acesse sua conta para continuar gerenciando suas negociações.</p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail corporativo</Label>
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Senha</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Mostrar senha"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox checked={remember} onCheckedChange={(v) => setRemember(Boolean(v))} />
+                Manter conectado
+              </label>
+              <button type="button" className="text-sm font-medium text-primary hover:underline">Esqueci minha senha</button>
+            </div>
+          </div>
+
+          <Button type="submit" className="h-12 w-full text-base">Entrar</Button>
+
+          <p className="text-center text-xs text-muted-foreground">
+            Ao continuar você concorda com as políticas internas da Master Distribuidora.
+          </p>
+        </form>
+      </main>
+    </div>
+  );
+}
