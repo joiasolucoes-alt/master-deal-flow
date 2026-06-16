@@ -15,7 +15,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import type { Order } from "@/data/types";
 import { Boxes, PackageCheck, Truck, TruckIcon } from "lucide-react";
 
-export const Route = createFileRoute("/_app/pedidos")({
+export const Route = createFileRoute("/_app/pedidos/")({
   component: OrdersPage,
 });
 
