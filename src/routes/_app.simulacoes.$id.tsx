@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -65,7 +65,7 @@ import {
 } from "@/lib/calculations";
 import { formatCompactCurrency, formatCurrency, formatPercent } from "@/lib/format";
 import { toast } from "sonner";
-import { downloadTextFile, notifyActionUnavailable } from "@/lib/actions";
+import { downloadTextFile } from "@/lib/actions";
 
 export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
@@ -151,7 +151,8 @@ function createEmptySimulation(): Simulation {
 
 function SimulationDetailPage() {
   const { id } = useParams({ from: "/_app/simulacoes/$id" });
-  const { simulations, upsertSimulation } = useAppContext();
+  const navigate = useNavigate();
+  const { auth, simulations, orders, upsertSimulation, upsertOrder } = useAppContext();
   const initial = simulations.find((s) => s.id === id) ?? createEmptySimulation();
   const [draft, setDraft] = useState<Simulation>(initial);
   const [step, setStep] = useState(0);
@@ -164,14 +165,85 @@ function SimulationDetailPage() {
   }
 
   function saveDraft() {
-    const validationErrors = validateSimulation(draft);
-    if (validationErrors.length > 0) {
-      toast.error(`Revise antes de salvar: ${validationErrors.join(", ")}.`);
+    const minimumErrors = REQUIRED_TEXT_FIELDS.filter(
+      ([key]) => !String(draft[key] ?? "").trim(),
+    ).map(([, label]) => label);
+    if (minimumErrors.length > 0) {
+      toast.error(`Revise antes de salvar: ${minimumErrors.join(", ")}.`);
       return;
     }
 
     upsertSimulation(draft);
     toast.success("Simulação salva como rascunho");
+  }
+
+  function duplicateCurrentSimulation() {
+    const id = `sim-${Date.now()}`;
+    const copy: Simulation = {
+      ...draft,
+      id,
+      number: `SIM-2026-${String(Math.floor(Date.now() % 10000)).padStart(4, "0")}`,
+      status: "Rascunho",
+      createdAt: new Date().toISOString(),
+      validUntil: new Date(Date.now() + 1000 * 60 * 60 * 24 * 15).toISOString(),
+      approvalChecklist: undefined,
+      approvalNotes: undefined,
+      orderId: undefined,
+      convertedAt: undefined,
+    };
+    upsertSimulation(copy);
+    toast.success(`Simulação duplicada: ${copy.number}`);
+    navigate({ to: "/simulacoes/$id", params: { id } });
+  }
+
+  function convertToOrder() {
+    if (orders.some((order) => order.simulationId === draft.id) || draft.orderId) {
+      toast.error("Esta simulação já foi convertida em pedido.");
+      return;
+    }
+    const orderId = `ord-${Date.now()}`;
+    const orderNumber = `PED-2026-${String(Math.floor(Date.now() % 10000)).padStart(4, "0")}`;
+    const order = {
+      id: orderId,
+      number: orderNumber,
+      simulationId: draft.id,
+      client: draft.client,
+      origin: draft.unit,
+      destination: `${draft.deliveryCity} • ${draft.deliveryState}`,
+      owner: draft.owner,
+      unit: draft.unit,
+      date: new Date().toISOString(),
+      expectedDelivery: draft.deliveryDate,
+      totalValue: totals.revenue,
+      status: "Aguardando faturamento" as const,
+      priority: draft.priority,
+      products: draft.products,
+      billingProgress: 0,
+      deliveryProgress: 0,
+      paymentTerms: draft.paymentCondition,
+      logisticsStatus: "Pedido criado a partir de simulação aprovada.",
+      documents: ["Pedido interno"],
+      notes: [`Origem: conversão da simulação ${draft.number}.`],
+      timeline: [
+        {
+          id: `tl-${Date.now()}`,
+          title: "Pedido criado",
+          description: "Conversão da simulação aprovada.",
+          date: new Date().toISOString(),
+          completed: true,
+        },
+      ],
+    };
+    const next = { ...draft, orderId, convertedAt: new Date().toISOString() };
+    upsertSimulation(next);
+    upsertOrder(order);
+    setDraft(next);
+    toast.success(`Pedido ${orderNumber} criado.`, {
+      action: {
+        label: "Abrir",
+        onClick: () => navigate({ to: "/pedidos/$id", params: { id: orderId } }),
+      },
+    });
   }
 
   function submitForApproval() {
@@ -182,9 +254,11 @@ function SimulationDetailPage() {
     }
 
     const next = { ...draft, status: "Em análise" as const };
+    if (!window.confirm("Enviar esta simulação para aprovação?")) return;
     upsertSimulation(next);
     setDraft(next);
     toast.success("Simulação enviada para aprovação");
+    navigate({ to: "/aprovacoes" });
   }
 
   return (
@@ -200,7 +274,7 @@ function SimulationDetailPage() {
         description={`${draft.client} • ${draft.supplier} • ${draft.owner}`}
         action={
           <>
-            <Button variant="outline" onClick={() => notifyActionUnavailable("Duplicar simulação")}>
+            <Button variant="outline" onClick={duplicateCurrentSimulation}>
               <Copy /> Duplicar
             </Button>
             <Button
@@ -218,9 +292,15 @@ function SimulationDetailPage() {
             <Button variant="outline" onClick={saveDraft}>
               <Pencil /> Salvar rascunho
             </Button>
-            <Button onClick={submitForApproval}>
-              <Send /> Enviar para aprovação
-            </Button>
+            {draft.status === "Aprovada" ? (
+              <Button onClick={convertToOrder}>
+                <CheckCircle2 /> Converter em pedido
+              </Button>
+            ) : (
+              <Button onClick={submitForApproval}>
+                <Send /> Enviar para aprovação
+              </Button>
+            )}
           </>
         }
       />
@@ -929,7 +1009,7 @@ function ResultStep({
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
+              <PieChart margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
                 <Pie
                   data={costImpact}
                   dataKey="value"
@@ -959,6 +1039,7 @@ function ResultStep({
                     background: "var(--color-card)",
                     borderRadius: 12,
                     border: "1px solid var(--color-border)",
+                    color: "var(--color-card-foreground)",
                   }}
                 />
               </PieChart>
@@ -971,7 +1052,7 @@ function ResultStep({
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sensitivity}>
+              <BarChart data={sensitivity} margin={{ top: 12, right: 24, bottom: 8, left: 12 }}>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   stroke="var(--color-border)"
@@ -985,7 +1066,7 @@ function ResultStep({
                 />
                 <YAxis
                   stroke="var(--color-muted-foreground)"
-                  tickFormatter={(v) => `${v}%`}
+                  tickFormatter={(v) => formatPercent(Number(v), 1)}
                   tickLine={false}
                   axisLine={false}
                 />
@@ -995,6 +1076,7 @@ function ResultStep({
                     background: "var(--color-card)",
                     borderRadius: 12,
                     border: "1px solid var(--color-border)",
+                    color: "var(--color-card-foreground)",
                   }}
                 />
                 <Bar dataKey="margin" radius={[8, 8, 0, 0]} fill="var(--color-primary)" />

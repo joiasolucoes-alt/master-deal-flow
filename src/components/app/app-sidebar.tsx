@@ -14,7 +14,6 @@ import {
   Truck,
   Wallet,
 } from "lucide-react";
-import logoAsset from "@/assets/logo-master.png.asset.json";
 import truckIllustration from "@/assets/master-flow-truck.png";
 import {
   Sidebar,
@@ -28,6 +27,11 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+function isNavigationItemActive(currentPath: string, itemPath: string) {
+  if (itemPath === "/dashboard") return currentPath === itemPath;
+  return currentPath === itemPath || currentPath.startsWith(`${itemPath}/`);
+}
 
 const navigation = [
   { title: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
@@ -53,8 +57,8 @@ export function AppSidebar() {
         <div className="flex items-center gap-3 overflow-hidden rounded-2xl px-1 py-1">
           <div className="h-11 w-9 shrink-0 overflow-hidden rounded-md">
             <img
-              src={logoAsset.url}
-              alt="Ícone Master Flow"
+              src="/logo-master.svg"
+              alt="Logo Master Flow"
               className="h-full max-w-none object-cover object-left"
               loading="lazy"
             />
@@ -75,7 +79,7 @@ export function AppSidebar() {
       <SidebarContent className="px-2">
         <SidebarMenu>
           {navigation.map((item) => {
-            const active = currentPath === item.to || currentPath.startsWith(`${item.to}/`);
+            const active = isNavigationItemActive(currentPath, item.to);
             return (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
