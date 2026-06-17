@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 120" role="img" aria-label="Master Flow">
+  <rect width="96" height="120" rx="20" fill="#0f172a"/>
+  <path d="M18 82V28h16l14 26 14-26h16v54H62V55L50 77h-4L34 55v27H18Z" fill="#f8fafc"/>
+  <path d="M22 94h52" stroke="#22c55e" stroke-width="8" stroke-linecap="round"/>
+</svg>

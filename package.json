@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

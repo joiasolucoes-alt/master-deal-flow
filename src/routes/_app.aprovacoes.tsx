@@ -34,11 +34,7 @@ function ApprovalsPage() {
   const { simulations, upsertSimulation, selectedApprovalId, setSelectedApprovalId } =
     useAppContext();
   const pending = useMemo(
-    () =>
-      simulations.filter(
-        (s) =>
-          s.status === "Em análise" || s.status === "Ajuste solicitado" || s.status === "Rascunho",
-      ),
+    () => simulations.filter((s) => s.status === "Em análise"),
     [simulations],
   );
   const selected = pending.find((s) => s.id === selectedApprovalId) ?? pending[0] ?? null;
@@ -69,6 +65,18 @@ function ApprovalsPage() {
 
   function decide(decision: "approve" | "reject" | "adjust") {
     if (!selected) return;
+    const checklist = selected.approvalChecklist;
+    if (
+      decision === "approve" &&
+      (!checklist?.assumptionsReviewed || !checklist.marginValidated || !checklist.costsChecked)
+    ) {
+      toast.error("Conclua o checklist obrigatório antes de aprovar.");
+      return;
+    }
+    if (decision === "adjust" && !comment.trim()) {
+      toast.error("Informe o motivo e comentário para solicitar ajuste.");
+      return;
+    }
     const map = { approve: "Aprovada", reject: "Reprovada", adjust: "Ajuste solicitado" } as const;
     upsertSimulation({
       ...selected,

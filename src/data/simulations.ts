@@ -3,7 +3,7 @@ import type { Simulation } from "./types";
 export const simulationsSeed: Simulation[] = [
   {
     id: "sim-0128",
-    number: "SIM-2024-0128",
+    number: "SIM-2026-0128",
     client: "Mercado Bom Lar",
     supplier: "Siderúrgica Nacional",
     deliveryCity: "Belo Horizonte",
@@ -120,7 +120,7 @@ export const simulationsSeed: Simulation[] = [
   },
   {
     id: "sim-0127",
-    number: "SIM-2024-0127",
+    number: "SIM-2026-0127",
     client: "Rede Economia Popular",
     supplier: "Metalúrgica Vale Forte",
     deliveryCity: "Vitória",
@@ -198,7 +198,7 @@ export const simulationsSeed: Simulation[] = [
   },
   {
     id: "sim-0126",
-    number: "SIM-2024-0126",
+    number: "SIM-2026-0126",
     client: "Supermercado Central",
     supplier: "Siderúrgica Nacional",
     deliveryCity: "Juiz de Fora",
@@ -276,7 +276,7 @@ export const simulationsSeed: Simulation[] = [
   },
   {
     id: "sim-0125",
-    number: "SIM-2024-0125",
+    number: "SIM-2026-0125",
     client: "Atacado Vale Verde",
     supplier: "Distribuição Serra Norte",
     deliveryCity: "Campos dos Goytacazes",
@@ -329,7 +329,7 @@ export const simulationsSeed: Simulation[] = [
   },
   {
     id: "sim-0124",
-    number: "SIM-2024-0124",
+    number: "SIM-2026-0124",
     client: "Distribuidora União",
     supplier: "Logmix Componentes",
     deliveryCity: "Belo Horizonte",

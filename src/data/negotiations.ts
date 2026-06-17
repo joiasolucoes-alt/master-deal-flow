@@ -3,7 +3,7 @@ import type { Negotiation } from "./types";
 export const negotiations: Negotiation[] = [
   {
     id: "neg-1",
-    number: "NEG-2024-0084",
+    number: "NEG-2026-0084",
     client: "Mercado Bom Lar",
     owner: "João Silva",
     stage: "Simulação",
@@ -14,7 +14,7 @@ export const negotiations: Negotiation[] = [
   },
   {
     id: "neg-2",
-    number: "NEG-2024-0083",
+    number: "NEG-2026-0083",
     client: "Rede Economia Popular",
     owner: "Carla Mendes",
     stage: "Aprovação",
@@ -25,7 +25,7 @@ export const negotiations: Negotiation[] = [
   },
   {
     id: "neg-3",
-    number: "NEG-2024-0082",
+    number: "NEG-2026-0082",
     client: "Construtora Horizonte",
     owner: "Pedro Costa",
     stage: "Oportunidade",
@@ -36,7 +36,7 @@ export const negotiations: Negotiation[] = [
   },
   {
     id: "neg-4",
-    number: "NEG-2024-0081",
+    number: "NEG-2026-0081",
     client: "Usina Boa Vista",
     owner: "Ana Paula",
     stage: "Pedido",
@@ -47,7 +47,7 @@ export const negotiations: Negotiation[] = [
   },
   {
     id: "neg-5",
-    number: "NEG-2024-0080",
+    number: "NEG-2026-0080",
     client: "Transportes União",
     owner: "Lucas Martins",
     stage: "Cancelada",
