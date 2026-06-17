@@ -20,12 +20,25 @@ function DeliveriesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Entregas" description="Monitore as entregas em andamento, atrasos e comprovações." />
+      <PageHeader
+        title="Entregas"
+        description="Monitore as entregas em andamento, atrasos e comprovações."
+      />
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="Em trânsito" value={String(inTransit.length)} icon={Truck} tone="info" />
-        <StatCard label="Entregues" value={String(delivered.length)} icon={CheckCircle2} tone="success" />
-        <StatCard label="Pendentes" value={String(upcoming.length)} icon={PackageCheck} tone="warning" />
+        <StatCard
+          label="Entregues"
+          value={String(delivered.length)}
+          icon={CheckCircle2}
+          tone="success"
+        />
+        <StatCard
+          label="Pendentes"
+          value={String(upcoming.length)}
+          icon={PackageCheck}
+          tone="warning"
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -46,16 +59,27 @@ function DeliveriesPage() {
                 <span className="font-medium">{order.destination}</span>
               </div>
               <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Entrega</span><span>{order.deliveryProgress}%</span></div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Entrega</span>
+                  <span>{order.deliveryProgress}%</span>
+                </div>
                 <Progress value={order.deliveryProgress} className="h-2" />
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><p className="text-xs text-muted-foreground">Previsão</p><p className="font-medium">{formatDateTime(order.expectedDelivery)}</p></div>
-                <div><p className="text-xs text-muted-foreground">Valor</p><p className="font-medium">{formatCurrency(order.totalValue)}</p></div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Previsão</p>
+                  <p className="font-medium">{formatDateTime(order.expectedDelivery)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Valor</p>
+                  <p className="font-medium">{formatCurrency(order.totalValue)}</p>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">{order.logisticsStatus}</p>
               <Button asChild variant="outline" size="sm" className="w-full">
-                <Link to="/pedidos/$id" params={{ id: order.id }}>Ver pedido</Link>
+                <Link to="/pedidos/$id" params={{ id: order.id }}>
+                  Ver pedido
+                </Link>
               </Button>
             </CardContent>
           </Card>

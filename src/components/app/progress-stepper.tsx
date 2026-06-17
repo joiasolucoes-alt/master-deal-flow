@@ -21,12 +21,30 @@ export function ProgressStepper({
               onClick={() => onStepChange?.(index)}
               className={cn(
                 "grid w-full grid-cols-[auto_1fr] items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors",
-                active ? "border-primary bg-primary-soft" : "border-border bg-card hover:bg-muted/40",
+                active
+                  ? "border-primary bg-primary-soft"
+                  : "border-border bg-card hover:bg-muted/40",
               )}
             >
-              <span className={cn("grid h-9 w-9 place-items-center rounded-full border text-sm font-semibold", active || complete ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground")}>{index + 1}</span>
+              <span
+                className={cn(
+                  "grid h-9 w-9 place-items-center rounded-full border text-sm font-semibold",
+                  active || complete
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground",
+                )}
+              >
+                {index + 1}
+              </span>
               <span className="min-w-0">
-                <span className={cn("block truncate text-sm font-medium", active ? "text-primary" : "text-foreground")}>{step}</span>
+                <span
+                  className={cn(
+                    "block truncate text-sm font-medium",
+                    active ? "text-primary" : "text-foreground",
+                  )}
+                >
+                  {step}
+                </span>
               </span>
             </button>
           </li>

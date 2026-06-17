@@ -1,12 +1,60 @@
 import type { Client } from "./types";
 
 export const clients: Client[] = [
-  { id: "cli-1", name: "Mercado Bom Lar", city: "Cataguases", state: "MG", unit: "Matriz Cataguases" },
-  { id: "cli-2", name: "Rede Economia Popular", city: "Vitória", state: "ES", unit: "Filial Espírito Santo" },
-  { id: "cli-3", name: "Supermercado Central", city: "Juiz de Fora", state: "MG", unit: "Matriz Cataguases" },
-  { id: "cli-4", name: "Atacado Vale Verde", city: "Campos dos Goytacazes", state: "RJ", unit: "Filial Rio de Janeiro" },
-  { id: "cli-5", name: "Distribuidora União", city: "Belo Horizonte", state: "MG", unit: "Matriz Cataguases" },
-  { id: "cli-6", name: "Mercado São José", city: "Governador Valadares", state: "MG", unit: "Matriz Cataguases" },
-  { id: "cli-7", name: "Comercial Horizonte", city: "Muriaé", state: "MG", unit: "Matriz Cataguases" },
-  { id: "cli-8", name: "Atacadão Serra Azul", city: "Serra", state: "ES", unit: "Filial Espírito Santo" },
+  {
+    id: "cli-1",
+    name: "Mercado Bom Lar",
+    city: "Cataguases",
+    state: "MG",
+    unit: "Matriz Cataguases",
+  },
+  {
+    id: "cli-2",
+    name: "Rede Economia Popular",
+    city: "Vitória",
+    state: "ES",
+    unit: "Filial Espírito Santo",
+  },
+  {
+    id: "cli-3",
+    name: "Supermercado Central",
+    city: "Juiz de Fora",
+    state: "MG",
+    unit: "Matriz Cataguases",
+  },
+  {
+    id: "cli-4",
+    name: "Atacado Vale Verde",
+    city: "Campos dos Goytacazes",
+    state: "RJ",
+    unit: "Filial Rio de Janeiro",
+  },
+  {
+    id: "cli-5",
+    name: "Distribuidora União",
+    city: "Belo Horizonte",
+    state: "MG",
+    unit: "Matriz Cataguases",
+  },
+  {
+    id: "cli-6",
+    name: "Mercado São José",
+    city: "Governador Valadares",
+    state: "MG",
+    unit: "Matriz Cataguases",
+  },
+  {
+    id: "cli-7",
+    name: "Comercial Horizonte",
+    city: "Muriaé",
+    state: "MG",
+    unit: "Matriz Cataguases",
+  },
+  {
+    id: "cli-8",
+    name: "Atacadão Serra Azul",
+    city: "Serra",
+    state: "ES",
+    unit: "Filial Espírito Santo",
+  },
 ];

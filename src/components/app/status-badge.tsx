@@ -18,5 +18,14 @@ const statusTone: Record<string, string> = {
 };
 
 export function StatusBadge({ status }: { status: string }) {
-  return <Badge className={cn("rounded-full px-3 py-1 font-medium", statusTone[status] ?? statusTone.Rascunho)}>{status}</Badge>;
+  return (
+    <Badge
+      className={cn(
+        "rounded-full px-3 py-1 font-medium",
+        statusTone[status] ?? statusTone.Rascunho,
+      )}
+    >
+      {status}
+    </Badge>
+  );
 }

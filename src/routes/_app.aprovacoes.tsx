@@ -31,9 +31,14 @@ const CHECKLIST: { key: keyof NonNullable<Simulation["approvalChecklist"]>; labe
 ];
 
 function ApprovalsPage() {
-  const { simulations, upsertSimulation, selectedApprovalId, setSelectedApprovalId } = useAppContext();
+  const { simulations, upsertSimulation, selectedApprovalId, setSelectedApprovalId } =
+    useAppContext();
   const pending = useMemo(
-    () => simulations.filter((s) => s.status === "Em análise" || s.status === "Ajuste solicitado" || s.status === "Rascunho"),
+    () =>
+      simulations.filter(
+        (s) =>
+          s.status === "Em análise" || s.status === "Ajuste solicitado" || s.status === "Rascunho",
+      ),
     [simulations],
   );
   const selected = pending.find((s) => s.id === selectedApprovalId) ?? pending[0] ?? null;
@@ -41,41 +46,78 @@ function ApprovalsPage() {
 
   const summary = useMemo(() => {
     const totalValue = pending.reduce((sum, s) => sum + getSimulationTotals(s).revenue, 0);
-    const critical = pending.filter((s) => s.priority === "Alta" || s.priority === "Crítica").length;
+    const critical = pending.filter(
+      (s) => s.priority === "Alta" || s.priority === "Crítica",
+    ).length;
     return { totalValue, critical };
   }, [pending]);
 
-  function updateChecklist(key: keyof NonNullable<Simulation["approvalChecklist"]>, value: boolean) {
+  function updateChecklist(
+    key: keyof NonNullable<Simulation["approvalChecklist"]>,
+    value: boolean,
+  ) {
     if (!selected) return;
-    const checklist = { assumptionsReviewed: false, marginValidated: false, costsChecked: false, notesRegistered: false, ...(selected.approvalChecklist ?? {}) };
+    const checklist = {
+      assumptionsReviewed: false,
+      marginValidated: false,
+      costsChecked: false,
+      notesRegistered: false,
+      ...(selected.approvalChecklist ?? {}),
+    };
     upsertSimulation({ ...selected, approvalChecklist: { ...checklist, [key]: value } });
   }
 
   function decide(decision: "approve" | "reject" | "adjust") {
     if (!selected) return;
     const map = { approve: "Aprovada", reject: "Reprovada", adjust: "Ajuste solicitado" } as const;
-    upsertSimulation({ ...selected, status: map[decision], approvalNotes: comment || selected.approvalNotes });
+    upsertSimulation({
+      ...selected,
+      status: map[decision],
+      approvalNotes: comment || selected.approvalNotes,
+    });
     toast.success(`Simulação ${map[decision].toLowerCase()}`);
     setComment("");
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Central de aprovações" description="Analise simulações em fila e tome decisões com base em margem e viabilidade." />
+      <PageHeader
+        title="Central de aprovações"
+        description="Analise simulações em fila e tome decisões com base em margem e viabilidade."
+      />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Aguardando aprovação" value={String(pending.length)} icon={ClipboardCheck} tone="info" />
-        <StatCard label="Valor em análise" value={formatCurrency(summary.totalValue)} icon={ThumbsUp} tone="success" />
-        <StatCard label="Alta prioridade" value={String(summary.critical)} icon={FileWarning} tone="warning" />
+        <StatCard
+          label="Aguardando aprovação"
+          value={String(pending.length)}
+          icon={ClipboardCheck}
+          tone="info"
+        />
+        <StatCard
+          label="Valor em análise"
+          value={formatCurrency(summary.totalValue)}
+          icon={ThumbsUp}
+          tone="success"
+        />
+        <StatCard
+          label="Alta prioridade"
+          value={String(summary.critical)}
+          icon={FileWarning}
+          tone="warning"
+        />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
         <Card className="shadow-card">
-          <CardHeader><CardTitle>Fila de aprovação</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Fila de aprovação</CardTitle>
+          </CardHeader>
           <CardContent className="p-0">
             <ScrollArea className="h-[520px]">
               <div className="space-y-1 p-3">
-                {pending.length === 0 && <p className="p-4 text-sm text-muted-foreground">Sem simulações pendentes.</p>}
+                {pending.length === 0 && (
+                  <p className="p-4 text-sm text-muted-foreground">Sem simulações pendentes.</p>
+                )}
                 {pending.map((sim) => {
                   const totals = getSimulationTotals(sim);
                   const active = sim.id === selected?.id;
@@ -102,9 +144,19 @@ function ApprovalsPage() {
           </CardContent>
         </Card>
 
-        {selected ? <ApprovalDetails simulation={selected} comment={comment} setComment={setComment} onUpdate={updateChecklist} onDecide={decide} /> : (
+        {selected ? (
+          <ApprovalDetails
+            simulation={selected}
+            comment={comment}
+            setComment={setComment}
+            onUpdate={updateChecklist}
+            onDecide={decide}
+          />
+        ) : (
           <Card className="grid place-items-center p-12 shadow-card">
-            <p className="text-muted-foreground">Selecione uma simulação na fila para iniciar a análise.</p>
+            <p className="text-muted-foreground">
+              Selecione uma simulação na fila para iniciar a análise.
+            </p>
           </Card>
         )}
       </div>
@@ -113,7 +165,11 @@ function ApprovalsPage() {
 }
 
 function ApprovalDetails({
-  simulation, comment, setComment, onUpdate, onDecide,
+  simulation,
+  comment,
+  setComment,
+  onUpdate,
+  onDecide,
 }: {
   simulation: Simulation;
   comment: string;
@@ -122,7 +178,13 @@ function ApprovalDetails({
   onDecide: (decision: "approve" | "reject" | "adjust") => void;
 }) {
   const totals = getSimulationTotals(simulation);
-  const checklist = { assumptionsReviewed: false, marginValidated: false, costsChecked: false, notesRegistered: false, ...(simulation.approvalChecklist ?? {}) };
+  const checklist = {
+    assumptionsReviewed: false,
+    marginValidated: false,
+    costsChecked: false,
+    notesRegistered: false,
+    ...(simulation.approvalChecklist ?? {}),
+  };
 
   return (
     <Card className="shadow-card">
@@ -130,7 +192,9 @@ function ApprovalDetails({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <CardTitle>{simulation.number}</CardTitle>
-            <p className="text-sm text-muted-foreground">{simulation.client} • {simulation.supplier}</p>
+            <p className="text-sm text-muted-foreground">
+              {simulation.client} • {simulation.supplier}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <StatusBadge status={simulation.status} />
@@ -158,8 +222,14 @@ function ApprovalDetails({
           <h3 className="text-sm font-semibold text-foreground">Checklist do aprovador</h3>
           <div className="grid gap-2 md:grid-cols-2">
             {CHECKLIST.map((item) => (
-              <label key={item.key} className="flex items-center gap-3 rounded-xl border border-border p-3">
-                <Checkbox checked={checklist[item.key]} onCheckedChange={(v) => onUpdate(item.key, Boolean(v))} />
+              <label
+                key={item.key}
+                className="flex items-center gap-3 rounded-xl border border-border p-3"
+              >
+                <Checkbox
+                  checked={checklist[item.key]}
+                  onCheckedChange={(v) => onUpdate(item.key, Boolean(v))}
+                />
                 <span className="text-sm">{item.label}</span>
               </label>
             ))}
@@ -168,26 +238,46 @@ function ApprovalDetails({
 
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-foreground">Comentário interno</h3>
-          <Textarea rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Adicione observações para o solicitante..." />
+          <Textarea
+            rows={3}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Adicione observações para o solicitante..."
+          />
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <ConfirmDialog
-            trigger={<Button variant="outline"><RotateCcw /> Solicitar ajuste</Button>}
+            trigger={
+              <Button variant="outline">
+                <RotateCcw /> Solicitar ajuste
+              </Button>
+            }
             title="Solicitar ajuste"
             description="A simulação retornará ao solicitante para revisão."
             actionLabel="Confirmar"
             onConfirm={() => onDecide("adjust")}
           />
           <ConfirmDialog
-            trigger={<Button variant="outline" className="border-danger/30 text-danger hover:bg-danger-soft"><X /> Reprovar</Button>}
+            trigger={
+              <Button
+                variant="outline"
+                className="border-danger/30 text-danger hover:bg-danger-soft"
+              >
+                <X /> Reprovar
+              </Button>
+            }
             title="Reprovar simulação"
             description="O solicitante será notificado da reprovação."
             actionLabel="Reprovar"
             onConfirm={() => onDecide("reject")}
           />
           <ConfirmDialog
-            trigger={<Button><Check /> Aprovar</Button>}
+            trigger={
+              <Button>
+                <Check /> Aprovar
+              </Button>
+            }
             title="Aprovar simulação"
             description="A simulação ficará disponível para conversão em pedido."
             actionLabel="Aprovar"
@@ -198,7 +288,10 @@ function ApprovalDetails({
         {simulation.approvalNotes ? (
           <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3 text-sm">
             <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <p className="text-muted-foreground"><strong className="text-foreground">Histórico: </strong>{simulation.approvalNotes}</p>
+            <p className="text-muted-foreground">
+              <strong className="text-foreground">Histórico: </strong>
+              {simulation.approvalNotes}
+            </p>
           </div>
         ) : null}
       </CardContent>
@@ -210,7 +303,11 @@ function KV({ label, value, highlight }: { label: string; value: string; highlig
   return (
     <div className="rounded-xl border border-border bg-card p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`mt-1 ${highlight ? "text-lg font-semibold text-foreground" : "font-medium text-foreground"}`}>{value}</p>
+      <p
+        className={`mt-1 ${highlight ? "text-lg font-semibold text-foreground" : "font-medium text-foreground"}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }

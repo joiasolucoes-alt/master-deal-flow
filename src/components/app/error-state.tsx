@@ -1,7 +1,15 @@
 import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function ErrorState({ title, description, onRetry }: { title: string; description: string; onRetry?: () => void }) {
+export function ErrorState({
+  title,
+  description,
+  onRetry,
+}: {
+  title: string;
+  description: string;
+  onRetry?: () => void;
+}) {
   return (
     <div className="grid min-h-72 place-items-center rounded-2xl border border-danger/20 bg-danger-soft px-6 py-10 text-center">
       <div className="space-y-4">

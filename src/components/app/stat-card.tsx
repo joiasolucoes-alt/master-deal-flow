@@ -29,15 +29,28 @@ export function StatCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-2">
             <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="truncate text-3xl font-semibold tracking-tight text-foreground">{value}</p>
+            <p className="truncate text-3xl font-semibold tracking-tight text-foreground">
+              {value}
+            </p>
             {delta ? (
-              <p className={cn("inline-flex items-center gap-1 text-sm font-medium", positive ? "text-success" : "text-danger")}>
-                {positive ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+              <p
+                className={cn(
+                  "inline-flex items-center gap-1 text-sm font-medium",
+                  positive ? "text-success" : "text-danger",
+                )}
+              >
+                {positive ? (
+                  <ArrowUpRight className="h-4 w-4" />
+                ) : (
+                  <ArrowDownRight className="h-4 w-4" />
+                )}
                 {delta}
               </p>
             ) : null}
           </div>
-          <div className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-full", toneMap[tone])}>
+          <div
+            className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-full", toneMap[tone])}
+          >
             <Icon className="h-5 w-5" />
           </div>
         </div>

@@ -11,7 +11,9 @@ export function Timeline({ items }: { items: OrderTimelineEvent[] }) {
             <span
               className={cn(
                 "mt-1 h-3.5 w-3.5 rounded-full border-2",
-                item.completed ? "border-primary bg-primary" : "border-muted-foreground/40 bg-background",
+                item.completed
+                  ? "border-primary bg-primary"
+                  : "border-muted-foreground/40 bg-background",
               )}
             />
             {index < items.length - 1 ? <span className="mt-1 h-full w-px bg-border" /> : null}

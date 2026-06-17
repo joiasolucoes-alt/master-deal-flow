@@ -3,8 +3,20 @@ export const dashboardKpis = [
   { label: "Aguardando aprovação", value: 18, delta: 12.5, tone: "warning" },
   { label: "Viáveis", value: 74, delta: 23.7, tone: "success" },
   { label: "Inviáveis", value: 12, delta: -7.6, tone: "danger" },
-  { label: "Volume simulado", value: 4820000, delta: 31.4, tone: "success", format: "currencyCompact" },
-  { label: "Lucro previsto", value: 812700, delta: 28.9, tone: "success", format: "currencyCompact" },
+  {
+    label: "Volume simulado",
+    value: 4820000,
+    delta: 31.4,
+    tone: "success",
+    format: "currencyCompact",
+  },
+  {
+    label: "Lucro previsto",
+    value: 812700,
+    delta: 28.9,
+    tone: "success",
+    format: "currencyCompact",
+  },
   { label: "Margem média", value: 16.9, delta: 2.1, tone: "success", format: "percent" },
 ];
 

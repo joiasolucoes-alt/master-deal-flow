@@ -8,6 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAppContext } from "@/features/app/app-context";
 import logoAsset from "@/assets/logo-master.png.asset.json";
 import truckIllustration from "@/assets/master-flow-truck.png";
+import { notifyActionUnavailable } from "@/lib/actions";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -30,7 +32,11 @@ function LoginPage() {
       <aside className="hidden flex-col justify-between bg-sidebar p-12 text-sidebar-foreground lg:flex">
         <div className="flex items-center gap-3">
           <div className="h-12 w-10 overflow-hidden rounded-md">
-            <img src={logoAsset.url} alt="Master" className="h-full max-w-none object-cover object-left" />
+            <img
+              src={logoAsset.url}
+              alt="Master"
+              className="h-full max-w-none object-cover object-left"
+            />
           </div>
           <div>
             <p className="text-2xl font-semibold leading-none">master</p>
@@ -56,20 +62,34 @@ function LoginPage() {
         <form
           onSubmit={(event) => {
             event.preventDefault();
+            if (!email.trim() || !password.trim()) {
+              toast.error("Informe e-mail e senha para continuar.");
+              return;
+            }
             login();
             navigate({ to: "/dashboard" });
           }}
           className="w-full max-w-md space-y-6"
         >
           <div className="space-y-2 text-center lg:text-left">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">Bem-vindo de volta</h1>
-            <p className="text-sm text-muted-foreground">Acesse sua conta para continuar gerenciando suas negociações.</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+              Bem-vindo de volta
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Acesse sua conta para continuar gerenciando suas negociações.
+            </p>
           </div>
 
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">E-mail corporativo</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
@@ -97,11 +117,19 @@ function LoginPage() {
                 <Checkbox checked={remember} onCheckedChange={(v) => setRemember(Boolean(v))} />
                 Manter conectado
               </label>
-              <button type="button" className="text-sm font-medium text-primary hover:underline">Esqueci minha senha</button>
+              <button
+                type="button"
+                onClick={() => notifyActionUnavailable("Recuperação de senha")}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Esqueci minha senha
+              </button>
             </div>
           </div>
 
-          <Button type="submit" className="h-12 w-full text-base">Entrar</Button>
+          <Button type="submit" className="h-12 w-full text-base">
+            Entrar
+          </Button>
 
           <p className="text-center text-xs text-muted-foreground">
             Ao continuar você concorda com as políticas internas da Master Distribuidora.
