@@ -6,6 +6,7 @@ export type AppStatus =
   | "Aprovada"
   | "Reprovada"
   | "Ajuste solicitado"
+  | "Aguardando faturamento"
   | "Em faturamento"
   | "Em separação"
   | "Em rota"
@@ -131,6 +132,8 @@ export interface Simulation {
     notesRegistered: boolean;
   };
   approvalNotes?: string;
+  orderId?: string;
+  convertedAt?: string;
 }
 
 export interface OrderTimelineEvent {
@@ -153,7 +156,10 @@ export interface Order {
   date: string;
   expectedDelivery: string;
   totalValue: number;
-  status: Extract<AppStatus, "Em faturamento" | "Em separação" | "Em rota" | "Entregue">;
+  status: Extract<
+    AppStatus,
+    "Aguardando faturamento" | "Em faturamento" | "Em separação" | "Em rota" | "Entregue"
+  >;
   priority: Priority;
   products: SimulationProduct[];
   billingProgress: number;

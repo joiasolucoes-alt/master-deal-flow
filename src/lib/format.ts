@@ -25,10 +25,12 @@ export function formatDateTime(value: string) {
 }
 
 export function formatCompactCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    notation: "compact",
-    maximumFractionDigits: 2,
-  }).format(value);
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    return `R$ ${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value / 1_000_000)} mi`;
+  }
+  if (abs >= 1_000) {
+    return `R$ ${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(value / 1_000)} mil`;
+  }
+  return formatCurrency(value);
 }

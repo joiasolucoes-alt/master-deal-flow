@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { orders } from "@/data/orders";
+import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Order } from "@/data/types";
 import { Boxes, PackageCheck, Truck, TruckIcon } from "lucide-react";
@@ -27,6 +27,7 @@ export const Route = createFileRoute("/_app/pedidos/")({
 
 function OrdersPage() {
   const navigate = useNavigate();
+  const { orders } = useAppContext();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("Todos");
 
@@ -38,7 +39,7 @@ function OrdersPage() {
           return false;
         return true;
       }),
-    [search, status],
+    [orders, search, status],
   );
 
   const summary = useMemo(
@@ -49,7 +50,7 @@ function OrdersPage() {
       delivered: orders.filter((o) => o.status === "Entregue").length,
       value: orders.reduce((sum, o) => sum + o.totalValue, 0),
     }),
-    [],
+    [orders],
   );
 
   const columns: DataColumn<Order>[] = [
@@ -162,7 +163,14 @@ function OrdersPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {["Todos", "Em faturamento", "Em separação", "Em rota", "Entregue"].map((o) => (
+              {[
+                "Todos",
+                "Aguardando faturamento",
+                "Em faturamento",
+                "Em separação",
+                "Em rota",
+                "Entregue",
+              ].map((o) => (
                 <SelectItem key={o} value={o}>
                   {o}
                 </SelectItem>

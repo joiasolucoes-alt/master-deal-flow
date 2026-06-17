@@ -3,7 +3,7 @@ import type { Order } from "./types";
 export const orders: Order[] = [
   {
     id: "ord-41",
-    number: "PED-2024-0041",
+    number: "PED-2026-0041",
     simulationId: "sim-0126",
     client: "Supermercado Central",
     origin: "Cataguases • MG",
@@ -83,7 +83,7 @@ export const orders: Order[] = [
   },
   {
     id: "ord-40",
-    number: "PED-2024-0040",
+    number: "PED-2026-0040",
     client: "Mercado São José",
     origin: "Cataguases • MG",
     destination: "Governador Valadares • MG",
@@ -138,7 +138,7 @@ export const orders: Order[] = [
   },
   {
     id: "ord-39",
-    number: "PED-2024-0039",
+    number: "PED-2026-0039",
     client: "Distribuidora União",
     origin: "Vitória • ES",
     destination: "Belo Horizonte • MG",
@@ -186,7 +186,7 @@ export const orders: Order[] = [
   },
   {
     id: "ord-38",
-    number: "PED-2024-0038",
+    number: "PED-2026-0038",
     client: "Atacado Vale Verde",
     origin: "Cataguases • MG",
     destination: "Campos dos Goytacazes • RJ",
