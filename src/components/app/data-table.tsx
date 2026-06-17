@@ -1,5 +1,12 @@
 import type { ReactNode } from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/app/empty-state";
 
 export interface DataColumn<T> {
@@ -32,15 +39,23 @@ export function DataTable<T>({
         <TableHeader>
           <TableRow>
             {columns.map((column) => (
-              <TableHead key={column.key} className={column.className}>{column.header}</TableHead>
+              <TableHead key={column.key} className={column.className}>
+                {column.header}
+              </TableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
           {data.map((row, index) => (
-            <TableRow key={index} onClick={() => onRowClick?.(row)} className={onRowClick ? "cursor-pointer" : undefined}>
+            <TableRow
+              key={index}
+              onClick={() => onRowClick?.(row)}
+              className={onRowClick ? "cursor-pointer" : undefined}
+            >
               {columns.map((column) => (
-                <TableCell key={column.key} className={column.className}>{column.cell(row)}</TableCell>
+                <TableCell key={column.key} className={column.className}>
+                  {column.cell(row)}
+                </TableCell>
               ))}
             </TableRow>
           ))}

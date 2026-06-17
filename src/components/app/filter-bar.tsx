@@ -21,7 +21,8 @@ export function FilterBar({
         </div>
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">{children}</div>
-          <div className="flex flex-wrap items-center gap-2">{rightSlot}
+          <div className="flex flex-wrap items-center gap-2">
+            {rightSlot}
             {onClear ? (
               <Button variant="outline" onClick={onClear}>
                 <RotateCcw />

@@ -23,7 +23,12 @@ export function ThemeToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="Alternar tema" className="h-10 w-10 rounded-full">
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Alternar tema"
+          className="h-10 w-10 rounded-full"
+        >
           <ActiveIcon />
         </Button>
       </DropdownMenuTrigger>

@@ -52,12 +52,21 @@ export function AppSidebar() {
       <SidebarHeader className="px-4 py-5 group-data-[collapsible=icon]:px-2">
         <div className="flex items-center gap-3 overflow-hidden rounded-2xl px-1 py-1">
           <div className="h-11 w-9 shrink-0 overflow-hidden rounded-md">
-            <img src={logoAsset.url} alt="Ícone Master Flow" className="h-full max-w-none object-cover object-left" loading="lazy" />
+            <img
+              src={logoAsset.url}
+              alt="Ícone Master Flow"
+              className="h-full max-w-none object-cover object-left"
+              loading="lazy"
+            />
           </div>
           {!collapsed ? (
             <div className="min-w-0">
-              <p className="truncate text-[1.85rem] font-semibold leading-none text-sidebar-foreground">master</p>
-              <p className="truncate text-[1.85rem] font-semibold leading-none text-primary">Flow</p>
+              <p className="truncate text-[1.85rem] font-semibold leading-none text-sidebar-foreground">
+                master
+              </p>
+              <p className="truncate text-[1.85rem] font-semibold leading-none text-primary">
+                Flow
+              </p>
             </div>
           ) : null}
         </div>
@@ -69,9 +78,19 @@ export function AppSidebar() {
             const active = currentPath === item.to || currentPath.startsWith(`${item.to}/`);
             return (
               <SidebarMenuItem key={item.to}>
-                <SidebarMenuButton asChild isActive={active} tooltip={item.title} className="h-12 rounded-2xl px-3 text-[0.95rem]">
+                <SidebarMenuButton
+                  asChild
+                  isActive={active}
+                  tooltip={item.title}
+                  className="h-12 rounded-2xl px-3 text-[0.95rem]"
+                >
                   <Link to={item.to} className="flex items-center gap-3">
-                    <item.icon className={cn("h-5 w-5", active ? "text-primary" : "text-sidebar-foreground/80")} />
+                    <item.icon
+                      className={cn(
+                        "h-5 w-5",
+                        active ? "text-primary" : "text-sidebar-foreground/80",
+                      )}
+                    />
                     <span>{item.title}</span>
                   </Link>
                 </SidebarMenuButton>
@@ -89,7 +108,9 @@ export function AppSidebar() {
             </div>
             {!collapsed ? (
               <div className="min-w-0">
-                <p className="text-xs font-medium text-sidebar-foreground/75">Sistema operacional</p>
+                <p className="text-xs font-medium text-sidebar-foreground/75">
+                  Sistema operacional
+                </p>
                 <p className="text-sm font-semibold text-sidebar-foreground">Todos os serviços</p>
                 <p className="text-sm text-primary">operando normalmente</p>
               </div>
@@ -98,10 +119,21 @@ export function AppSidebar() {
         </div>
 
         <div className="overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-elevated/70 group-data-[collapsible=icon]:rounded-2xl">
-          <img src={truckIllustration} alt="Ilustração de caminhão" className="h-28 w-full object-contain object-bottom px-3 pt-3 opacity-85 group-data-[collapsible=icon]:h-20 group-data-[collapsible=icon]:px-1" loading="lazy" width={1024} height={1024} />
+          <img
+            src={truckIllustration}
+            alt="Ilustração de caminhão"
+            className="h-28 w-full object-contain object-bottom px-3 pt-3 opacity-85 group-data-[collapsible=icon]:h-20 group-data-[collapsible=icon]:px-1"
+            loading="lazy"
+            width={1024}
+            height={1024}
+          />
         </div>
 
-        <Button variant="ghost" onClick={toggleSidebar} className="h-11 w-full justify-center rounded-full border border-sidebar-border bg-sidebar-elevated text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+        <Button
+          variant="ghost"
+          onClick={toggleSidebar}
+          className="h-11 w-full justify-center rounded-full border border-sidebar-border bg-sidebar-elevated text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        >
           <ChevronLeft className="h-4 w-4 group-data-[collapsible=icon]:rotate-180" />
           {!collapsed ? <span>Recolher menu</span> : null}
         </Button>

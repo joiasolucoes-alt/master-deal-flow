@@ -34,7 +34,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [auth, setAuth] = useState<AuthState>({ isAuthenticated: false, user: null });
   const [simulations, setSimulationsState] = useState<Simulation[]>(simulationsSeed);
-  const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(simulationsSeed[0]?.id ?? null);
+  const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(
+    simulationsSeed[0]?.id ?? null,
+  );
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,7 +50,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     setAuth(storedAuth);
 
-    const storedSimulations = readLocalStorage<Simulation[]>(SIMULATION_STORAGE_KEY, simulationsSeed);
+    const storedSimulations = readLocalStorage<Simulation[]>(
+      SIMULATION_STORAGE_KEY,
+      simulationsSeed,
+    );
     setSimulationsState(storedSimulations);
     setSelectedApprovalId(storedSimulations[0]?.id ?? null);
     setHydrated(true);

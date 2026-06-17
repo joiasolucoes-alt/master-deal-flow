@@ -31,18 +31,37 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { dashboardKpis, negotiationStatus, simulationEvolution, topClients } from "@/data/dashboard";
+import {
+  dashboardKpis,
+  negotiationStatus,
+  simulationEvolution,
+  topClients,
+} from "@/data/dashboard";
 import { simulationsSeed } from "@/data/simulations";
 import { orders } from "@/data/orders";
 import { formatCompactCurrency, formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { getSimulationTotals } from "@/lib/calculations";
+import { downloadTextFile } from "@/lib/actions";
 
 export const Route = createFileRoute("/_app/dashboard")({
   component: DashboardPage,
 });
 
-const kpiIcons = [Handshake, ClipboardCheck, CheckCircle2, TriangleAlert, PiggyBank, ArrowUpRight, ArrowUpRight];
-const pieColors = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-4)", "var(--color-chart-5)"];
+const kpiIcons = [
+  Handshake,
+  ClipboardCheck,
+  CheckCircle2,
+  TriangleAlert,
+  PiggyBank,
+  ArrowUpRight,
+  ArrowUpRight,
+];
+const pieColors = [
+  "var(--color-chart-1)",
+  "var(--color-chart-2)",
+  "var(--color-chart-4)",
+  "var(--color-chart-5)",
+];
 
 function formatKpi(item: (typeof dashboardKpis)[number]) {
   if (item.format === "currencyCompact") return formatCompactCurrency(item.value);
@@ -51,6 +70,13 @@ function formatKpi(item: (typeof dashboardKpis)[number]) {
 }
 
 function DashboardPage() {
+  function exportDashboardReport() {
+    downloadTextFile(
+      "dashboard-master-flow.txt",
+      `Relatório Dashboard\nGerado em: ${new Date().toLocaleString("pt-BR")}\nSimulações recentes: ${simulationsSeed.length}\nPedidos: ${orders.length}`,
+    );
+  }
+
   const recentSimulations = simulationsSeed.slice(0, 4);
   const recentOrders = orders.slice(0, 3);
 
@@ -61,7 +87,9 @@ function DashboardPage() {
         description="Acompanhe o desempenho comercial, simulações e pedidos em tempo real."
         action={
           <>
-            <Button variant="outline">Exportar relatório</Button>
+            <Button variant="outline" onClick={exportDashboardReport}>
+              Exportar relatório
+            </Button>
             <Button asChild>
               <Link to="/simulacoes">
                 <Plus /> Nova simulação
@@ -104,7 +132,9 @@ function DashboardPage() {
               <CardTitle>Evolução do volume simulado</CardTitle>
               <p className="text-sm text-muted-foreground">Últimos 7 dias</p>
             </div>
-            <Badge variant="secondary" className="rounded-full">+31,4%</Badge>
+            <Badge variant="secondary" className="rounded-full">
+              +31,4%
+            </Badge>
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -115,14 +145,38 @@ function DashboardPage() {
                     <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                <XAxis dataKey="day" stroke="var(--color-muted-foreground)" tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--color-muted-foreground)" tickLine={false} axisLine={false} tickFormatter={(v) => formatCompactCurrency(v as number)} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="var(--color-border)"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="day"
+                  stroke="var(--color-muted-foreground)"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="var(--color-muted-foreground)"
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v) => formatCompactCurrency(v as number)}
+                />
                 <Tooltip
-                  contentStyle={{ background: "var(--color-card)", borderRadius: 12, border: "1px solid var(--color-border)" }}
+                  contentStyle={{
+                    background: "var(--color-card)",
+                    borderRadius: 12,
+                    border: "1px solid var(--color-border)",
+                  }}
                   formatter={(v) => formatCurrency(Number(v))}
                 />
-                <Area type="monotone" dataKey="value" stroke="var(--color-primary)" fill="url(#dashArea)" strokeWidth={2.5} />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke="var(--color-primary)"
+                  fill="url(#dashArea)"
+                  strokeWidth={2.5}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -136,13 +190,26 @@ function DashboardPage() {
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={negotiationStatus} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={4}>
+                <Pie
+                  data={negotiationStatus}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={55}
+                  outerRadius={90}
+                  paddingAngle={4}
+                >
                   {negotiationStatus.map((_, idx) => (
                     <Cell key={idx} fill={pieColors[idx % pieColors.length]} />
                   ))}
                 </Pie>
                 <Legend verticalAlign="bottom" iconType="circle" />
-                <Tooltip contentStyle={{ background: "var(--color-card)", borderRadius: 12, border: "1px solid var(--color-border)" }} />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--color-card)",
+                    borderRadius: 12,
+                    border: "1px solid var(--color-border)",
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
@@ -157,24 +224,35 @@ function DashboardPage() {
               <p className="text-sm text-muted-foreground">Atualizado agora</p>
             </div>
             <Button variant="ghost" asChild>
-              <Link to="/simulacoes">Ver todas <ArrowRight /></Link>
+              <Link to="/simulacoes">
+                Ver todas <ArrowRight />
+              </Link>
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {recentSimulations.map((sim) => {
               const totals = getSimulationTotals(sim);
               return (
-                <div key={sim.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl border border-border bg-background/40 p-4">
+                <div
+                  key={sim.id}
+                  className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl border border-border bg-background/40 p-4"
+                >
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-foreground">{sim.number}</span>
                       <StatusBadge status={sim.status} />
                     </div>
-                    <p className="truncate text-sm text-muted-foreground">{sim.client} • {sim.owner}</p>
+                    <p className="truncate text-sm text-muted-foreground">
+                      {sim.client} • {sim.owner}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-semibold text-foreground">{formatCurrency(totals.revenue)}</p>
-                    <p className={`text-xs font-medium ${totals.marginPercent >= 12 ? "text-success" : totals.marginPercent >= 8 ? "text-warning" : "text-danger"}`}>
+                    <p className="text-sm font-semibold text-foreground">
+                      {formatCurrency(totals.revenue)}
+                    </p>
+                    <p
+                      className={`text-xs font-medium ${totals.marginPercent >= 12 ? "text-success" : totals.marginPercent >= 8 ? "text-warning" : "text-danger"}`}
+                    >
                       Margem {formatPercent(totals.marginPercent)}
                     </p>
                   </div>
@@ -196,7 +274,9 @@ function DashboardPage() {
                 <div key={client.name} className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium text-foreground">{client.name}</span>
-                    <span className="text-muted-foreground">{formatCompactCurrency(client.value)}</span>
+                    <span className="text-muted-foreground">
+                      {formatCompactCurrency(client.value)}
+                    </span>
                   </div>
                   <Progress value={(client.value / max) * 100} className="h-2" />
                 </div>
@@ -210,21 +290,30 @@ function DashboardPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Últimos pedidos</CardTitle>
-            <p className="text-sm text-muted-foreground">Acompanhe o status logístico em andamento.</p>
+            <p className="text-sm text-muted-foreground">
+              Acompanhe o status logístico em andamento.
+            </p>
           </div>
           <Button variant="ghost" asChild>
-            <Link to="/pedidos">Ver todos <ArrowRight /></Link>
+            <Link to="/pedidos">
+              Ver todos <ArrowRight />
+            </Link>
           </Button>
         </CardHeader>
         <CardContent className="grid gap-3 lg:grid-cols-3">
           {recentOrders.map((order) => (
-            <div key={order.id} className="space-y-3 rounded-2xl border border-border bg-background/40 p-4">
+            <div
+              key={order.id}
+              className="space-y-3 rounded-2xl border border-border bg-background/40 p-4"
+            >
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-foreground">{order.number}</span>
                 <StatusBadge status={order.status} />
               </div>
               <p className="text-sm text-muted-foreground">{order.client}</p>
-              <p className="text-sm text-muted-foreground">{order.origin} → {order.destination}</p>
+              <p className="text-sm text-muted-foreground">
+                {order.origin} → {order.destination}
+              </p>
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Entrega</span>
@@ -232,7 +321,9 @@ function DashboardPage() {
                 </div>
                 <Progress value={order.deliveryProgress} className="h-2" />
               </div>
-              <p className="text-xs text-muted-foreground">Previsão: {formatDateTime(order.expectedDelivery)}</p>
+              <p className="text-xs text-muted-foreground">
+                Previsão: {formatDateTime(order.expectedDelivery)}
+              </p>
             </div>
           ))}
         </CardContent>

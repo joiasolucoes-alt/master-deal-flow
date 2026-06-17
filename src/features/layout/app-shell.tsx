@@ -17,7 +17,11 @@ export function AppShell() {
   }, [auth.isAuthenticated, hydrated, navigate]);
 
   if (!hydrated) {
-    return <div className="min-h-dvh bg-background p-6"><LoadingState title="Inicializando Master Flow" /></div>;
+    return (
+      <div className="min-h-dvh bg-background p-6">
+        <LoadingState title="Inicializando Master Flow" />
+      </div>
+    );
   }
 
   if (!auth.isAuthenticated) return null;

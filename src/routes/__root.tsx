@@ -81,22 +81,45 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Master Flow — Gestão de Negociações" },
-      { name: "description", content: "Plataforma interna da Master Distribuidora para gerenciar o ciclo de negociações comerciais." },
+      {
+        name: "description",
+        content:
+          "Plataforma interna da Master Distribuidora para gerenciar o ciclo de negociações comerciais.",
+      },
       { name: "author", content: "Master Distribuidora e Logística" },
       { property: "og:title", content: "Master Flow — Gestão de Negociações" },
-      { property: "og:description", content: "Plataforma interna da Master Distribuidora para gerenciar o ciclo de negociações comerciais." },
+      {
+        property: "og:description",
+        content:
+          "Plataforma interna da Master Distribuidora para gerenciar o ciclo de negociações comerciais.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "Master Flow — Gestão de Negociações" },
-      { name: "twitter:description", content: "Plataforma interna da Master Distribuidora para gerenciar o ciclo de negociações comerciais." },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/d191a68d-e3e5-4219-bd27-e80b5e077209" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/d191a68d-e3e5-4219-bd27-e80b5e077209" },
+      {
+        name: "twitter:description",
+        content:
+          "Plataforma interna da Master Distribuidora para gerenciar o ciclo de negociações comerciais.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/d191a68d-e3e5-4219-bd27-e80b5e077209",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/d191a68d-e3e5-4219-bd27-e80b5e077209",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+      },
     ],
   }),
   shellComponent: RootShell,

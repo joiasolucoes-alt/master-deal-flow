@@ -7,7 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { orders } from "@/data/orders";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 
@@ -21,7 +28,11 @@ function OrderDetailPage() {
   if (!order) {
     return (
       <div className="space-y-6">
-        <Button asChild variant="ghost" size="sm"><Link to="/pedidos"><ArrowLeft /> Voltar</Link></Button>
+        <Button asChild variant="ghost" size="sm">
+          <Link to="/pedidos">
+            <ArrowLeft /> Voltar
+          </Link>
+        </Button>
         <p className="text-muted-foreground">Pedido não encontrado.</p>
       </div>
     );
@@ -29,30 +40,46 @@ function OrderDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Button asChild variant="ghost" size="sm" className="w-fit"><Link to="/pedidos"><ArrowLeft /> Voltar para pedidos</Link></Button>
+      <Button asChild variant="ghost" size="sm" className="w-fit">
+        <Link to="/pedidos">
+          <ArrowLeft /> Voltar para pedidos
+        </Link>
+      </Button>
 
       <PageHeader
         title={order.number}
         description={`${order.client} • ${order.origin} → ${order.destination}`}
         action={
           <>
-            <Button variant="outline"><Printer /> Imprimir</Button>
-            <Button variant="outline"><Download /> Exportar PDF</Button>
-            <Button><FileText /> Gerar nota fiscal</Button>
+            <Button variant="outline">
+              <Printer /> Imprimir
+            </Button>
+            <Button variant="outline">
+              <Download /> Exportar PDF
+            </Button>
+            <Button>
+              <FileText /> Gerar nota fiscal
+            </Button>
           </>
         }
       />
 
       <div className="flex flex-wrap items-center gap-3">
         <StatusBadge status={order.status} />
-        <Badge variant="outline" className="rounded-full">Prioridade: {order.priority}</Badge>
-        <Badge variant="outline" className="rounded-full">Pagamento: {order.paymentTerms}</Badge>
+        <Badge variant="outline" className="rounded-full">
+          Prioridade: {order.priority}
+        </Badge>
+        <Badge variant="outline" className="rounded-full">
+          Pagamento: {order.paymentTerms}
+        </Badge>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
           <Card className="shadow-card">
-            <CardHeader><CardTitle>Resumo do pedido</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Resumo do pedido</CardTitle>
+            </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-3">
               <Info label="Responsável" value={order.owner} />
               <Info label="Unidade" value={order.unit} />
@@ -64,7 +91,9 @@ function OrderDetailPage() {
           </Card>
 
           <Card className="shadow-card">
-            <CardHeader><CardTitle>Produtos</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Produtos</CardTitle>
+            </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
@@ -85,7 +114,9 @@ function OrderDetailPage() {
                       <TableCell className="text-right">{p.unitsPerBox}</TableCell>
                       <TableCell className="text-right">{p.quantityTotal}</TableCell>
                       <TableCell className="text-right">{formatCurrency(p.saleUnit)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(p.saleUnit * p.quantityTotal)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(p.saleUnit * p.quantityTotal)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -94,18 +125,27 @@ function OrderDetailPage() {
           </Card>
 
           <Card className="shadow-card">
-            <CardHeader><CardTitle>Documentos e anotações</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Documentos e anotações</CardTitle>
+            </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
               <div>
                 <p className="mb-2 text-sm font-medium text-foreground">Documentos</p>
                 <ul className="space-y-1 text-sm text-muted-foreground">
-                  {order.documents.map((doc) => <li key={doc} className="flex items-center gap-2"><FileText className="h-4 w-4 text-primary" />{doc}</li>)}
+                  {order.documents.map((doc) => (
+                    <li key={doc} className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-primary" />
+                      {doc}
+                    </li>
+                  ))}
                 </ul>
               </div>
               <div>
                 <p className="mb-2 text-sm font-medium text-foreground">Anotações</p>
                 <ul className="space-y-1 text-sm text-muted-foreground">
-                  {order.notes.map((note, i) => <li key={i}>• {note}</li>)}
+                  {order.notes.map((note, i) => (
+                    <li key={i}>• {note}</li>
+                  ))}
                 </ul>
               </div>
             </CardContent>
@@ -114,7 +154,9 @@ function OrderDetailPage() {
 
         <div className="space-y-4">
           <Card className="shadow-card">
-            <CardHeader><CardTitle>Progresso</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Progresso</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-4">
               <Bar label="Faturamento" value={order.billingProgress} />
               <Bar label="Entrega" value={order.deliveryProgress} />
@@ -122,7 +164,9 @@ function OrderDetailPage() {
           </Card>
 
           <Card className="shadow-card">
-            <CardHeader><CardTitle>Linha do tempo</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Linha do tempo</CardTitle>
+            </CardHeader>
             <CardContent>
               <Timeline items={order.timeline} />
             </CardContent>
@@ -137,7 +181,11 @@ function Info({ label, value, highlight }: { label: string; value: string; highl
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`mt-1 ${highlight ? "text-lg font-semibold text-foreground" : "font-medium text-foreground"}`}>{value}</p>
+      <p
+        className={`mt-1 ${highlight ? "text-lg font-semibold text-foreground" : "font-medium text-foreground"}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -145,7 +193,10 @@ function Info({ label, value, highlight }: { label: string; value: string; highl
 function Bar({ label, value }: { label: string; value: number }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">{label}</span><span className="font-medium">{value}%</span></div>
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">{value}%</span>
+      </div>
       <Progress value={value} className="h-2" />
     </div>
   );

@@ -1,5 +1,11 @@
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
-import type { ExpenseItem, PurchaseItem, Simulation, SimulationProduct, Viability } from "@/data/types";
+import type {
+  ExpenseItem,
+  PurchaseItem,
+  Simulation,
+  SimulationProduct,
+  Viability,
+} from "@/data/types";
 
 export interface SimulationTotals {
   revenue: number;
@@ -30,10 +36,18 @@ export function getPurchaseShare(item: PurchaseItem, total: number) {
   return (item.value / total) * 100;
 }
 
-export function getSimulationTotals(simulation: Pick<Simulation, "products" | "expenseItems">): SimulationTotals {
+export function getSimulationTotals(
+  simulation: Pick<Simulation, "products" | "expenseItems">,
+): SimulationTotals {
   const revenue = simulation.products.reduce((sum, item) => sum + getProductSaleTotal(item), 0);
-  const merchandiseCost = simulation.products.reduce((sum, item) => sum + getProductCostTotal(item), 0);
-  const expenses = simulation.expenseItems.reduce((sum, item) => sum + getExpenseTotal(item, revenue), 0);
+  const merchandiseCost = simulation.products.reduce(
+    (sum, item) => sum + getProductCostTotal(item),
+    0,
+  );
+  const expenses = simulation.expenseItems.reduce(
+    (sum, item) => sum + getExpenseTotal(item, revenue),
+    0,
+  );
   const grossProfit = revenue - merchandiseCost;
   const netProfit = grossProfit - expenses;
   const marginPercent = revenue > 0 ? (netProfit / revenue) * 100 : 0;
@@ -69,7 +83,9 @@ export function getSimulationCostImpact(simulation: Pick<Simulation, "expenseIte
   }));
 }
 
-export function getSimulationSensitivity(simulation: Pick<Simulation, "products" | "expenseItems">) {
+export function getSimulationSensitivity(
+  simulation: Pick<Simulation, "products" | "expenseItems">,
+) {
   const base = getSimulationTotals(simulation);
   const freightAdjusted = getSimulationTotals({
     products: simulation.products,

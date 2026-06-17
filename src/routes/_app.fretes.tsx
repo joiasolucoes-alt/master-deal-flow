@@ -25,21 +25,94 @@ interface Freight {
 }
 
 const freights: Freight[] = [
-  { id: "f1", code: "FR-2024-0091", carrier: "Transportes União", vehicle: "Truck baú 18t", route: "Cataguases → Juiz de Fora", value: 12450, weight: "11.4t", status: "Em rota", loading: "2026-06-15T08:00:00-03:00" },
-  { id: "f2", code: "FR-2024-0090", carrier: "Logmix", vehicle: "Carreta LS 30t", route: "Vitória → Belo Horizonte", value: 18900, weight: "22.8t", status: "Aprovado", loading: "2026-06-18T07:30:00-03:00" },
-  { id: "f3", code: "FR-2024-0089", carrier: "Serra Logística", vehicle: "Truck 14t", route: "Ipatinga → Governador Valadares", value: 8600, weight: "9.6t", status: "Cotação", loading: "2026-06-19T09:00:00-03:00" },
-  { id: "f4", code: "FR-2024-0088", carrier: "Transportes União", vehicle: "Truck baú 18t", route: "Cataguases → Campos dos Goytacazes", value: 16500, weight: "14.2t", status: "Entregue", loading: "2026-06-10T06:00:00-03:00" },
+  {
+    id: "f1",
+    code: "FR-2024-0091",
+    carrier: "Transportes União",
+    vehicle: "Truck baú 18t",
+    route: "Cataguases → Juiz de Fora",
+    value: 12450,
+    weight: "11.4t",
+    status: "Em rota",
+    loading: "2026-06-15T08:00:00-03:00",
+  },
+  {
+    id: "f2",
+    code: "FR-2024-0090",
+    carrier: "Logmix",
+    vehicle: "Carreta LS 30t",
+    route: "Vitória → Belo Horizonte",
+    value: 18900,
+    weight: "22.8t",
+    status: "Aprovado",
+    loading: "2026-06-18T07:30:00-03:00",
+  },
+  {
+    id: "f3",
+    code: "FR-2024-0089",
+    carrier: "Serra Logística",
+    vehicle: "Truck 14t",
+    route: "Ipatinga → Governador Valadares",
+    value: 8600,
+    weight: "9.6t",
+    status: "Cotação",
+    loading: "2026-06-19T09:00:00-03:00",
+  },
+  {
+    id: "f4",
+    code: "FR-2024-0088",
+    carrier: "Transportes União",
+    vehicle: "Truck baú 18t",
+    route: "Cataguases → Campos dos Goytacazes",
+    value: 16500,
+    weight: "14.2t",
+    status: "Entregue",
+    loading: "2026-06-10T06:00:00-03:00",
+  },
 ];
 
 const columns: DataColumn<Freight>[] = [
   { key: "code", header: "Frete", cell: (f) => <span className="font-semibold">{f.code}</span> },
   { key: "carrier", header: "Transportadora", cell: (f) => f.carrier },
-  { key: "vehicle", header: "Veículo", cell: (f) => <Badge variant="outline" className="rounded-full">{f.vehicle}</Badge> },
-  { key: "route", header: "Trajeto", cell: (f) => <span className="text-sm text-muted-foreground">{f.route}</span> },
+  {
+    key: "vehicle",
+    header: "Veículo",
+    cell: (f) => (
+      <Badge variant="outline" className="rounded-full">
+        {f.vehicle}
+      </Badge>
+    ),
+  },
+  {
+    key: "route",
+    header: "Trajeto",
+    cell: (f) => <span className="text-sm text-muted-foreground">{f.route}</span>,
+  },
   { key: "weight", header: "Peso", cell: (f) => f.weight },
-  { key: "value", header: "Valor", className: "text-right", cell: (f) => <span className="font-medium">{formatCurrency(f.value)}</span> },
+  {
+    key: "value",
+    header: "Valor",
+    className: "text-right",
+    cell: (f) => <span className="font-medium">{formatCurrency(f.value)}</span>,
+  },
   { key: "loading", header: "Carregamento", cell: (f) => formatDate(f.loading) },
-  { key: "status", header: "Status", cell: (f) => <StatusBadge status={f.status === "Cotação" ? "Em análise" : f.status === "Aprovado" ? "Aprovada" : f.status === "Em rota" ? "Em rota" : "Entregue"} /> },
+  {
+    key: "status",
+    header: "Status",
+    cell: (f) => (
+      <StatusBadge
+        status={
+          f.status === "Cotação"
+            ? "Em análise"
+            : f.status === "Aprovado"
+              ? "Aprovada"
+              : f.status === "Em rota"
+                ? "Em rota"
+                : "Entregue"
+        }
+      />
+    ),
+  },
 ];
 
 function FreightsPage() {
@@ -49,17 +122,32 @@ function FreightsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Fretes" description="Controle de cotações, contratações e rastreamento de frete." />
+      <PageHeader
+        title="Fretes"
+        description="Controle de cotações, contratações e rastreamento de frete."
+      />
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="Fretes ativos" value={String(total)} icon={Truck} tone="info" />
         <StatCard label="Em rota" value={String(transit)} icon={MapPin} tone="warning" />
-        <StatCard label="Valor contratado" value={formatCurrency(value)} icon={Truck} tone="success" />
+        <StatCard
+          label="Valor contratado"
+          value={formatCurrency(value)}
+          icon={Truck}
+          tone="success"
+        />
       </div>
 
       <Card className="shadow-card">
-        <CardHeader><CardTitle>Painel de fretes</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Painel de fretes</CardTitle>
+        </CardHeader>
         <CardContent>
-          <DataTable columns={columns} data={freights} emptyTitle="Sem fretes" emptyDescription="Nenhum frete contratado no momento." />
+          <DataTable
+            columns={columns}
+            data={freights}
+            emptyTitle="Sem fretes"
+            emptyDescription="Nenhum frete contratado no momento."
+          />
         </CardContent>
       </Card>
     </div>
