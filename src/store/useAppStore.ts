@@ -66,6 +66,7 @@ function persistState() {
 
 function setState(updater: (current: PersistedState) => PersistedState) {
   state = updater(state);
+  snapshot = { ...state, ...storeActions };
   persistState();
   listeners.forEach((listener) => listener());
 }
@@ -75,53 +76,53 @@ function subscribe(listener: Listener) {
   return () => listeners.delete(listener);
 }
 
-function actions() {
-  return {
-    setSimulations: (value: Simulation[]) =>
-      setState((current) => ({ ...current, simulations: value })),
-    upsertSimulation: (simulation: Simulation, audit?: AuditEvent) =>
-      setState((current) => ({
-        ...current,
-        simulations: current.simulations.some((item) => item.id === simulation.id)
-          ? current.simulations.map((item) => (item.id === simulation.id ? simulation : item))
-          : [simulation, ...current.simulations],
-        auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
-      })),
-    upsertOrder: (order: Order, audit?: AuditEvent) =>
-      setState((current) => ({
-        ...current,
-        orders: current.orders.some((item) => item.id === order.id)
-          ? current.orders.map((item) => (item.id === order.id ? order : item))
-          : [order, ...current.orders],
-        auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
-      })),
-    upsertNegotiation: (negotiation: Negotiation) =>
-      setState((current) => ({
-        ...current,
-        negotiations: current.negotiations.some((item) => item.id === negotiation.id)
-          ? current.negotiations.map((item) => (item.id === negotiation.id ? negotiation : item))
-          : [negotiation, ...current.negotiations],
-      })),
-    addNotification: (notification: NotificationItem) =>
-      setState((current) => ({
-        ...current,
-        notifications: [notification, ...current.notifications],
-      })),
-    setSelectedApprovalId: (id: string | null) =>
-      setState((current) => ({ ...current, selectedApprovalId: id })),
-    setSelectedOrderId: (id: string | null) =>
-      setState((current) => ({ ...current, selectedOrderId: id })),
-  };
-}
+const storeActions = {
+  setSimulations: (value: Simulation[]) =>
+    setState((current) => ({ ...current, simulations: value })),
+  upsertSimulation: (simulation: Simulation, audit?: AuditEvent) =>
+    setState((current) => ({
+      ...current,
+      simulations: current.simulations.some((item) => item.id === simulation.id)
+        ? current.simulations.map((item) => (item.id === simulation.id ? simulation : item))
+        : [simulation, ...current.simulations],
+      auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
+    })),
+  upsertOrder: (order: Order, audit?: AuditEvent) =>
+    setState((current) => ({
+      ...current,
+      orders: current.orders.some((item) => item.id === order.id)
+        ? current.orders.map((item) => (item.id === order.id ? order : item))
+        : [order, ...current.orders],
+      auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
+    })),
+  upsertNegotiation: (negotiation: Negotiation) =>
+    setState((current) => ({
+      ...current,
+      negotiations: current.negotiations.some((item) => item.id === negotiation.id)
+        ? current.negotiations.map((item) => (item.id === negotiation.id ? negotiation : item))
+        : [negotiation, ...current.negotiations],
+    })),
+  addNotification: (notification: NotificationItem) =>
+    setState((current) => ({
+      ...current,
+      notifications: [notification, ...current.notifications],
+    })),
+  setSelectedApprovalId: (id: string | null) =>
+    setState((current) => ({ ...current, selectedApprovalId: id })),
+  setSelectedOrderId: (id: string | null) =>
+    setState((current) => ({ ...current, selectedOrderId: id })),
+};
+
+let snapshot: AppStore = { ...state, ...storeActions };
 
 export function getAppStoreSnapshot(): AppStore {
-  return { ...state, ...actions() };
+  return snapshot;
 }
 
 export function useAppStore<T>(selector: (snapshot: AppStore) => T): T {
   return useSyncExternalStore(
     subscribe,
-    () => selector(getAppStoreSnapshot()),
-    () => selector(getAppStoreSnapshot()),
+    () => selector(snapshot),
+    () => selector(snapshot),
   );
 }
