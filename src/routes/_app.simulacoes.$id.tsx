@@ -796,7 +796,7 @@ function ExpensesStep({
     <div className="space-y-4">
       <SectionTitle
         title="Despesas e custos operacionais"
-        description="Aplique valores fixos ou percentuais sobre a receita simulada."
+        description="Aplique valores fixos ou percentuais sobre receita, custo/NF ou lucro bruto."
       />
       {draft.expenseItems.length === 0 ? (
         <EmptyState
@@ -810,6 +810,7 @@ function ExpensesStep({
               <TableRow>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Cálculo</TableHead>
+                <TableHead>Base</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead />
               </TableRow>
@@ -850,6 +851,8 @@ function ExpensesStep({
                       onValueChange={(v) =>
                         updateItem(item.id, {
                           calculationType: v as ExpenseItem["calculationType"],
+                          calculationBase:
+                            v === "percentage" ? (item.calculationBase ?? "revenue") : undefined,
                         })
                       }
                     >
@@ -858,7 +861,27 @@ function ExpensesStep({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="fixed">Valor fixo</SelectItem>
-                        <SelectItem value="percentage">% da receita</SelectItem>
+                        <SelectItem value="percentage">Percentual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={item.calculationBase ?? "revenue"}
+                      disabled={item.calculationType === "fixed"}
+                      onValueChange={(v) =>
+                        updateItem(item.id, {
+                          calculationBase: v as NonNullable<ExpenseItem["calculationBase"]>,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="w-36">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="revenue">Receita</SelectItem>
+                        <SelectItem value="purchaseTotal">Custo/NF</SelectItem>
+                        <SelectItem value="grossProfit">Lucro bruto</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
