@@ -1,21 +1,69 @@
 import assert from "node:assert/strict";
 
-const product = { quantityTotal: 20, costUnit: 70, saleUnit: 100 };
-const expenses = [{ calculationType: "fixed", value: 200 }];
-const revenue = product.quantityTotal * product.saleUnit;
-const merchandiseCost = product.quantityTotal * product.costUnit;
-const grossProfit = revenue - merchandiseCost;
-const expenseTotal = expenses.reduce((sum, item) => sum + item.value, 0);
-const netProfit = grossProfit - expenseTotal;
-const marginPercent = revenue > 0 ? (netProfit / revenue) * 100 : 0;
-const viability = marginPercent >= 12 ? "Viável" : marginPercent >= 8 ? "Atenção" : "Inviável";
+function getExpenseTotal(expense, bases) {
+  if (expense.calculationType === "fixed") return expense.value;
+  return bases[expense.calculationBase ?? "revenue"] * (expense.value / 100);
+}
 
-assert.equal(product.quantityTotal, 20);
-assert.equal(merchandiseCost, 1400);
-assert.equal(revenue, 2000);
-assert.equal(grossProfit, 600);
-assert.equal(netProfit, 400);
-assert.equal(marginPercent, 20);
-assert.equal(viability, "Viável");
+function getTotals({ products, purchaseItems = [], expenseItems }) {
+  const revenue = products.reduce((sum, item) => sum + item.quantityTotal * item.saleUnit, 0);
+  const merchandiseCost = products.reduce(
+    (sum, item) => sum + item.quantityTotal * item.costUnit,
+    0,
+  );
+  const purchaseTotal = purchaseItems.length
+    ? purchaseItems.reduce((sum, item) => sum + item.value, 0)
+    : merchandiseCost;
+  const grossProfit = revenue - merchandiseCost;
+  const bases = { revenue, purchaseTotal, grossProfit };
+  const expenses = expenseItems.reduce((sum, item) => sum + getExpenseTotal(item, bases), 0);
+  const netProfit = grossProfit - expenses;
+  const marginPercent = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+
+  return {
+    revenue,
+    merchandiseCost,
+    purchaseTotal,
+    expenses,
+    grossProfit,
+    netProfit,
+    marginPercent,
+  };
+}
+
+const smoke = getTotals({
+  products: [{ quantityTotal: 20, costUnit: 70, saleUnit: 100 }],
+  expenseItems: [{ calculationType: "fixed", value: 200 }],
+});
+
+assert.equal(smoke.merchandiseCost, 1400);
+assert.equal(smoke.revenue, 2000);
+assert.equal(smoke.grossProfit, 600);
+assert.equal(smoke.netProfit, 400);
+assert.equal(smoke.marginPercent, 20);
+
+const op374 = getTotals({
+  products: [
+    { quantityTotal: 2430, costUnit: 15.59, saleUnit: 17.99 },
+    { quantityTotal: 7650, costUnit: 14.02, saleUnit: 16.99 },
+  ],
+  purchaseItems: [{ value: 145136.7 }, { value: 5081.14 }],
+  expenseItems: [
+    { calculationType: "fixed", value: 5000 },
+    { calculationType: "percentage", calculationBase: "revenue", value: 2.5 },
+    { calculationType: "percentage", calculationBase: "purchaseTotal", value: 2 },
+    { calculationType: "percentage", calculationBase: "purchaseTotal", value: 0.4 },
+    { calculationType: "fixed", value: 2171.1008 },
+    { calculationType: "percentage", calculationBase: "revenue", value: 1.4 },
+    { calculationType: "fixed", value: 840 },
+  ],
+});
+
+assert.equal(Math.round(op374.revenue * 100), 17368920);
+assert.equal(Math.round(op374.merchandiseCost * 100), 14513670);
+assert.equal(Math.round(op374.purchaseTotal * 100), 15021784);
+assert.equal(Math.round(op374.grossProfit * 100), 2855250);
+assert.equal(Math.round(op374.expenses * 100), 1839021);
+assert.equal(Math.round(op374.netProfit * 100), 1016229);
 
 console.log("Calculation smoke tests passed.");

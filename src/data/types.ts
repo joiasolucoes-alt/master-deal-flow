@@ -92,6 +92,7 @@ export interface ExpenseItem {
     | "Seguro"
     | "Outros";
   calculationType: "fixed" | "percentage";
+  calculationBase?: "revenue" | "purchaseTotal" | "grossProfit";
   value: number;
 }
 
