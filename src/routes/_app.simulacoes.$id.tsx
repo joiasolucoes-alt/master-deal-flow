@@ -830,8 +830,11 @@ function ExpensesStep({
                         {[
                           "Frete",
                           "Comissão",
+                          "Custo NF",
                           "Custo fiscal",
                           "Financeiro",
+                          "PIS E COFINS",
+                          "STRINT",
                           "Tributos",
                           "Pallets",
                           "Chapa/Descarga",

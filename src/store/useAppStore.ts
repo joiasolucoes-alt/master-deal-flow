@@ -47,11 +47,35 @@ function baseState(): PersistedState {
   };
 }
 
+function mergeSeedSimulations(persisted: PersistedState): PersistedState {
+  const existingIds = new Set(persisted.simulations.map((simulation) => simulation.id));
+  const missingSeeds = simulationsSeed.filter((simulation) => !existingIds.has(simulation.id));
+
+  if (missingSeeds.length === 0) return persisted;
+
+  return {
+    ...persisted,
+    simulations: [...missingSeeds, ...persisted.simulations],
+    selectedApprovalId:
+      persisted.selectedApprovalId ??
+      missingSeeds.find((simulation) => simulation.status === "Em análise")?.id ??
+      null,
+  };
+}
+
 function readPersisted(): PersistedState {
   if (typeof window === "undefined") return baseState();
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
-    return raw ? { ...baseState(), ...JSON.parse(raw) } : baseState();
+    if (!raw) {
+      const initialState = baseState();
+      window.localStorage.setItem(STORE_KEY, JSON.stringify(initialState));
+      return initialState;
+    }
+
+    const persisted = mergeSeedSimulations({ ...baseState(), ...JSON.parse(raw) });
+    window.localStorage.setItem(STORE_KEY, JSON.stringify(persisted));
+    return persisted;
   } catch {
     return baseState();
   }
