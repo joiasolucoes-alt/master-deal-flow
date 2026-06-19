@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -67,12 +67,14 @@ import {
 import { formatCurrency, formatPercent, formatPrecisePercent } from "@/lib/format";
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
+import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 
 export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
 });
 
 const STEPS = ["Pedido", "Produtos", "NF/Custos", "Despesas", "Pagamento", "Resumo"];
+const ORDER_CATALOG_STORAGE_KEY = "master-flow-order-catalogs";
 const REQUIRED_TEXT_FIELDS: Array<
   [
     keyof Pick<
@@ -96,6 +98,60 @@ const REQUIRED_TEXT_FIELDS: Array<
   ["unit", "unidade"],
   ["paymentCondition", "condição de pagamento"],
 ];
+
+interface OrderCatalogItem {
+  id: string;
+  name: string;
+  city?: string;
+  state?: string;
+  unit?: string;
+  role?: string;
+  email?: string;
+}
+
+type OrderCatalogKey = "clients" | "suppliers" | "owners" | "units";
+type OrderCatalogField = keyof Pick<
+  OrderCatalogItem,
+  "name" | "city" | "state" | "unit" | "role" | "email"
+>;
+
+interface OrderCatalogs {
+  clients: OrderCatalogItem[];
+  suppliers: OrderCatalogItem[];
+  owners: OrderCatalogItem[];
+  units: OrderCatalogItem[];
+}
+
+function createInitialOrderCatalogs(): OrderCatalogs {
+  return {
+    clients: clients.map((client) => ({
+      id: client.id,
+      name: client.name,
+      city: client.city,
+      state: client.state,
+      unit: client.unit,
+    })),
+    suppliers: suppliers.map((supplier) => ({
+      id: supplier.id,
+      name: supplier.name,
+      city: supplier.city,
+      state: supplier.state,
+    })),
+    owners: users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      email: user.email,
+      unit: user.unit,
+    })),
+    units: businessUnits.map((unit) => ({ id: `unit-${unit}`, name: unit })),
+  };
+}
+
+function getOptionsWithCurrent(items: OrderCatalogItem[], current: string) {
+  if (!current.trim() || items.some((item) => item.name === current)) return items;
+  return [{ id: `current-${current}`, name: current }, ...items];
+}
 
 function validateSimulation(simulation: Simulation) {
   const missingFields = REQUIRED_TEXT_FIELDS.filter(
@@ -365,6 +421,75 @@ function ClientStep({
   draft: Simulation;
   update: <K extends keyof Simulation>(key: K, value: Simulation[K]) => void;
 }) {
+  const [catalogs, setCatalogs] = useState<OrderCatalogs>(() =>
+    readLocalStorage(ORDER_CATALOG_STORAGE_KEY, createInitialOrderCatalogs()),
+  );
+  const clientOptions = useMemo(
+    () => getOptionsWithCurrent(catalogs.clients, draft.client),
+    [catalogs.clients, draft.client],
+  );
+  const supplierOptions = useMemo(
+    () => getOptionsWithCurrent(catalogs.suppliers, draft.supplier),
+    [catalogs.suppliers, draft.supplier],
+  );
+  const ownerOptions = useMemo(
+    () => getOptionsWithCurrent(catalogs.owners, draft.owner),
+    [catalogs.owners, draft.owner],
+  );
+  const unitOptions = useMemo(
+    () => getOptionsWithCurrent(catalogs.units, draft.unit),
+    [catalogs.units, draft.unit],
+  );
+
+  useEffect(() => {
+    writeLocalStorage(ORDER_CATALOG_STORAGE_KEY, catalogs);
+  }, [catalogs]);
+
+  function updateCatalog(key: OrderCatalogKey, items: OrderCatalogItem[]) {
+    setCatalogs((current) => ({ ...current, [key]: items }));
+  }
+
+  function selectClient(name: string) {
+    const client = catalogs.clients.find((item) => item.name === name);
+    update("client", name);
+    if (client?.city) update("deliveryCity", client.city);
+    if (client?.state) update("deliveryState", client.state);
+    if (client?.unit) update("unit", client.unit);
+  }
+
+  function selectOwner(name: string) {
+    const owner = catalogs.owners.find((item) => item.name === name);
+    update("owner", name);
+    if (owner?.unit) update("unit", owner.unit);
+  }
+
+  function handleCatalogUse(key: OrderCatalogKey, item: OrderCatalogItem) {
+    if (key === "clients") {
+      selectClient(item.name);
+      return;
+    }
+    if (key === "suppliers") {
+      update("supplier", item.name);
+      return;
+    }
+    if (key === "owners") {
+      selectOwner(item.name);
+      return;
+    }
+    update("unit", item.name);
+  }
+
+  function handleCatalogDelete(key: OrderCatalogKey, item: OrderCatalogItem) {
+    if (key === "clients" && draft.client === item.name) {
+      update("client", "");
+      update("deliveryCity", "");
+      update("deliveryState", "");
+    }
+    if (key === "suppliers" && draft.supplier === item.name) update("supplier", "");
+    if (key === "owners" && draft.owner === item.name) update("owner", "");
+    if (key === "units" && draft.unit === item.name) update("unit", "");
+  }
+
   return (
     <div className="space-y-4">
       <SectionTitle
@@ -373,12 +498,12 @@ function ClientStep({
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Cliente">
-          <Select value={draft.client} onValueChange={(v) => update("client", v)}>
+          <Select value={draft.client} onValueChange={selectClient}>
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue placeholder="Selecione ou cadastre um cliente" />
             </SelectTrigger>
             <SelectContent>
-              {clients.map((c) => (
+              {clientOptions.map((c) => (
                 <SelectItem key={c.id} value={c.name}>
                   {c.name}
                 </SelectItem>
@@ -389,10 +514,10 @@ function ClientStep({
         <Field label="Fornecedor">
           <Select value={draft.supplier} onValueChange={(v) => update("supplier", v)}>
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue placeholder="Selecione ou cadastre um fornecedor" />
             </SelectTrigger>
             <SelectContent>
-              {suppliers.map((c) => (
+              {supplierOptions.map((c) => (
                 <SelectItem key={c.id} value={c.name}>
                   {c.name}
                 </SelectItem>
@@ -413,12 +538,12 @@ function ClientStep({
           />
         </Field>
         <Field label="Responsável">
-          <Select value={draft.owner} onValueChange={(v) => update("owner", v)}>
+          <Select value={draft.owner} onValueChange={selectOwner}>
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue placeholder="Selecione ou cadastre um responsável" />
             </SelectTrigger>
             <SelectContent>
-              {users.map((u) => (
+              {ownerOptions.map((u) => (
                 <SelectItem key={u.id} value={u.name}>
                   {u.name}
                 </SelectItem>
@@ -429,12 +554,12 @@ function ClientStep({
         <Field label="Unidade">
           <Select value={draft.unit} onValueChange={(v) => update("unit", v)}>
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue placeholder="Selecione ou cadastre uma unidade" />
             </SelectTrigger>
             <SelectContent>
-              {businessUnits.map((u) => (
-                <SelectItem key={u} value={u}>
-                  {u}
+              {unitOptions.map((u) => (
+                <SelectItem key={u.id} value={u.name}>
+                  {u.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -486,6 +611,248 @@ function ClientStep({
           placeholder="Notas, premissas e detalhes específicos da negociação..."
         />
       </Field>
+      <OrderCatalogCrud
+        catalogs={catalogs}
+        updateCatalog={updateCatalog}
+        onUse={handleCatalogUse}
+        onDelete={handleCatalogDelete}
+      />
+    </div>
+  );
+}
+
+function OrderCatalogCrud({
+  catalogs,
+  updateCatalog,
+  onUse,
+  onDelete,
+}: {
+  catalogs: OrderCatalogs;
+  updateCatalog: (key: OrderCatalogKey, items: OrderCatalogItem[]) => void;
+  onUse: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
+  onDelete: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
+}) {
+  return (
+    <div className="space-y-3 border-t border-border pt-4">
+      <SectionTitle
+        title="Cadastros do pedido"
+        description="Crie, edite, selecione ou remova opções usadas nos campos acima."
+      />
+      <Tabs defaultValue="clients">
+        <TabsList className="flex w-full flex-wrap justify-start">
+          <TabsTrigger value="clients">Clientes</TabsTrigger>
+          <TabsTrigger value="suppliers">Fornecedores</TabsTrigger>
+          <TabsTrigger value="owners">Responsáveis</TabsTrigger>
+          <TabsTrigger value="units">Unidades</TabsTrigger>
+        </TabsList>
+        <TabsContent value="clients">
+          <CatalogEditor
+            catalogKey="clients"
+            title="Clientes"
+            items={catalogs.clients}
+            fields={[
+              { key: "name", label: "Cliente" },
+              { key: "city", label: "Cidade" },
+              { key: "state", label: "UF" },
+              { key: "unit", label: "Unidade" },
+            ]}
+            updateCatalog={updateCatalog}
+            onUse={onUse}
+            onDelete={onDelete}
+          />
+        </TabsContent>
+        <TabsContent value="suppliers">
+          <CatalogEditor
+            catalogKey="suppliers"
+            title="Fornecedores"
+            items={catalogs.suppliers}
+            fields={[
+              { key: "name", label: "Fornecedor" },
+              { key: "city", label: "Cidade" },
+              { key: "state", label: "UF" },
+            ]}
+            updateCatalog={updateCatalog}
+            onUse={onUse}
+            onDelete={onDelete}
+          />
+        </TabsContent>
+        <TabsContent value="owners">
+          <CatalogEditor
+            catalogKey="owners"
+            title="Responsáveis"
+            items={catalogs.owners}
+            fields={[
+              { key: "name", label: "Nome" },
+              { key: "role", label: "Função" },
+              { key: "email", label: "E-mail" },
+              { key: "unit", label: "Unidade" },
+            ]}
+            updateCatalog={updateCatalog}
+            onUse={onUse}
+            onDelete={onDelete}
+          />
+        </TabsContent>
+        <TabsContent value="units">
+          <CatalogEditor
+            catalogKey="units"
+            title="Unidades"
+            items={catalogs.units}
+            fields={[{ key: "name", label: "Unidade" }]}
+            updateCatalog={updateCatalog}
+            onUse={onUse}
+            onDelete={onDelete}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function CatalogEditor({
+  catalogKey,
+  title,
+  items,
+  fields,
+  updateCatalog,
+  onUse,
+  onDelete,
+}: {
+  catalogKey: OrderCatalogKey;
+  title: string;
+  items: OrderCatalogItem[];
+  fields: Array<{ key: OrderCatalogField; label: string }>;
+  updateCatalog: (key: OrderCatalogKey, items: OrderCatalogItem[]) => void;
+  onUse: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
+  onDelete: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
+}) {
+  const [form, setForm] = useState<OrderCatalogItem>({ id: "", name: "" });
+  const isEditing = Boolean(form.id);
+
+  function setField(key: OrderCatalogField, value: string) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function clearForm() {
+    setForm({ id: "", name: "" });
+  }
+
+  function saveItem() {
+    const name = form.name.trim();
+    if (!name) {
+      toast.error("Informe o nome antes de salvar.");
+      return;
+    }
+
+    const nextItem = {
+      ...form,
+      id: form.id || `${catalogKey}-${Date.now()}`,
+      name,
+    };
+    const nextItems = isEditing
+      ? items.map((item) => (item.id === nextItem.id ? nextItem : item))
+      : [...items, nextItem];
+
+    updateCatalog(catalogKey, nextItems);
+    onUse(catalogKey, nextItem);
+    setForm(nextItem);
+    toast.success("Cadastro salvo.");
+  }
+
+  function deleteItem(item: OrderCatalogItem) {
+    if (!window.confirm(`Excluir "${item.name}" deste cadastro?`)) return;
+    updateCatalog(
+      catalogKey,
+      items.filter((current) => current.id !== item.id),
+    );
+    onDelete(catalogKey, item);
+    if (form.id === item.id) clearForm();
+    toast.success("Cadastro excluído.");
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-3">
+      <p className="text-sm font-semibold">{title}</p>
+      <div className="grid gap-3 md:grid-cols-4">
+        {fields.map((field) => (
+          <Field key={field.key} label={field.label}>
+            <Input
+              value={String(form[field.key] ?? "")}
+              onChange={(e) => setField(field.key, e.target.value)}
+            />
+          </Field>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" onClick={saveItem}>
+          <Pencil /> {isEditing ? "Salvar edição" : "Cadastrar"}
+        </Button>
+        <Button type="button" variant="outline" onClick={clearForm}>
+          <Plus /> Novo
+        </Button>
+        {isEditing && (
+          <Button type="button" variant="outline" onClick={() => onUse(catalogKey, form)}>
+            Usar neste pedido
+          </Button>
+        )}
+        {isEditing && (
+          <Button type="button" variant="ghost" onClick={() => deleteItem(form)}>
+            <Trash2 /> Excluir
+          </Button>
+        )}
+      </div>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhum cadastro salvo.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {fields.map((field) => (
+                  <TableHead key={field.key}>{field.label}</TableHead>
+                ))}
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => (
+                <TableRow key={item.id}>
+                  {fields.map((field) => (
+                    <TableCell key={field.key}>{String(item[field.key] ?? "-")}</TableCell>
+                  ))}
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setForm(item)}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onUse(catalogKey, item)}
+                      >
+                        Usar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteItem(item)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 }
