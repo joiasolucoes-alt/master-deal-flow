@@ -31,11 +31,11 @@ export interface SimulationTotals {
 }
 
 export function getProductSaleTotal(product: SimulationProduct) {
-  return product.quantityTotal * product.saleUnit;
+  return product.saleTotal ?? product.quantityTotal * product.saleUnit;
 }
 
 export function getProductCostTotal(product: SimulationProduct) {
-  return product.quantityTotal * product.costUnit;
+  return product.costTotal ?? product.quantityTotal * product.costUnit;
 }
 
 function getExpenseBaseValue(expense: ExpenseItem, bases: ExpenseCalculationBases) {

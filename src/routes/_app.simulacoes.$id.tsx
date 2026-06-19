@@ -64,12 +64,7 @@ import {
   getSimulationSensitivity,
   getSimulationTotals,
 } from "@/lib/calculations";
-import {
-  formatCurrency,
-  formatPercent,
-  formatPreciseCurrency,
-  formatPrecisePercent,
-} from "@/lib/format";
+import { formatCurrency, formatPercent, formatPrecisePercent } from "@/lib/format";
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
 
@@ -508,6 +503,16 @@ function ProductsStep({
     : merchandiseCost;
   const purchaseFactor = merchandiseCost > 0 ? purchaseTotal / merchandiseCost : 1;
 
+  function roundNumber(value: number, digits = 2) {
+    if (!Number.isFinite(value)) return 0;
+    const factor = 10 ** digits;
+    return Math.round(value * factor) / factor;
+  }
+
+  function numberInputValue(value: number, digits = 2) {
+    return roundNumber(value, digits);
+  }
+
   function addProduct() {
     const newProduct: SimulationProduct = {
       id: `sp-${Date.now()}`,
@@ -528,8 +533,102 @@ function ProductsStep({
       products: d.products.map((p) => {
         if (p.id !== id) return p;
         const merged = { ...p, ...patch };
-        merged.quantityTotal = merged.boxes * merged.unitsPerBox;
+        const quantitySourceChanged = "boxes" in patch || "unitsPerBox" in patch;
+        const quantityChanged = quantitySourceChanged || "quantityTotal" in patch;
+        const costUnitChanged = "costUnit" in patch;
+        const saleUnitChanged = "saleUnit" in patch;
+
+        if (quantitySourceChanged && !("quantityTotal" in patch)) {
+          merged.quantityTotal = roundNumber(merged.boxes * merged.unitsPerBox, 0);
+        }
+        if (quantityChanged || costUnitChanged) {
+          merged.costTotal = roundNumber(merged.quantityTotal * merged.costUnit);
+        }
+        if (quantityChanged || saleUnitChanged) {
+          merged.saleTotal = roundNumber(merged.quantityTotal * merged.saleUnit);
+        }
         return merged;
+      }),
+    }));
+  }
+
+  function updateProductCostTotal(id: string, value: number) {
+    setDraft((d) => ({
+      ...d,
+      products: d.products.map((p) => {
+        if (p.id !== id) return p;
+        return {
+          ...p,
+          costTotal: value,
+          costUnit: p.quantityTotal > 0 ? roundNumber(value / p.quantityTotal) : p.costUnit,
+        };
+      }),
+    }));
+  }
+
+  function updateProductInvoicePrice(id: string, value: number) {
+    updateProduct(id, { invoicePrice: value });
+  }
+
+  function updateProductSaleTotal(id: string, value: number) {
+    setDraft((d) => ({
+      ...d,
+      products: d.products.map((p) => {
+        if (p.id !== id) return p;
+        return {
+          ...p,
+          saleTotal: value,
+          saleUnit: p.quantityTotal > 0 ? roundNumber(value / p.quantityTotal) : p.saleUnit,
+        };
+      }),
+    }));
+  }
+
+  function updateProductGrossProfit(id: string, value: number) {
+    setDraft((d) => ({
+      ...d,
+      products: d.products.map((p) => {
+        if (p.id !== id) return p;
+        const costTotal = getProductCostTotal(p);
+        const saleTotal = roundNumber(costTotal + value);
+        return {
+          ...p,
+          saleTotal,
+          saleUnit: p.quantityTotal > 0 ? roundNumber(saleTotal / p.quantityTotal) : p.saleUnit,
+        };
+      }),
+    }));
+  }
+
+  function updateProductMarginPercent(id: string, value: number) {
+    setDraft((d) => ({
+      ...d,
+      products: d.products.map((p) => {
+        if (p.id !== id) return p;
+        const costTotal = getProductCostTotal(p);
+        const saleTotal =
+          value < 100 ? roundNumber(costTotal / (1 - value / 100)) : getProductSaleTotal(p);
+        return {
+          ...p,
+          saleTotal,
+          saleUnit: p.quantityTotal > 0 ? roundNumber(saleTotal / p.quantityTotal) : p.saleUnit,
+        };
+      }),
+    }));
+  }
+
+  function updateProductMarkupPercent(id: string, value: number) {
+    setDraft((d) => ({
+      ...d,
+      products: d.products.map((p) => {
+        if (p.id !== id) return p;
+        const costTotal = getProductCostTotal(p);
+        const saleTotal = roundNumber(costTotal * (1 + value / 100));
+        return {
+          ...p,
+          saleTotal,
+          saleUnit: p.quantityTotal > 0 ? roundNumber(saleTotal / p.quantityTotal) : p.saleUnit,
+        };
       }),
     }));
   }
@@ -618,7 +717,16 @@ function ProductsStep({
                       />
                     </TableCell>
                     <TableCell className="text-right">
-                      {new Intl.NumberFormat("pt-BR").format(p.quantityTotal)}
+                      <Input
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={numberInputValue(p.quantityTotal, 0)}
+                        onChange={(e) =>
+                          updateProduct(p.id, { quantityTotal: Number(e.target.value) })
+                        }
+                        className="ml-auto w-24 text-right"
+                      />
                     </TableCell>
                     <TableCell className="text-right">
                       <Input
@@ -630,10 +738,24 @@ function ProductsStep({
                       />
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatCurrency(costTotal)}
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={numberInputValue(costTotal)}
+                        onChange={(e) => updateProductCostTotal(p.id, Number(e.target.value))}
+                        className="ml-auto w-28 text-right"
+                      />
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatPreciseCurrency(invoicePrice)}
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={numberInputValue(p.invoicePrice ?? invoicePrice)}
+                        onChange={(e) => updateProductInvoicePrice(p.id, Number(e.target.value))}
+                        className="ml-auto w-24 text-right"
+                      />
                     </TableCell>
                     <TableCell className="text-right">
                       <Input
@@ -645,16 +767,41 @@ function ProductsStep({
                       />
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatCurrency(saleTotal)}
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={numberInputValue(saleTotal)}
+                        onChange={(e) => updateProductSaleTotal(p.id, Number(e.target.value))}
+                        className="ml-auto w-28 text-right"
+                      />
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatCurrency(grossProfit)}
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={numberInputValue(grossProfit)}
+                        onChange={(e) => updateProductGrossProfit(p.id, Number(e.target.value))}
+                        className="ml-auto w-28 text-right"
+                      />
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatPercent(marginPercent, 2)}
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={numberInputValue(marginPercent)}
+                        onChange={(e) => updateProductMarginPercent(p.id, Number(e.target.value))}
+                        className="ml-auto w-24 text-right"
+                      />
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatPercent(markupPercent, 2)}
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={numberInputValue(markupPercent)}
+                        onChange={(e) => updateProductMarkupPercent(p.id, Number(e.target.value))}
+                        className="ml-auto w-24 text-right"
+                      />
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={() => removeProduct(p.id)}>

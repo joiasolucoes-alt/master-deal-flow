@@ -5,12 +5,17 @@ function getExpenseTotal(expense, bases) {
   return bases[expense.calculationBase ?? "revenue"] * (expense.value / 100);
 }
 
+function getProductSaleTotal(product) {
+  return product.saleTotal ?? product.quantityTotal * product.saleUnit;
+}
+
+function getProductCostTotal(product) {
+  return product.costTotal ?? product.quantityTotal * product.costUnit;
+}
+
 function getTotals({ products, purchaseItems = [], expenseItems }) {
-  const revenue = products.reduce((sum, item) => sum + item.quantityTotal * item.saleUnit, 0);
-  const merchandiseCost = products.reduce(
-    (sum, item) => sum + item.quantityTotal * item.costUnit,
-    0,
-  );
+  const revenue = products.reduce((sum, item) => sum + getProductSaleTotal(item), 0);
+  const merchandiseCost = products.reduce((sum, item) => sum + getProductCostTotal(item), 0);
   const purchaseTotal = purchaseItems.length
     ? purchaseItems.reduce((sum, item) => sum + item.value, 0)
     : merchandiseCost;
@@ -45,6 +50,15 @@ assert.equal(smoke.revenue, 2000);
 assert.equal(smoke.grossProfit, 600);
 assert.equal(smoke.netProfit, 400);
 assert.equal(smoke.marginPercent, 20);
+
+const manualTotals = getTotals({
+  products: [{ quantityTotal: 10, costUnit: 1, costTotal: 25, saleUnit: 2, saleTotal: 40 }],
+  expenseItems: [],
+});
+
+assert.equal(manualTotals.merchandiseCost, 25);
+assert.equal(manualTotals.revenue, 40);
+assert.equal(manualTotals.grossProfit, 15);
 
 const op374 = getTotals({
   products: [
