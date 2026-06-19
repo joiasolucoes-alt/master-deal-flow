@@ -16,6 +16,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -574,6 +575,11 @@ function ProductsStep({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        {!products.some((pr) => pr.code === p.code) && (
+                          <SelectItem value={p.code}>
+                            {p.product}
+                          </SelectItem>
+                        )}
                         {products.map((pr) => (
                           <SelectItem key={pr.id} value={pr.code}>
                             {pr.name}
@@ -1067,6 +1073,12 @@ function ResultStep({
                     border: "1px solid var(--color-border)",
                     color: "var(--color-card-foreground)",
                   }}
+                  itemStyle={{ color: "var(--color-card-foreground)" }}
+                  labelStyle={{ color: "var(--color-card-foreground)" }}
+                />
+                <Legend
+                  wrapperStyle={{ color: "var(--color-card-foreground)" }}
+                  formatter={(value) => <span className="text-foreground">{value}</span>}
                 />
               </PieChart>
             </ResponsiveContainer>
