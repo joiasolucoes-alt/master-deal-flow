@@ -15,7 +15,7 @@ export function formatPreciseCurrency(value: number) {
     style: "currency",
     currency: "BRL",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 
@@ -29,7 +29,7 @@ export function formatPercent(value: number, digits = 1) {
 export function formatPrecisePercent(value: number) {
   return `${new Intl.NumberFormat("pt-BR", {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 5,
+    maximumFractionDigits: 2,
   }).format(value)}%`;
 }
 
