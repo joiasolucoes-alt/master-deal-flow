@@ -58,12 +58,18 @@ import { businessUnits, users } from "@/data/users";
 import type { ExpenseItem, PurchaseItem, Simulation, SimulationProduct } from "@/data/types";
 import {
   getExpenseTotal,
+  getProductCostTotal,
   getProductSaleTotal,
   getSimulationCostImpact,
   getSimulationSensitivity,
   getSimulationTotals,
 } from "@/lib/calculations";
-import { formatCompactCurrency, formatCurrency, formatPercent } from "@/lib/format";
+import {
+  formatCurrency,
+  formatPercent,
+  formatPreciseCurrency,
+  formatPrecisePercent,
+} from "@/lib/format";
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
 
@@ -496,6 +502,12 @@ function ProductsStep({
   draft: Simulation;
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
+  const merchandiseCost = draft.products.reduce((sum, item) => sum + getProductCostTotal(item), 0);
+  const purchaseTotal = draft.purchaseItems.length
+    ? draft.purchaseItems.reduce((sum, item) => sum + item.value, 0)
+    : merchandiseCost;
+  const purchaseFactor = merchandiseCost > 0 ? purchaseTotal / merchandiseCost : 1;
+
   function addProduct() {
     const newProduct: SimulationProduct = {
       id: `sp-${Date.now()}`,
@@ -538,7 +550,7 @@ function ProductsStep({
           description="Adicione produtos para compor a simulação."
         />
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-border">
+        <div className="overflow-x-auto rounded-2xl border border-border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -548,79 +560,110 @@ function ProductsStep({
                 <TableHead className="text-right">QTD.</TableHead>
                 <TableHead className="text-right">QTD. (UNID)</TableHead>
                 <TableHead className="text-right">VALOR (R$)</TableHead>
+                <TableHead className="text-right">CUSTO TOTAL (R$)</TableHead>
+                <TableHead className="text-right">PREÇO NF</TableHead>
                 <TableHead className="text-right">PREÇO VENDA (R$)</TableHead>
                 <TableHead className="text-right">VENDA TOTAL (R$)</TableHead>
+                <TableHead className="text-right">LUCRO BRUTO (R$)</TableHead>
+                <TableHead className="text-right">MARGEM (%)</TableHead>
+                <TableHead className="text-right">MARKP (%)</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {draft.products.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <Input
-                      value={p.code}
-                      onChange={(e) => updateProduct(p.id, { code: e.target.value })}
-                      className="w-24"
-                      placeholder="COD."
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={p.product}
-                      onChange={(e) => updateProduct(p.id, { product: e.target.value })}
-                      className="min-w-64"
-                      placeholder="Nome do produto"
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      min={0}
-                      value={p.boxes}
-                      onChange={(e) => updateProduct(p.id, { boxes: Number(e.target.value) })}
-                      className="ml-auto w-20 text-right"
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      min={0}
-                      value={p.unitsPerBox}
-                      onChange={(e) => updateProduct(p.id, { unitsPerBox: Number(e.target.value) })}
-                      className="ml-auto w-20 text-right"
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {new Intl.NumberFormat("pt-BR").format(p.quantityTotal)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={p.costUnit}
-                      onChange={(e) => updateProduct(p.id, { costUnit: Number(e.target.value) })}
-                      className="ml-auto w-24 text-right"
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={p.saleUnit}
-                      onChange={(e) => updateProduct(p.id, { saleUnit: Number(e.target.value) })}
-                      className="ml-auto w-24 text-right"
-                    />
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency(getProductSaleTotal(p))}
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => removeProduct(p.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {draft.products.map((p) => {
+                const costTotal = getProductCostTotal(p);
+                const saleTotal = getProductSaleTotal(p);
+                const grossProfit = saleTotal - costTotal;
+                const marginPercent = saleTotal > 0 ? (grossProfit / saleTotal) * 100 : 0;
+                const markupPercent = costTotal > 0 ? (saleTotal / costTotal - 1) * 100 : 0;
+                const invoicePrice = p.costUnit * purchaseFactor;
+
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell>
+                      <Input
+                        value={p.code}
+                        onChange={(e) => updateProduct(p.id, { code: e.target.value })}
+                        className="w-24"
+                        placeholder="COD."
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={p.product}
+                        onChange={(e) => updateProduct(p.id, { product: e.target.value })}
+                        className="min-w-64"
+                        placeholder="Nome do produto"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={p.boxes}
+                        onChange={(e) => updateProduct(p.id, { boxes: Number(e.target.value) })}
+                        className="ml-auto w-20 text-right"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={p.unitsPerBox}
+                        onChange={(e) =>
+                          updateProduct(p.id, { unitsPerBox: Number(e.target.value) })
+                        }
+                        className="ml-auto w-20 text-right"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {new Intl.NumberFormat("pt-BR").format(p.quantityTotal)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={p.costUnit}
+                        onChange={(e) => updateProduct(p.id, { costUnit: Number(e.target.value) })}
+                        className="ml-auto w-24 text-right"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(costTotal)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatPreciseCurrency(invoicePrice)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={p.saleUnit}
+                        onChange={(e) => updateProduct(p.id, { saleUnit: Number(e.target.value) })}
+                        className="ml-auto w-24 text-right"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(saleTotal)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(grossProfit)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatPercent(marginPercent, 2)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatPercent(markupPercent, 2)}
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => removeProduct(p.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -1003,7 +1046,7 @@ function ResultStep({
         description="Confira os mesmos indicadores principais da planilha antes de aprovar."
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <SummaryTile label="VENDA TOTAL (R$)" value={formatCurrency(totals.revenue)} tone="info" />
         <SummaryTile
           label="CUSTO TOTAL (R$)"
@@ -1016,6 +1059,12 @@ function ResultStep({
           value={formatCurrency(totals.netProfit)}
           tone={totals.netProfit > 0 ? "success" : "danger"}
         />
+        <SummaryTile
+          label="MARGEM (%)"
+          value={formatPercent(totals.grossMarginPercent, 2)}
+          tone="info"
+        />
+        <SummaryTile label="MARKP (%)" value={formatPercent(totals.markupPercent, 2)} tone="info" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -1088,12 +1137,12 @@ function ResultStep({
                 />
                 <YAxis
                   stroke="var(--color-muted-foreground)"
-                  tickFormatter={(v) => formatPercent(Number(v), 1)}
+                  tickFormatter={(v) => formatPercent(Number(v), 2)}
                   tickLine={false}
                   axisLine={false}
                 />
                 <Tooltip
-                  formatter={(v) => formatPercent(Number(v))}
+                  formatter={(v) => formatPercent(Number(v), 2)}
                   contentStyle={{
                     background: "var(--color-card)",
                     borderRadius: 12,
@@ -1130,7 +1179,7 @@ function ResultStep({
                 <strong>Prazo:</strong> {draft.paymentCondition}
               </p>
               <p>
-                <strong>Margem (%):</strong> {formatPercent(totals.marginPercent)}
+                <strong>Margem líquida (%):</strong> {formatPercent(totals.marginPercent, 2)}
               </p>
             </TabsContent>
             <TabsContent value="products" className="pt-4">
@@ -1174,7 +1223,14 @@ function SummarySidebar({
   const expenseBreakdown = draft.expenseItems.map((item) => ({
     name: item.type,
     value: getExpenseTotal(item, expenseBases),
+    percent:
+      item.calculationType === "percentage"
+        ? item.value
+        : totals.revenue > 0
+          ? (item.value / totals.revenue) * 100
+          : 0,
   }));
+  const expensePercentTotal = expenseBreakdown.reduce((sum, item) => sum + item.percent, 0);
   return (
     <aside className="space-y-4">
       <Card className="shadow-card">
@@ -1187,9 +1243,11 @@ function SummarySidebar({
           <Row label="DESPESAS (R$)" value={formatCurrency(totals.expenses)} />
           <Row label="LUCRO BRUTO (R$)" value={formatCurrency(totals.grossProfit)} />
           <Row label="LUCRO LIQUIDO (R$)" value={formatCurrency(totals.netProfit)} bold />
+          <Row label="MARGEM (%)" value={formatPercent(totals.grossMarginPercent, 2)} />
+          <Row label="MARKP (%)" value={formatPercent(totals.markupPercent, 2)} />
           <Row
-            label="MARGEM (%)"
-            value={formatPercent(totals.marginPercent)}
+            label="MARGEM LIQUIDA (%)"
+            value={formatPercent(totals.marginPercent, 2)}
             tone={
               totals.marginPercent >= 12
                 ? "success"
@@ -1210,11 +1268,19 @@ function SummarySidebar({
             <p className="text-muted-foreground">Sem despesas registradas.</p>
           ) : (
             expenseBreakdown.map((item) => (
-              <div key={item.name} className="flex items-center justify-between">
+              <div key={item.name} className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
                 <span>{item.name}</span>
-                <span className="font-medium">{formatCompactCurrency(item.value)}</span>
+                <span className="font-medium">{formatPrecisePercent(item.percent)}</span>
+                <span className="font-medium">{formatCurrency(item.value)}</span>
               </div>
             ))
+          )}
+          {expenseBreakdown.length > 0 && (
+            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-t border-border pt-2 font-semibold">
+              <span>TOTAL</span>
+              <span>{formatPrecisePercent(expensePercentTotal)}</span>
+              <span>{formatCurrency(totals.expenses)}</span>
+            </div>
           )}
         </CardContent>
       </Card>
