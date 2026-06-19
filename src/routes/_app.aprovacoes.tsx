@@ -18,6 +18,7 @@ import { formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { ClipboardCheck, FileWarning, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 import type { Simulation } from "@/data/types";
+import { convertSimulationToOrder } from "@/features/simulations/services/simulationService";
 
 export const Route = createFileRoute("/_app/aprovacoes")({
   component: ApprovalsPage,
@@ -29,12 +30,20 @@ const CHECKLIST: { key: keyof NonNullable<Simulation["approvalChecklist"]>; labe
   { key: "costsChecked", label: "Custos e impostos conferidos" },
   { key: "notesRegistered", label: "Notas e justificativas registradas" },
 ];
+const PENDING_APPROVAL_STATUSES = new Set(["Pendente de aprovação", "Em análise"]);
 
 function ApprovalsPage() {
-  const { simulations, upsertSimulation, selectedApprovalId, setSelectedApprovalId } =
-    useAppContext();
+  const {
+    auth,
+    simulations,
+    orders,
+    upsertSimulation,
+    upsertOrder,
+    selectedApprovalId,
+    setSelectedApprovalId,
+  } = useAppContext();
   const pending = useMemo(
-    () => simulations.filter((s) => s.status === "Em análise"),
+    () => simulations.filter((s) => PENDING_APPROVAL_STATUSES.has(s.status)),
     [simulations],
   );
   const selected = pending.find((s) => s.id === selectedApprovalId) ?? pending[0] ?? null;
@@ -78,12 +87,31 @@ function ApprovalsPage() {
       return;
     }
     const map = { approve: "Aprovada", reject: "Reprovada", adjust: "Ajuste solicitado" } as const;
-    upsertSimulation({
+    const nextSimulation = {
       ...selected,
       status: map[decision],
       approvalNotes: comment || selected.approvalNotes,
-    });
-    toast.success(`Simulação ${map[decision].toLowerCase()}`);
+    };
+
+    if (decision === "approve") {
+      const existingOrder = orders.find((order) => order.simulationId === selected.id);
+      if (existingOrder || selected.orderId) {
+        upsertSimulation(nextSimulation);
+        toast.success("Simulação aprovada");
+      } else {
+        const conversion = convertSimulationToOrder(
+          nextSimulation,
+          orders,
+          auth.user?.id ?? "system",
+        );
+        upsertSimulation(conversion.simulation);
+        upsertOrder(conversion.order);
+        toast.success(`Simulação aprovada e pedido ${conversion.order.number} criado.`);
+      }
+    } else {
+      upsertSimulation(nextSimulation);
+      toast.success(`Simulação ${map[decision].toLowerCase()}`);
+    }
     setComment("");
   }
 

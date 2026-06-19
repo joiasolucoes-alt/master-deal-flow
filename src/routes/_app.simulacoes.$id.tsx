@@ -76,6 +76,7 @@ export const Route = createFileRoute("/_app/simulacoes/$id")({
 
 const STEPS = ["Pedido", "Produtos", "NF/Custos", "Despesas", "Pagamento", "Resumo"];
 const ORDER_CATALOG_STORAGE_KEY = "master-flow-order-catalogs";
+const PENDING_APPROVAL_STATUSES = new Set(["Pendente de aprovação", "Em análise"]);
 const REQUIRED_TEXT_FIELDS: Array<
   [
     keyof Pick<
@@ -312,7 +313,7 @@ function SimulationDetailPage() {
       return;
     }
 
-    const next = { ...draft, status: "Em análise" as const };
+    const next = { ...draft, status: "Pendente de aprovação" as const };
     if (!window.confirm("Enviar esta simulação para aprovação?")) return;
     upsertSimulation(next);
     setDraft(next);
@@ -351,15 +352,11 @@ function SimulationDetailPage() {
             <Button variant="outline" onClick={saveDraft}>
               <Pencil /> Salvar rascunho
             </Button>
-            {draft.status === "Aprovada" ? (
+            {draft.status === "Aprovada" && !draft.orderId ? (
               <Button onClick={convertToOrder}>
                 <CheckCircle2 /> Converter em pedido
               </Button>
-            ) : (
-              <Button onClick={submitForApproval}>
-                <Send /> Enviar para aprovação
-              </Button>
-            )}
+            ) : null}
           </>
         }
       />
@@ -388,6 +385,8 @@ function SimulationDetailPage() {
                 totals={totals}
                 costImpact={costImpact}
                 sensitivity={sensitivity}
+                onSubmitForApproval={submitForApproval}
+                onConvertToOrder={convertToOrder}
               />
             )}
 
@@ -1557,12 +1556,19 @@ function ResultStep({
   totals,
   costImpact,
   sensitivity,
+  onSubmitForApproval,
+  onConvertToOrder,
 }: {
   draft: Simulation;
   totals: ReturnType<typeof getSimulationTotals>;
   costImpact: ReturnType<typeof getSimulationCostImpact>;
   sensitivity: ReturnType<typeof getSimulationSensitivity>;
+  onSubmitForApproval: () => void;
+  onConvertToOrder: () => void;
 }) {
+  const pendingApproval = PENDING_APPROVAL_STATUSES.has(draft.status);
+  const hasOrder = Boolean(draft.orderId);
+
   return (
     <div className="space-y-6">
       <SectionTitle
@@ -1726,6 +1732,35 @@ function ResultStep({
               </ul>
             </TabsContent>
           </Tabs>
+        </CardContent>
+      </Card>
+
+      <Card className="border-primary/30 bg-primary-soft/30">
+        <CardHeader>
+          <CardTitle>Fluxo de aprovação</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1 text-sm">
+            <p className="font-medium text-foreground">Status atual: {draft.status}</p>
+            <p className="text-muted-foreground">
+              {draft.status === "Aprovada" && hasOrder
+                ? "A simulação já foi aprovada e o pedido foi criado."
+                : draft.status === "Aprovada"
+                  ? "A simulação foi aprovada e já pode virar pedido."
+                  : pendingApproval
+                    ? "A simulação está na fila da Central de aprovações."
+                    : "Revise o resumo e envie a simulação para aprovação."}
+            </p>
+          </div>
+          {draft.status === "Aprovada" && !hasOrder ? (
+            <Button onClick={onConvertToOrder}>
+              <CheckCircle2 /> Converter em pedido
+            </Button>
+          ) : pendingApproval || hasOrder ? null : (
+            <Button onClick={onSubmitForApproval}>
+              <Send /> Enviar para aprovação
+            </Button>
+          )}
         </CardContent>
       </Card>
     </div>

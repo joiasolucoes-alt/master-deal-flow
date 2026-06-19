@@ -128,7 +128,7 @@ export const simulationsSeed: Simulation[] = [
     validUntil: "2026-07-19T00:00:00-03:00",
     notes: "Entrega CIF. Mercadoria com seguro incluso.",
     financialNotes: "Boleto bancário com desconto concedido já considerado.",
-    status: "Em análise",
+    status: "Pendente de aprovação",
     priority: "Alta",
     products: [
       {
