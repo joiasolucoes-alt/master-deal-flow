@@ -11,6 +11,7 @@ import { useAppContext } from "@/features/app/app-context";
 import { users } from "@/data/users";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { notifyActionUnavailable } from "@/lib/actions";
+import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 
 export const Route = createFileRoute("/_app/configuracoes")({
   component: SettingsPage,
@@ -92,11 +93,11 @@ function SettingsPage() {
             <CardContent className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label>Margem mínima</Label>
-                <Input defaultValue="12%" />
+                <Input defaultValue={`${String(MINIMUM_MARGIN_TARGET).replace(".", ",")}%`} />
               </div>
               <div className="space-y-2">
                 <Label>Margem de alerta</Label>
-                <Input defaultValue="8%" />
+                <Input defaultValue={`${String(ATTENTION_MARGIN_TARGET).replace(".", ",")}%`} />
               </div>
               <div className="space-y-2">
                 <Label>Comissão padrão</Label>

@@ -64,6 +64,7 @@ import {
   getSimulationSensitivity,
   getSimulationTotals,
 } from "@/lib/calculations";
+import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { formatCurrency, formatPercent, formatPrecisePercent } from "@/lib/format";
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
@@ -1772,9 +1773,9 @@ function SummarySidebar({
             label="MARGEM LIQUIDA (%)"
             value={formatPercent(totals.marginPercent, 2)}
             tone={
-              totals.marginPercent >= 12
+              totals.marginPercent >= MINIMUM_MARGIN_TARGET
                 ? "success"
-                : totals.marginPercent >= 8
+                : totals.marginPercent >= ATTENTION_MARGIN_TARGET
                   ? "warning"
                   : "danger"
             }

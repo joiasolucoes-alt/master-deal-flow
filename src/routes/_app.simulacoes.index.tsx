@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { useAppContext } from "@/features/app/app-context";
 import { getSimulationTotals } from "@/lib/calculations";
+import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import { BadgeDollarSign, CheckCircle2, FileSpreadsheet, TriangleAlert } from "lucide-react";
 import type { Simulation } from "@/data/types";
@@ -109,9 +110,9 @@ function SimulationsPage() {
         return (
           <span
             className={
-              totals.marginPercent >= 12
+              totals.marginPercent >= MINIMUM_MARGIN_TARGET
                 ? "text-success font-medium"
-                : totals.marginPercent >= 8
+                : totals.marginPercent >= ATTENTION_MARGIN_TARGET
                   ? "text-warning font-medium"
                   : "text-danger font-medium"
             }
