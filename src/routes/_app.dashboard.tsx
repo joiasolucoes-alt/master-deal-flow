@@ -42,6 +42,7 @@ import { orders } from "@/data/orders";
 import { formatCompactCurrency, formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { getSimulationTotals } from "@/lib/calculations";
 import { downloadTextFile } from "@/lib/actions";
+import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 
 export const Route = createFileRoute("/_app/dashboard")({
   component: DashboardPage,
@@ -251,7 +252,7 @@ function DashboardPage() {
                       {formatCurrency(totals.revenue)}
                     </p>
                     <p
-                      className={`text-xs font-medium ${totals.marginPercent >= 12 ? "text-success" : totals.marginPercent >= 8 ? "text-warning" : "text-danger"}`}
+                      className={`text-xs font-medium ${totals.marginPercent >= MINIMUM_MARGIN_TARGET ? "text-success" : totals.marginPercent >= ATTENTION_MARGIN_TARGET ? "text-warning" : "text-danger"}`}
                     >
                       Margem {formatPercent(totals.marginPercent)}
                     </p>

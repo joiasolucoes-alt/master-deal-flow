@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 
+const MINIMUM_MARGIN_TARGET = 3.5;
+const ATTENTION_MARGIN_TARGET = 0;
+
 function getExpenseTotal(expense, bases) {
   if (expense.calculationType === "fixed") return expense.value;
   const base =
@@ -28,6 +31,13 @@ function getTotals({ products, purchaseItems = [], expenseItems }) {
   const grossMarginPercent = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
   const markupPercent = merchandiseCost > 0 ? (revenue / merchandiseCost - 1) * 100 : 0;
   const marginPercent = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+  let viability = "Pendente";
+
+  if (products.length > 0 && revenue > 0) {
+    if (marginPercent >= MINIMUM_MARGIN_TARGET) viability = "Viável";
+    else if (marginPercent >= ATTENTION_MARGIN_TARGET) viability = "Atenção";
+    else viability = "Inviável";
+  }
 
   return {
     revenue,
@@ -39,6 +49,7 @@ function getTotals({ products, purchaseItems = [], expenseItems }) {
     grossMarginPercent,
     markupPercent,
     marginPercent,
+    viability,
   };
 }
 
@@ -88,5 +99,6 @@ assert.equal(Math.round(op374.netProfit * 100), 1016229);
 assert.equal(Math.round(op374.grossMarginPercent * 100), 1644);
 assert.equal(Math.round(op374.markupPercent * 100), 1967);
 assert.equal(Math.round(op374.marginPercent * 100), 585);
+assert.equal(op374.viability, "Viável");
 
 console.log("Calculation smoke tests passed.");
