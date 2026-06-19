@@ -71,7 +71,7 @@ export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
 });
 
-const STEPS = ["Cliente", "Produtos", "Compras", "Despesas", "Financeiro", "Resumo"];
+const STEPS = ["Pedido", "Produtos", "NF/Custos", "Despesas", "Pagamento", "Resumo"];
 const REQUIRED_TEXT_FIELDS: Array<
   [
     keyof Pick<
@@ -366,8 +366,8 @@ function ClientStep({
   return (
     <div className="space-y-4">
       <SectionTitle
-        title="Dados do cliente"
-        description="Defina cliente, fornecedor e responsáveis pela operação."
+        title="Dados do pedido"
+        description="Preencha os campos principais da OP antes de informar produtos e valores."
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Cliente">
@@ -438,7 +438,7 @@ function ClientStep({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Condição de pagamento">
+        <Field label="Prazo">
           <Input
             value={draft.paymentCondition}
             onChange={(e) => update("paymentCondition", e.target.value)}
@@ -461,14 +461,14 @@ function ClientStep({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Data de entrega">
+        <Field label="Data prevista">
           <Input
             type="date"
             value={draft.deliveryDate.slice(0, 10)}
             onChange={(e) => update("deliveryDate", `${e.target.value}T12:00:00-03:00`)}
           />
         </Field>
-        <Field label="Validade da proposta">
+        <Field label="Validade">
           <Input
             type="date"
             value={draft.validUntil.slice(0, 10)}
@@ -476,7 +476,7 @@ function ClientStep({
           />
         </Field>
       </div>
-      <Field label="Observações comerciais">
+      <Field label="Observações">
         <Textarea
           rows={3}
           value={draft.notes}
@@ -530,7 +530,7 @@ function ProductsStep({
     <div className="space-y-4">
       <SectionTitle
         title="Produtos"
-        description="Inclua os itens da operação com preços, quantidades e margem."
+        description="Inclua os itens usando os mesmos campos da tabela da planilha."
       />
       {draft.products.length === 0 ? (
         <EmptyState
@@ -543,12 +543,12 @@ function ProductsStep({
             <TableHeader>
               <TableRow>
                 <TableHead>Produto</TableHead>
-                <TableHead className="text-right">Caixas</TableHead>
-                <TableHead className="text-right">Un/Cx</TableHead>
-                <TableHead className="text-right">Qtd total</TableHead>
-                <TableHead className="text-right">Custo un.</TableHead>
-                <TableHead className="text-right">Venda un.</TableHead>
-                <TableHead className="text-right">Receita</TableHead>
+                <TableHead className="text-right">QTD. (CX)</TableHead>
+                <TableHead className="text-right">QTD.</TableHead>
+                <TableHead className="text-right">QTD. (UNID)</TableHead>
+                <TableHead className="text-right">VALOR (R$)</TableHead>
+                <TableHead className="text-right">PREÇO VENDA (R$)</TableHead>
+                <TableHead className="text-right">VENDA TOTAL (R$)</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -673,24 +673,24 @@ function PurchaseStep({
   return (
     <div className="space-y-4">
       <SectionTitle
-        title="Itens de compra"
-        description="Registre todos os documentos de compra que compõem o custo da operação."
+        title="NF e custos"
+        description="Registre NF, custo da mercadoria e complementos que fecham o custo da operação."
       />
       {draft.purchaseItems.length === 0 ? (
         <EmptyState
-          title="Sem itens de compra"
-          description="Adicione documentos fiscais ou rateios de custo."
+          title="Sem NF/custos"
+          description="Adicione NF, custo mercadoria ou complemento de custo."
         />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Documento</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead>NF</TableHead>
                 <TableHead>Fornecedor</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="text-right">% rateio</TableHead>
+                <TableHead className="text-right">VALORES (R$)</TableHead>
+                <TableHead className="text-right">DIVISÃO (%)</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -760,7 +760,7 @@ function PurchaseStep({
         </div>
       )}
       <Button variant="outline" onClick={addItem}>
-        <Plus /> Adicionar item
+        <Plus /> Adicionar NF/custo
       </Button>
     </div>
   );
@@ -795,23 +795,23 @@ function ExpensesStep({
   return (
     <div className="space-y-4">
       <SectionTitle
-        title="Despesas e custos operacionais"
-        description="Aplique valores fixos ou percentuais sobre receita, custo/NF ou lucro bruto."
+        title="Despesas"
+        description="Informe frete, comissão, custo NF, STRINT, PIS/COFINS, financeiro e outros."
       />
       {draft.expenseItems.length === 0 ? (
         <EmptyState
           title="Sem despesas"
-          description="Inclua frete, comissão, tributos e demais custos da operação."
+          description="Inclua as despesas da tabela para fechar o lucro líquido."
         />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Cálculo</TableHead>
-                <TableHead>Base</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
+                <TableHead>DESPESAS</TableHead>
+                <TableHead>TIPO</TableHead>
+                <TableHead>BASE</TableHead>
+                <TableHead className="text-right">VALOR</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -864,7 +864,7 @@ function ExpensesStep({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="fixed">Valor fixo</SelectItem>
-                        <SelectItem value="percentage">Percentual</SelectItem>
+                        <SelectItem value="percentage">%</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -882,9 +882,9 @@ function ExpensesStep({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="revenue">Receita</SelectItem>
-                        <SelectItem value="purchaseTotal">Custo/NF</SelectItem>
-                        <SelectItem value="grossProfit">Lucro bruto</SelectItem>
+                        <SelectItem value="revenue">VENDA TOTAL (R$)</SelectItem>
+                        <SelectItem value="purchaseTotal">NF / VALORES (R$)</SelectItem>
+                        <SelectItem value="grossProfit">LUCRO BRUTO (R$)</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -931,11 +931,11 @@ function FinancialStep({
   return (
     <div className="space-y-4">
       <SectionTitle
-        title="Condições financeiras"
-        description="Defina parcelas, banco e descontos aplicados."
+        title="Pagamento"
+        description="Informe forma de pagamento, vencimentos e dados bancários."
       />
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Prazos das parcelas (dias)">
+        <Field label="PRAZO">
           <Input
             value={draft.financial.installmentDays.join(", ")}
             onChange={(e) =>
@@ -949,10 +949,10 @@ function FinancialStep({
             }
           />
         </Field>
-        <Field label="Banco">
+        <Field label="BANCO">
           <Input value={draft.financial.bank} onChange={(e) => update("bank", e.target.value)} />
         </Field>
-        <Field label="Forma de pagamento">
+        <Field label="FORMA DE PAG.">
           <Select
             value={draft.financial.paymentMethod}
             onValueChange={(v) => update("paymentMethod", v)}
@@ -969,13 +969,13 @@ function FinancialStep({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Conta">
+        <Field label="CONTA">
           <Input
             value={draft.financial.account}
             onChange={(e) => update("account", e.target.value)}
           />
         </Field>
-        <Field label="Desconto financeiro (%)">
+        <Field label="DESCONTO (%)">
           <Input
             type="number"
             step="0.1"
@@ -984,7 +984,7 @@ function FinancialStep({
           />
         </Field>
       </div>
-      <Field label="Notas financeiras">
+      <Field label="OBS. PAGAMENTO">
         <Textarea
           rows={3}
           value={draft.financial.notes}
@@ -1009,20 +1009,20 @@ function ResultStep({
   return (
     <div className="space-y-6">
       <SectionTitle
-        title="Resumo e viabilidade"
-        description="Confira indicadores antes de enviar para aprovação."
+        title="Resumo"
+        description="Confira os mesmos indicadores principais da planilha antes de aprovar."
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryTile label="Receita" value={formatCurrency(totals.revenue)} tone="info" />
+        <SummaryTile label="VENDA TOTAL (R$)" value={formatCurrency(totals.revenue)} tone="info" />
         <SummaryTile
-          label="Custos de compra"
+          label="CUSTO TOTAL (R$)"
           value={formatCurrency(totals.merchandiseCost)}
           tone="warning"
         />
-        <SummaryTile label="Despesas" value={formatCurrency(totals.expenses)} tone="warning" />
+        <SummaryTile label="DESPESAS (R$)" value={formatCurrency(totals.expenses)} tone="warning" />
         <SummaryTile
-          label="Lucro líquido"
+          label="LUCRO LIQUIDO (R$)"
           value={formatCurrency(totals.netProfit)}
           tone={totals.netProfit > 0 ? "success" : "danger"}
         />
@@ -1031,7 +1031,7 @@ function ResultStep({
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Composição das despesas</CardTitle>
+            <CardTitle>DESPESAS</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -1074,7 +1074,7 @@ function ResultStep({
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Sensibilidade da margem</CardTitle>
+            <CardTitle>MARGEM (%)</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -1119,9 +1119,9 @@ function ResultStep({
         <CardContent>
           <Tabs defaultValue="overview">
             <TabsList>
-              <TabsTrigger value="overview">Visão geral</TabsTrigger>
+              <TabsTrigger value="overview">Resumo</TabsTrigger>
               <TabsTrigger value="products">Produtos</TabsTrigger>
-              <TabsTrigger value="purchase">Compras</TabsTrigger>
+              <TabsTrigger value="purchase">NF/Custos</TabsTrigger>
             </TabsList>
             <TabsContent value="overview" className="space-y-2 pt-4 text-sm">
               <p>
@@ -1131,17 +1131,18 @@ function ResultStep({
                 <strong>Fornecedor:</strong> {draft.supplier}
               </p>
               <p>
-                <strong>Condição:</strong> {draft.paymentCondition}
+                <strong>Prazo:</strong> {draft.paymentCondition}
               </p>
               <p>
-                <strong>Margem:</strong> {formatPercent(totals.marginPercent)}
+                <strong>Margem (%):</strong> {formatPercent(totals.marginPercent)}
               </p>
             </TabsContent>
             <TabsContent value="products" className="pt-4">
               <ul className="space-y-1 text-sm">
                 {draft.products.map((p) => (
                   <li key={p.id}>
-                    {p.product} — {p.quantityTotal} un. • {formatCurrency(p.saleUnit)}/un.
+                    {p.product} - QTD. (UNID): {p.quantityTotal} • PREÇO VENDA (R$):{" "}
+                    {formatCurrency(p.saleUnit)}
                   </li>
                 ))}
               </ul>
@@ -1150,7 +1151,7 @@ function ResultStep({
               <ul className="space-y-1 text-sm">
                 {draft.purchaseItems.map((p) => (
                   <li key={p.id}>
-                    {p.type} — {p.document} • {formatCurrency(p.value)}
+                    {p.type} - NF: {p.document} • VALORES (R$): {formatCurrency(p.value)}
                   </li>
                 ))}
               </ul>
@@ -1169,24 +1170,29 @@ function SummarySidebar({
   draft: Simulation;
   totals: ReturnType<typeof getSimulationTotals>;
 }) {
+  const expenseBases = {
+    revenue: totals.revenue,
+    purchaseTotal: totals.purchaseTotal,
+    grossProfit: totals.grossProfit,
+  };
   const expenseBreakdown = draft.expenseItems.map((item) => ({
     name: item.type,
-    value: getExpenseTotal(item, totals.revenue),
+    value: getExpenseTotal(item, expenseBases),
   }));
   return (
     <aside className="space-y-4">
       <Card className="shadow-card">
         <CardHeader>
-          <CardTitle>Resumo financeiro</CardTitle>
+          <CardTitle>Resumo da planilha</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <Row label="Receita" value={formatCurrency(totals.revenue)} />
-          <Row label="Custo mercadoria" value={formatCurrency(totals.merchandiseCost)} />
-          <Row label="Despesas" value={formatCurrency(totals.expenses)} />
-          <Row label="Lucro bruto" value={formatCurrency(totals.grossProfit)} />
-          <Row label="Lucro líquido" value={formatCurrency(totals.netProfit)} bold />
+          <Row label="VENDA TOTAL (R$)" value={formatCurrency(totals.revenue)} />
+          <Row label="CUSTO TOTAL (R$)" value={formatCurrency(totals.merchandiseCost)} />
+          <Row label="DESPESAS (R$)" value={formatCurrency(totals.expenses)} />
+          <Row label="LUCRO BRUTO (R$)" value={formatCurrency(totals.grossProfit)} />
+          <Row label="LUCRO LIQUIDO (R$)" value={formatCurrency(totals.netProfit)} bold />
           <Row
-            label="Margem"
+            label="MARGEM (%)"
             value={formatPercent(totals.marginPercent)}
             tone={
               totals.marginPercent >= 12
@@ -1201,7 +1207,7 @@ function SummarySidebar({
       </Card>
       <Card className="shadow-card">
         <CardHeader>
-          <CardTitle>Despesas por categoria</CardTitle>
+          <CardTitle>Despesas</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           {expenseBreakdown.length === 0 ? (
