@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 
 function getExpenseTotal(expense, bases) {
   if (expense.calculationType === "fixed") return expense.value;
-  return bases[expense.calculationBase ?? "revenue"] * (expense.value / 100);
+  const base =
+    expense.type === "STRINT" ? "purchaseTotal" : (expense.calculationBase ?? "revenue");
+  return bases[base] * (expense.value / 100);
 }
 
 function getProductSaleTotal(product) {
@@ -70,7 +72,7 @@ const op374 = getTotals({
     { calculationType: "fixed", value: 5000 },
     { calculationType: "percentage", calculationBase: "revenue", value: 2.5 },
     { calculationType: "percentage", calculationBase: "purchaseTotal", value: 2 },
-    { calculationType: "percentage", calculationBase: "purchaseTotal", value: 0.4 },
+    { type: "STRINT", calculationType: "percentage", calculationBase: "revenue", value: 0.4 },
     { calculationType: "fixed", value: 2171.1008 },
     { calculationType: "percentage", calculationBase: "revenue", value: 1.4 },
     { calculationType: "fixed", value: 840 },

@@ -39,6 +39,7 @@ export function getProductCostTotal(product: SimulationProduct) {
 }
 
 function getExpenseBaseValue(expense: ExpenseItem, bases: ExpenseCalculationBases) {
+  if (expense.type === "STRINT") return bases.purchaseTotal;
   const base = expense.calculationBase ?? "revenue";
   return bases[base];
 }
