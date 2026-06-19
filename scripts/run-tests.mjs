@@ -18,6 +18,8 @@ function getTotals({ products, purchaseItems = [], expenseItems }) {
   const bases = { revenue, purchaseTotal, grossProfit };
   const expenses = expenseItems.reduce((sum, item) => sum + getExpenseTotal(item, bases), 0);
   const netProfit = grossProfit - expenses;
+  const grossMarginPercent = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+  const markupPercent = merchandiseCost > 0 ? (revenue / merchandiseCost - 1) * 100 : 0;
   const marginPercent = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
   return {
@@ -27,6 +29,8 @@ function getTotals({ products, purchaseItems = [], expenseItems }) {
     expenses,
     grossProfit,
     netProfit,
+    grossMarginPercent,
+    markupPercent,
     marginPercent,
   };
 }
@@ -65,5 +69,8 @@ assert.equal(Math.round(op374.purchaseTotal * 100), 15021784);
 assert.equal(Math.round(op374.grossProfit * 100), 2855250);
 assert.equal(Math.round(op374.expenses * 100), 1839021);
 assert.equal(Math.round(op374.netProfit * 100), 1016229);
+assert.equal(Math.round(op374.grossMarginPercent * 100), 1644);
+assert.equal(Math.round(op374.markupPercent * 100), 1967);
+assert.equal(Math.round(op374.marginPercent * 100), 585);
 
 console.log("Calculation smoke tests passed.");

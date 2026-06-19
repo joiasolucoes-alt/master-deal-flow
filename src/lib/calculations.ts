@@ -23,6 +23,8 @@ export interface SimulationTotals {
   expenses: number;
   grossProfit: number;
   netProfit: number;
+  grossMarginPercent: number;
+  markupPercent: number;
   marginPercent: number;
   viability: Viability;
   differenceToTarget: number;
@@ -77,6 +79,8 @@ export function getSimulationTotals(simulation: SimulationCalculationInput): Sim
     0,
   );
   const netProfit = grossProfit - expenses;
+  const grossMarginPercent = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+  const markupPercent = merchandiseCost > 0 ? (revenue / merchandiseCost - 1) * 100 : 0;
   const marginPercent = revenue > 0 ? (netProfit / revenue) * 100 : 0;
   const differenceToTarget = marginPercent - MINIMUM_MARGIN_TARGET;
 
@@ -94,6 +98,8 @@ export function getSimulationTotals(simulation: SimulationCalculationInput): Sim
     expenses,
     grossProfit,
     netProfit,
+    grossMarginPercent,
+    markupPercent,
     marginPercent,
     viability,
     differenceToTarget,
