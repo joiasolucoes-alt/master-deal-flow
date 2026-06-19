@@ -54,7 +54,6 @@ import { EmptyState } from "@/components/app/empty-state";
 import { useAppContext } from "@/features/app/app-context";
 import { clients } from "@/data/clients";
 import { suppliers } from "@/data/suppliers";
-import { products } from "@/data/products";
 import { businessUnits, users } from "@/data/users";
 import type { ExpenseItem, PurchaseItem, Simulation, SimulationProduct } from "@/data/types";
 import {
@@ -106,6 +105,7 @@ function validateSimulation(simulation: Simulation) {
   if (
     simulation.products.some(
       (product) =>
+        !product.product.trim() ||
         product.boxes <= 0 ||
         product.unitsPerBox <= 0 ||
         product.saleUnit <= 0 ||
@@ -497,16 +497,15 @@ function ProductsStep({
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
   function addProduct() {
-    const base = products[0];
     const newProduct: SimulationProduct = {
       id: `sp-${Date.now()}`,
-      code: base.code,
-      product: base.name,
-      boxes: 10,
-      unitsPerBox: base.defaultUnitsPerBox,
-      quantityTotal: 10 * base.defaultUnitsPerBox,
-      costUnit: base.costUnit,
-      saleUnit: base.saleUnit,
+      code: "",
+      product: "",
+      boxes: 0,
+      unitsPerBox: 1,
+      quantityTotal: 0,
+      costUnit: 0,
+      saleUnit: 0,
     };
     setDraft((d) => ({ ...d, products: [...d.products, newProduct] }));
   }
@@ -543,7 +542,8 @@ function ProductsStep({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Produto</TableHead>
+                <TableHead>COD.</TableHead>
+                <TableHead>PRODUTO</TableHead>
                 <TableHead className="text-right">QTD. (CX)</TableHead>
                 <TableHead className="text-right">QTD.</TableHead>
                 <TableHead className="text-right">QTD. (UNID)</TableHead>
@@ -557,36 +557,20 @@ function ProductsStep({
               {draft.products.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell>
-                    <Select
+                    <Input
                       value={p.code}
-                      onValueChange={(v) => {
-                        const found = products.find((pr) => pr.code === v);
-                        if (found)
-                          updateProduct(p.id, {
-                            code: found.code,
-                            product: found.name,
-                            costUnit: found.costUnit,
-                            saleUnit: found.saleUnit,
-                            unitsPerBox: found.defaultUnitsPerBox,
-                          });
-                      }}
-                    >
-                      <SelectTrigger className="w-56">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {!products.some((pr) => pr.code === p.code) && (
-                          <SelectItem value={p.code}>
-                            {p.product}
-                          </SelectItem>
-                        )}
-                        {products.map((pr) => (
-                          <SelectItem key={pr.id} value={pr.code}>
-                            {pr.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      onChange={(e) => updateProduct(p.id, { code: e.target.value })}
+                      className="w-24"
+                      placeholder="COD."
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      value={p.product}
+                      onChange={(e) => updateProduct(p.id, { product: e.target.value })}
+                      className="min-w-64"
+                      placeholder="Nome do produto"
+                    />
                   </TableCell>
                   <TableCell className="text-right">
                     <Input
