@@ -3,6 +3,7 @@ export type ThemeMode = "light" | "dark" | "system";
 export type AppStatus =
   | "Rascunho"
   | "Em análise"
+  | "Pendente de aprovação"
   | "Aprovada"
   | "Reprovada"
   | "Ajuste solicitado"

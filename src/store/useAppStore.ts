@@ -8,6 +8,7 @@ import type { AuditEvent, AppStoreState } from "@/store/types";
 import type { Negotiation, NotificationItem, Order, Simulation } from "@/data/types";
 
 const STORE_KEY = "master-flow-zustand-app-store";
+const PENDING_APPROVAL_STATUSES = new Set(["Pendente de aprovação", "Em análise"]);
 
 type Listener = () => void;
 export type AppStore = AppStoreState & {
@@ -42,7 +43,8 @@ function baseState(): PersistedState {
     notifications,
     currentUser: appUser,
     currentUnit: appUser.unit,
-    selectedApprovalId: simulationsSeed.find((s) => s.status === "Em análise")?.id ?? null,
+    selectedApprovalId:
+      simulationsSeed.find((s) => PENDING_APPROVAL_STATUSES.has(s.status))?.id ?? null,
     selectedOrderId: orders[0]?.id ?? null,
   };
 }
@@ -58,7 +60,7 @@ function mergeSeedSimulations(persisted: PersistedState): PersistedState {
     simulations: [...missingSeeds, ...persisted.simulations],
     selectedApprovalId:
       persisted.selectedApprovalId ??
-      missingSeeds.find((simulation) => simulation.status === "Em análise")?.id ??
+      missingSeeds.find((simulation) => PENDING_APPROVAL_STATUSES.has(simulation.status))?.id ??
       null,
   };
 }

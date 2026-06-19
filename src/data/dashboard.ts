@@ -32,7 +32,7 @@ export const simulationEvolution = [
 
 export const negotiationStatus = [
   { name: "Rascunho", value: 28 },
-  { name: "Em análise", value: 47 },
+  { name: "Pendente de aprovação", value: 47 },
   { name: "Aprovadas", value: 41 },
   { name: "Reprovadas", value: 12 },
 ];

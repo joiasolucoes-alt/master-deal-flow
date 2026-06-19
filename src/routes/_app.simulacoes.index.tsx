@@ -30,7 +30,7 @@ export const Route = createFileRoute("/_app/simulacoes/")({
 const statusOptions = [
   "Todos",
   "Rascunho",
-  "Em análise",
+  "Pendente de aprovação",
   "Aprovada",
   "Reprovada",
   "Ajuste solicitado",
@@ -69,7 +69,10 @@ function SimulationsPage() {
     const total = simulations.length;
     const approved = simulations.filter((s) => s.status === "Aprovada").length;
     const pending = simulations.filter(
-      (s) => s.status === "Em análise" || s.status === "Rascunho",
+      (s) =>
+        s.status === "Pendente de aprovação" ||
+        s.status === "Em análise" ||
+        s.status === "Rascunho",
     ).length;
     const revenue = simulations.reduce((sum, s) => sum + getSimulationTotals(s).revenue, 0);
     return { total, approved, pending, revenue };
@@ -167,7 +170,7 @@ function SimulationsPage() {
           tone="success"
         />
         <StatCard
-          label="Em análise / rascunho"
+          label="Pendentes / rascunho"
           value={String(summary.pending)}
           icon={TriangleAlert}
           tone="warning"
