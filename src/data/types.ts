@@ -67,7 +67,10 @@ export interface SimulationProduct {
   unitsPerBox: number;
   quantityTotal: number;
   costUnit: number;
+  costTotal?: number;
+  invoicePrice?: number;
   saleUnit: number;
+  saleTotal?: number;
 }
 
 export interface PurchaseItem {
