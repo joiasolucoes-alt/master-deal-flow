@@ -632,78 +632,87 @@ function OrderCatalogCrud({
   onUse: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
   onDelete: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
     <div className="space-y-3 border-t border-border pt-4">
-      <SectionTitle
-        title="Cadastros do pedido"
-        description="Crie, edite, selecione ou remova opções usadas nos campos acima."
-      />
-      <Tabs defaultValue="clients">
-        <TabsList className="flex w-full flex-wrap justify-start">
-          <TabsTrigger value="clients">Clientes</TabsTrigger>
-          <TabsTrigger value="suppliers">Fornecedores</TabsTrigger>
-          <TabsTrigger value="owners">Responsáveis</TabsTrigger>
-          <TabsTrigger value="units">Unidades</TabsTrigger>
-        </TabsList>
-        <TabsContent value="clients">
-          <CatalogEditor
-            catalogKey="clients"
-            title="Clientes"
-            items={catalogs.clients}
-            fields={[
-              { key: "name", label: "Cliente" },
-              { key: "city", label: "Cidade" },
-              { key: "state", label: "UF" },
-              { key: "unit", label: "Unidade" },
-            ]}
-            updateCatalog={updateCatalog}
-            onUse={onUse}
-            onDelete={onDelete}
+      <Button type="button" variant="outline" onClick={() => setIsOpen((current) => !current)}>
+        <Pencil /> {isOpen ? "Fechar cadastros" : "Gerenciar cadastros"}
+      </Button>
+      {isOpen && (
+        <div className="space-y-3 rounded-lg border border-border p-3">
+          <SectionTitle
+            title="Cadastros do pedido"
+            description="Crie, edite, selecione ou remova opções usadas nos campos acima."
           />
-        </TabsContent>
-        <TabsContent value="suppliers">
-          <CatalogEditor
-            catalogKey="suppliers"
-            title="Fornecedores"
-            items={catalogs.suppliers}
-            fields={[
-              { key: "name", label: "Fornecedor" },
-              { key: "city", label: "Cidade" },
-              { key: "state", label: "UF" },
-            ]}
-            updateCatalog={updateCatalog}
-            onUse={onUse}
-            onDelete={onDelete}
-          />
-        </TabsContent>
-        <TabsContent value="owners">
-          <CatalogEditor
-            catalogKey="owners"
-            title="Responsáveis"
-            items={catalogs.owners}
-            fields={[
-              { key: "name", label: "Nome" },
-              { key: "role", label: "Função" },
-              { key: "email", label: "E-mail" },
-              { key: "unit", label: "Unidade" },
-            ]}
-            updateCatalog={updateCatalog}
-            onUse={onUse}
-            onDelete={onDelete}
-          />
-        </TabsContent>
-        <TabsContent value="units">
-          <CatalogEditor
-            catalogKey="units"
-            title="Unidades"
-            items={catalogs.units}
-            fields={[{ key: "name", label: "Unidade" }]}
-            updateCatalog={updateCatalog}
-            onUse={onUse}
-            onDelete={onDelete}
-          />
-        </TabsContent>
-      </Tabs>
+          <Tabs defaultValue="clients">
+            <TabsList className="flex w-full flex-wrap justify-start">
+              <TabsTrigger value="clients">Clientes</TabsTrigger>
+              <TabsTrigger value="suppliers">Fornecedores</TabsTrigger>
+              <TabsTrigger value="owners">Responsáveis</TabsTrigger>
+              <TabsTrigger value="units">Unidades</TabsTrigger>
+            </TabsList>
+            <TabsContent value="clients">
+              <CatalogEditor
+                catalogKey="clients"
+                title="Clientes"
+                items={catalogs.clients}
+                fields={[
+                  { key: "name", label: "Cliente" },
+                  { key: "city", label: "Cidade" },
+                  { key: "state", label: "UF" },
+                  { key: "unit", label: "Unidade" },
+                ]}
+                updateCatalog={updateCatalog}
+                onUse={onUse}
+                onDelete={onDelete}
+              />
+            </TabsContent>
+            <TabsContent value="suppliers">
+              <CatalogEditor
+                catalogKey="suppliers"
+                title="Fornecedores"
+                items={catalogs.suppliers}
+                fields={[
+                  { key: "name", label: "Fornecedor" },
+                  { key: "city", label: "Cidade" },
+                  { key: "state", label: "UF" },
+                ]}
+                updateCatalog={updateCatalog}
+                onUse={onUse}
+                onDelete={onDelete}
+              />
+            </TabsContent>
+            <TabsContent value="owners">
+              <CatalogEditor
+                catalogKey="owners"
+                title="Responsáveis"
+                items={catalogs.owners}
+                fields={[
+                  { key: "name", label: "Nome" },
+                  { key: "role", label: "Função" },
+                  { key: "email", label: "E-mail" },
+                  { key: "unit", label: "Unidade" },
+                ]}
+                updateCatalog={updateCatalog}
+                onUse={onUse}
+                onDelete={onDelete}
+              />
+            </TabsContent>
+            <TabsContent value="units">
+              <CatalogEditor
+                catalogKey="units"
+                title="Unidades"
+                items={catalogs.units}
+                fields={[{ key: "name", label: "Unidade" }]}
+                updateCatalog={updateCatalog}
+                onUse={onUse}
+                onDelete={onDelete}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+      )}
     </div>
   );
 }
