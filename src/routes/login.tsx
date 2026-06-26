@@ -5,15 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useAppContext } from "@/features/app/app-context";
-import { businessUnits } from "@/data/users";
 import logoAsset from "@/assets/logo-master.png.asset.json";
 import truckIllustration from "@/assets/master-flow-truck.png";
 import { notifyActionUnavailable } from "@/lib/actions";
@@ -33,7 +25,6 @@ function LoginPage() {
   const [remember, setRemember] = useState(true);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [registerName, setRegisterName] = useState("");
-  const [registerUnit, setRegisterUnit] = useState(businessUnits[0]);
 
   useEffect(() => {
     if (hydrated && auth.isAuthenticated) navigate({ to: "/dashboard" });
@@ -88,7 +79,6 @@ function LoginPage() {
                 name: registerName,
                 email,
                 password,
-                unit: registerUnit,
               });
               if (result.ok) {
                 toast.success(result.message);
@@ -196,33 +186,16 @@ function LoginPage() {
             </div>
 
             {mode === "register" ? (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-password">Confirmar senha</Label>
-                  <Input
-                    id="confirm-password"
-                    type={showPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Unidade</Label>
-                  <Select value={registerUnit} onValueChange={setRegisterUnit}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {businessUnits.map((unit) => (
-                        <SelectItem key={unit} value={unit}>
-                          {unit}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirmar senha</Label>
+                <Input
+                  id="confirm-password"
+                  type={showPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
             ) : null}
 
             {mode === "login" ? (

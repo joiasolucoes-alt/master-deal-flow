@@ -21,7 +21,7 @@ interface AppContextValue {
   auth: AuthState;
   users: User[];
   login: (email: string, password: string) => { ok: boolean; message?: string };
-  registerUser: (payload: { name: string; email: string; password: string; unit: string }) => {
+  registerUser: (payload: { name: string; email: string; password: string }) => {
     ok: boolean;
     message: string;
   };
@@ -151,7 +151,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
-  const registerUser = (payload: { name: string; email: string; password: string; unit: string }) => {
+  const registerUser = (payload: { name: string; email: string; password: string }) => {
     const email = payload.email.trim().toLowerCase();
     if (users.some((user) => user.email.toLowerCase() === email)) {
       return {
@@ -173,7 +173,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       role: "Comercial",
       email,
       password: payload.password,
-      unit: payload.unit,
+      unit: "Sem unidade",
       initials: initials || "NU",
       avatarHue: "from-info to-primary",
       status: "Ativo",
