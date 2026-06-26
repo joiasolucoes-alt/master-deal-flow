@@ -104,7 +104,7 @@ function LoginPage() {
         >
           <div className="space-y-2 text-center lg:text-left">
             <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-              Bem-vindo de volta
+              Bem-vindo MasterFlow
             </h1>
             <p className="text-sm text-muted-foreground">
               {mode === "login"
