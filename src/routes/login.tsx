@@ -24,26 +24,20 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { login, registerUser, users, auth, hydrated } = useAppContext();
+  const { login, registerUser, auth, hydrated } = useAppContext();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("joao.silva@masterflow.com.br");
-  const [password, setPassword] = useState("masterflow");
+  const [email, setEmail] = useState("admin@masterflow.com.br");
+  const [password, setPassword] = useState("admin");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [selectedUserId, setSelectedUserId] = useState("");
   const [registerName, setRegisterName] = useState("");
   const [registerUnit, setRegisterUnit] = useState(businessUnits[0]);
 
   useEffect(() => {
     if (hydrated && auth.isAuthenticated) navigate({ to: "/dashboard" });
   }, [hydrated, auth.isAuthenticated, navigate]);
-
-  useEffect(() => {
-    if (selectedUserId || users.length === 0) return;
-    setSelectedUserId(users[0].id);
-    setEmail(users[0].email);
-  }, [selectedUserId, users]);
 
   return (
     <div className="grid min-h-dvh bg-background lg:grid-cols-2">
@@ -81,14 +75,19 @@ function LoginPage() {
           onSubmit={(event) => {
             event.preventDefault();
             if (mode === "register") {
-              if (!registerName.trim() || !email.trim()) {
-                toast.error("Informe nome e e-mail corporativo para criar a conta.");
+              if (!registerName.trim() || !email.trim() || !password.trim()) {
+                toast.error("Informe nome, e-mail e senha para criar a conta.");
+                return;
+              }
+              if (password !== confirmPassword) {
+                toast.error("As senhas não conferem.");
                 return;
               }
 
               const result = registerUser({
                 name: registerName,
                 email,
+                password,
                 unit: registerUnit,
               });
               if (result.ok) {
@@ -104,7 +103,7 @@ function LoginPage() {
               toast.error("Informe e-mail e senha para continuar.");
               return;
             }
-            const result = login(email);
+            const result = login(email, password);
             if (!result.ok) {
               toast.error(result.message);
               return;
@@ -120,7 +119,7 @@ function LoginPage() {
             <p className="text-sm text-muted-foreground">
               {mode === "login"
                 ? "Acesse sua conta para continuar gerenciando suas negociações."
-                : "Crie sua conta com e-mail corporativo. O perfil inicial será Comercial."}
+                : "Crie sua conta com e-mail e senha. O perfil inicial será Comercial."}
             </p>
           </div>
 
@@ -129,44 +128,30 @@ function LoginPage() {
               <Button
                 type="button"
                 variant={mode === "login" ? "default" : "ghost"}
-                onClick={() => setMode("login")}
+                onClick={() => {
+                  setMode("login");
+                  setEmail("admin@masterflow.com.br");
+                  setPassword("admin");
+                  setConfirmPassword("");
+                }}
               >
                 Entrar
               </Button>
               <Button
                 type="button"
                 variant={mode === "register" ? "default" : "ghost"}
-                onClick={() => setMode("register")}
+                onClick={() => {
+                  setMode("register");
+                  setEmail("");
+                  setPassword("");
+                  setConfirmPassword("");
+                }}
               >
                 Cadastrar
               </Button>
             </div>
 
-            {mode === "login" ? (
-              <div className="space-y-2">
-                <Label>Perfil de teste</Label>
-                <Select
-                  value={selectedUserId}
-                  onValueChange={(value) => {
-                    const selectedUser = users.find((user) => user.id === value);
-                    if (!selectedUser) return;
-                    setSelectedUserId(selectedUser.id);
-                    setEmail(selectedUser.email);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.name} - {user.role} - {user.status}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
+            {mode === "register" ? (
               <div className="space-y-2">
                 <Label htmlFor="register-name">Nome completo</Label>
                 <Input
@@ -176,10 +161,10 @@ function LoginPage() {
                   required
                 />
               </div>
-            )}
+            ) : null}
 
             <div className="space-y-2">
-              <Label htmlFor="email">E-mail corporativo</Label>
+              <Label htmlFor="email">E-mail</Label>
               <Input
                 id="email"
                 type="email"
@@ -189,44 +174,56 @@ function LoginPage() {
               />
             </div>
 
-            {mode === "register" ? (
-              <div className="space-y-2">
-                <Label>Unidade</Label>
-                <Select value={registerUnit} onValueChange={setRegisterUnit}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {businessUnits.map((unit) => (
-                      <SelectItem key={unit} value={unit}>
-                        {unit}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-2">
+              <Label htmlFor="password">Senha</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Mostrar senha"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <div className="relative">
+            </div>
+
+            {mode === "register" ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">Confirmar senha</Label>
                   <Input
-                    id="password"
+                    id="confirm-password"
                     type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    aria-label="Mostrar senha"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
                 </div>
-              </div>
-            )}
+                <div className="space-y-2">
+                  <Label>Unidade</Label>
+                  <Select value={registerUnit} onValueChange={setRegisterUnit}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {businessUnits.map((unit) => (
+                        <SelectItem key={unit} value={unit}>
+                          {unit}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : null}
 
             {mode === "login" ? (
               <div className="flex items-center justify-between">
