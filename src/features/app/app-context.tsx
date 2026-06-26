@@ -20,8 +20,8 @@ interface AppContextValue {
   hydrated: boolean;
   auth: AuthState;
   users: User[];
-  login: (email: string) => { ok: boolean; message?: string };
-  registerUser: (payload: { name: string; email: string; unit: string }) => {
+  login: (email: string, password: string) => { ok: boolean; message?: string };
+  registerUser: (payload: { name: string; email: string; password: string; unit: string }) => {
     ok: boolean;
     message: string;
   };
@@ -43,8 +43,11 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 function normalizeStoredUser(user: User): User {
+  const isSeedAdmin = user.id === "user-admin";
   return {
     ...user,
+    email: isSeedAdmin ? "admin@masterflow.com.br" : user.email,
+    password: user.password ?? (isSeedAdmin ? "admin" : "masterflow"),
     status: user.status === "Pendente" ? "Ativo" : (user.status ?? "Ativo"),
     emailConfirmed: user.emailConfirmed ?? true,
   };
@@ -116,7 +119,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const login = (email: string) => {
+  const login = (email: string, password: string) => {
     const selectedUser = users.find(
       (user) => user.email.toLowerCase() === email.trim().toLowerCase(),
     );
@@ -125,6 +128,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return {
         ok: false,
         message: "E-mail não encontrado. Cadastre-se ou confira o endereço informado.",
+      };
+    }
+
+    if ((selectedUser.password ?? "masterflow") !== password) {
+      return {
+        ok: false,
+        message: "Senha incorreta.",
       };
     }
 
@@ -141,7 +151,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
-  const registerUser = (payload: { name: string; email: string; unit: string }) => {
+  const registerUser = (payload: { name: string; email: string; password: string; unit: string }) => {
     const email = payload.email.trim().toLowerCase();
     if (users.some((user) => user.email.toLowerCase() === email)) {
       return {
@@ -162,6 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       name,
       role: "Comercial",
       email,
+      password: payload.password,
       unit: payload.unit,
       initials: initials || "NU",
       avatarHue: "from-info to-primary",
