@@ -55,7 +55,7 @@ import { useAppContext } from "@/features/app/app-context";
 import { clients } from "@/data/clients";
 import { suppliers } from "@/data/suppliers";
 import { businessUnits, users } from "@/data/users";
-import type { ExpenseItem, PurchaseItem, Simulation, SimulationProduct } from "@/data/types";
+import type { ExpenseItem, PurchaseItem, Simulation, SimulationProduct, User } from "@/data/types";
 import {
   getExpenseTotal,
   getProductCostTotal,
@@ -69,6 +69,13 @@ import { formatCurrency, formatPercent, formatPrecisePercent } from "@/lib/forma
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
+import {
+  canConvertSimulationToOrder,
+  canCreateSimulation,
+  canEditSimulation,
+  canSubmitSimulationForApproval,
+  isPendingApprovalStatus,
+} from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
@@ -76,7 +83,6 @@ export const Route = createFileRoute("/_app/simulacoes/$id")({
 
 const STEPS = ["Pedido", "Produtos", "NF/Custos", "Despesas", "Pagamento", "Resumo"];
 const ORDER_CATALOG_STORAGE_KEY = "master-flow-order-catalogs";
-const PENDING_APPROVAL_STATUSES = new Set(["Pendente de aprovação", "Em análise"]);
 const REQUIRED_TEXT_FIELDS: Array<
   [
     keyof Pick<
@@ -177,8 +183,10 @@ function validateSimulation(simulation: Simulation) {
   return missingFields;
 }
 
-function createEmptySimulation(): Simulation {
+function createEmptySimulation(user?: User | null): Simulation {
   const id = `sim-${Date.now()}`;
+  const owner = user?.name ?? users[0].name;
+  const unit = user?.unit ?? businessUnits[0];
   return {
     id,
     number: `SIM-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 999)).padStart(4, "0")}`,
@@ -186,8 +194,8 @@ function createEmptySimulation(): Simulation {
     supplier: suppliers[0].name,
     deliveryCity: clients[0].city,
     deliveryState: clients[0].state,
-    owner: users[0].name,
-    unit: businessUnits[0],
+    owner,
+    unit,
     paymentCondition: "28 dias",
     deliveryDate: new Date().toISOString(),
     createdAt: new Date().toISOString(),
@@ -213,18 +221,28 @@ function SimulationDetailPage() {
   const { id } = useParams({ from: "/_app/simulacoes/$id" });
   const navigate = useNavigate();
   const { auth, simulations, orders, upsertSimulation, upsertOrder } = useAppContext();
-  const initial = simulations.find((s) => s.id === id) ?? createEmptySimulation();
+  const currentUser = auth.user;
+  const initial = simulations.find((s) => s.id === id) ?? createEmptySimulation(currentUser);
   const [draft, setDraft] = useState<Simulation>(initial);
   const [step, setStep] = useState(0);
   const totals = useMemo(() => getSimulationTotals(draft), [draft]);
   const costImpact = useMemo(() => getSimulationCostImpact(draft), [draft]);
   const sensitivity = useMemo(() => getSimulationSensitivity(draft), [draft]);
+  const userCanCreate = canCreateSimulation(currentUser);
+  const userCanEdit = canEditSimulation(currentUser, draft);
+  const userCanSubmit = canSubmitSimulationForApproval(currentUser, draft);
+  const userCanConvert = canConvertSimulationToOrder(currentUser);
 
   function update<K extends keyof Simulation>(key: K, value: Simulation[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
   function saveDraft() {
+    if (!canEditSimulation(currentUser, draft)) {
+      toast.error("Seu perfil não pode editar esta simulação.");
+      return;
+    }
+
     const minimumErrors = REQUIRED_TEXT_FIELDS.filter(
       ([key]) => !String(draft[key] ?? "").trim(),
     ).map(([, label]) => label);
@@ -238,11 +256,18 @@ function SimulationDetailPage() {
   }
 
   function duplicateCurrentSimulation() {
+    if (!canCreateSimulation(currentUser)) {
+      toast.error("Seu perfil não pode criar ou duplicar simulações.");
+      return;
+    }
+
     const id = `sim-${Date.now()}`;
     const copy: Simulation = {
       ...draft,
       id,
       number: `SIM-2026-${String(Math.floor(Date.now() % 10000)).padStart(4, "0")}`,
+      owner: currentUser?.name ?? draft.owner,
+      unit: currentUser?.unit ?? draft.unit,
       status: "Rascunho",
       createdAt: new Date().toISOString(),
       validUntil: new Date(Date.now() + 1000 * 60 * 60 * 24 * 15).toISOString(),
@@ -257,6 +282,11 @@ function SimulationDetailPage() {
   }
 
   function convertToOrder() {
+    if (!canConvertSimulationToOrder(currentUser)) {
+      toast.error("Seu perfil não pode converter simulações em pedido.");
+      return;
+    }
+
     if (orders.some((order) => order.simulationId === draft.id) || draft.orderId) {
       toast.error("Esta simulação já foi convertida em pedido.");
       return;
@@ -307,6 +337,11 @@ function SimulationDetailPage() {
   }
 
   function submitForApproval() {
+    if (!canSubmitSimulationForApproval(currentUser, draft)) {
+      toast.error("Seu perfil não pode enviar esta simulação para aprovação.");
+      return;
+    }
+
     const validationErrors = validateSimulation(draft);
     if (validationErrors.length > 0) {
       toast.error(`Revise antes de enviar: ${validationErrors.join(", ")}.`);
@@ -334,9 +369,11 @@ function SimulationDetailPage() {
         description={`${draft.client} • ${draft.supplier} • ${draft.owner}`}
         action={
           <>
-            <Button variant="outline" onClick={duplicateCurrentSimulation}>
-              <Copy /> Duplicar
-            </Button>
+            {userCanCreate ? (
+              <Button variant="outline" onClick={duplicateCurrentSimulation}>
+                <Copy /> Duplicar
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               onClick={() =>
@@ -349,10 +386,12 @@ function SimulationDetailPage() {
             >
               <Download /> Exportar
             </Button>
-            <Button variant="outline" onClick={saveDraft}>
-              <Pencil /> Salvar rascunho
-            </Button>
-            {draft.status === "Aprovada" && !draft.orderId ? (
+            {userCanEdit ? (
+              <Button variant="outline" onClick={saveDraft}>
+                <Pencil /> Salvar rascunho
+              </Button>
+            ) : null}
+            {draft.status === "Aprovada" && !draft.orderId && userCanConvert ? (
               <Button onClick={convertToOrder}>
                 <CheckCircle2 /> Converter em pedido
               </Button>
@@ -387,6 +426,8 @@ function SimulationDetailPage() {
                 sensitivity={sensitivity}
                 onSubmitForApproval={submitForApproval}
                 onConvertToOrder={convertToOrder}
+                canSubmit={userCanSubmit}
+                canConvert={userCanConvert}
               />
             )}
 
@@ -1558,6 +1599,8 @@ function ResultStep({
   sensitivity,
   onSubmitForApproval,
   onConvertToOrder,
+  canSubmit,
+  canConvert,
 }: {
   draft: Simulation;
   totals: ReturnType<typeof getSimulationTotals>;
@@ -1565,8 +1608,10 @@ function ResultStep({
   sensitivity: ReturnType<typeof getSimulationSensitivity>;
   onSubmitForApproval: () => void;
   onConvertToOrder: () => void;
+  canSubmit: boolean;
+  canConvert: boolean;
 }) {
-  const pendingApproval = PENDING_APPROVAL_STATUSES.has(draft.status);
+  const pendingApproval = isPendingApprovalStatus(draft.status);
   const hasOrder = Boolean(draft.orderId);
 
   return (
@@ -1749,14 +1794,16 @@ function ResultStep({
                   ? "A simulação foi aprovada e já pode virar pedido."
                   : pendingApproval
                     ? "A simulação está na fila da Central de aprovações."
-                    : "Revise o resumo e envie a simulação para aprovação."}
+                    : canSubmit
+                      ? "Revise o resumo e envie a simulação para aprovação."
+                      : "Seu perfil pode consultar esta simulação, mas não enviá-la para aprovação."}
             </p>
           </div>
-          {draft.status === "Aprovada" && !hasOrder ? (
+          {draft.status === "Aprovada" && !hasOrder && canConvert ? (
             <Button onClick={onConvertToOrder}>
               <CheckCircle2 /> Converter em pedido
             </Button>
-          ) : pendingApproval || hasOrder ? null : (
+          ) : pendingApproval || hasOrder || !canSubmit ? null : (
             <Button onClick={onSubmitForApproval}>
               <Send /> Enviar para aprovação
             </Button>

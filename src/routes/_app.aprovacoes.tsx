@@ -19,6 +19,11 @@ import { ClipboardCheck, FileWarning, ThumbsDown, ThumbsUp } from "lucide-react"
 import { toast } from "sonner";
 import type { Simulation } from "@/data/types";
 import { convertSimulationToOrder } from "@/features/simulations/services/simulationService";
+import {
+  canApproveSimulation,
+  canReviewApprovals,
+  isPendingApprovalStatus,
+} from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/aprovacoes")({
   component: ApprovalsPage,
@@ -30,8 +35,6 @@ const CHECKLIST: { key: keyof NonNullable<Simulation["approvalChecklist"]>; labe
   { key: "costsChecked", label: "Custos e impostos conferidos" },
   { key: "notesRegistered", label: "Notas e justificativas registradas" },
 ];
-const PENDING_APPROVAL_STATUSES = new Set(["Pendente de aprovação", "Em análise"]);
-
 function ApprovalsPage() {
   const {
     auth,
@@ -42,8 +45,10 @@ function ApprovalsPage() {
     selectedApprovalId,
     setSelectedApprovalId,
   } = useAppContext();
+  const currentUser = auth.user;
+  const canReview = canReviewApprovals(currentUser);
   const pending = useMemo(
-    () => simulations.filter((s) => PENDING_APPROVAL_STATUSES.has(s.status)),
+    () => simulations.filter((s) => isPendingApprovalStatus(s.status)),
     [simulations],
   );
   const selected = pending.find((s) => s.id === selectedApprovalId) ?? pending[0] ?? null;
@@ -74,6 +79,15 @@ function ApprovalsPage() {
 
   function decide(decision: "approve" | "reject" | "adjust") {
     if (!selected) return;
+    if (!canReviewApprovals(currentUser)) {
+      toast.error("Seu perfil não pode decidir aprovações.");
+      return;
+    }
+    if (!canApproveSimulation(currentUser, selected)) {
+      toast.error("Você não pode decidir uma simulação criada por você.");
+      return;
+    }
+
     const checklist = selected.approvalChecklist;
     if (
       decision === "approve" &&
@@ -113,6 +127,25 @@ function ApprovalsPage() {
       toast.success(`Simulação ${map[decision].toLowerCase()}`);
     }
     setComment("");
+  }
+
+  if (!canReview) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Central de aprovações"
+          description="Acesso restrito a perfis responsáveis por aprovar simulações."
+        />
+        <Card className="shadow-card">
+          <CardContent className="p-6">
+            <p className="text-sm text-muted-foreground">
+              Seu perfil pode consultar as áreas liberadas no menu, mas não pode aprovar, reprovar
+              ou solicitar ajuste em simulações.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (

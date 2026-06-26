@@ -1,10 +1,15 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AUTH_STORAGE_KEY, SIMULATION_STORAGE_KEY, THEME_STORAGE_KEY } from "@/lib/constants";
+import {
+  AUTH_STORAGE_KEY,
+  SIMULATION_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+  USER_STORAGE_KEY,
+} from "@/lib/constants";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
-import { appUser } from "@/data/users";
+import { users as seedUsers } from "@/data/users";
 import { useAppStore } from "@/store/useAppStore";
-import type { Order, Simulation, ThemeMode, User } from "@/data/types";
+import type { Order, Simulation, ThemeMode, User, UserRole, UserStatus } from "@/data/types";
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -14,7 +19,13 @@ interface AuthState {
 interface AppContextValue {
   hydrated: boolean;
   auth: AuthState;
-  login: () => void;
+  users: User[];
+  login: (email: string) => { ok: boolean; message?: string };
+  registerUser: (payload: { name: string; email: string; unit: string }) => {
+    ok: boolean;
+    message: string;
+  };
+  updateUserAccess: (id: string, payload: { role?: UserRole; status?: UserStatus }) => void;
   logout: () => void;
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
@@ -31,10 +42,19 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+function normalizeStoredUser(user: User): User {
+  return {
+    ...user,
+    status: user.status === "Pendente" ? "Ativo" : (user.status ?? "Ativo"),
+    emailConfirmed: user.emailConfirmed ?? true,
+  };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [auth, setAuth] = useState<AuthState>({ isAuthenticated: false, user: null });
+  const [users, setUsers] = useState<User[]>(seedUsers);
   const simulations = useAppStore((store) => store.simulations);
   const orders = useAppStore((store) => store.orders);
   const setSimulationsStore = useAppStore((store) => store.setSimulations);
@@ -50,11 +70,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setThemeModeState(storedTheme);
     applyTheme(storedTheme);
 
+    const storedUsers = readLocalStorage<User[]>(USER_STORAGE_KEY, seedUsers).map(normalizeStoredUser);
+    setUsers(storedUsers);
+    writeLocalStorage(USER_STORAGE_KEY, storedUsers);
+
     const storedAuth = readLocalStorage<AuthState>(AUTH_STORAGE_KEY, {
       isAuthenticated: false,
       user: null,
     });
-    setAuth(storedAuth);
+    const currentUser = storedAuth.user
+      ? (storedUsers.find((user) => user.id === storedAuth.user?.id) ??
+        normalizeStoredUser(storedAuth.user))
+      : null;
+    setAuth({ ...storedAuth, user: currentUser });
 
     setHydrated(true);
   }, []);
@@ -74,10 +102,100 @@ export function AppProvider({ children }: { children: ReactNode }) {
     writeLocalStorage(THEME_STORAGE_KEY, mode);
   };
 
-  const login = () => {
-    const next = { isAuthenticated: true, user: appUser };
+  const persistUsers = (nextUsers: User[]) => {
+    setUsers(nextUsers);
+    writeLocalStorage(USER_STORAGE_KEY, nextUsers);
+
+    setAuth((current) => {
+      if (!current.user) return current;
+      const updatedCurrentUser = nextUsers.find((user) => user.id === current.user?.id);
+      if (!updatedCurrentUser) return current;
+      const nextAuth = { ...current, user: updatedCurrentUser };
+      writeLocalStorage(AUTH_STORAGE_KEY, nextAuth);
+      return nextAuth;
+    });
+  };
+
+  const login = (email: string) => {
+    const selectedUser = users.find(
+      (user) => user.email.toLowerCase() === email.trim().toLowerCase(),
+    );
+
+    if (!selectedUser) {
+      return {
+        ok: false,
+        message: "E-mail não encontrado. Cadastre-se ou confira o endereço informado.",
+      };
+    }
+
+    if (selectedUser.status === "Bloqueado") {
+      return {
+        ok: false,
+        message: "Usuário bloqueado. Procure o admin do sistema.",
+      };
+    }
+
+    const next = { isAuthenticated: true, user: selectedUser };
     setAuth(next);
     writeLocalStorage(AUTH_STORAGE_KEY, next);
+    return { ok: true };
+  };
+
+  const registerUser = (payload: { name: string; email: string; unit: string }) => {
+    const email = payload.email.trim().toLowerCase();
+    if (users.some((user) => user.email.toLowerCase() === email)) {
+      return {
+        ok: false,
+        message: "Este e-mail já está cadastrado no sistema.",
+      };
+    }
+
+    const name = payload.name.trim();
+    const initials = name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("");
+    const newUser: User = {
+      id: `user-${Date.now()}`,
+      name,
+      role: "Comercial",
+      email,
+      unit: payload.unit,
+      initials: initials || "NU",
+      avatarHue: "from-info to-primary",
+      status: "Ativo",
+      emailConfirmed: true,
+      createdAt: new Date().toISOString(),
+      approvedAt: new Date().toISOString(),
+    };
+
+    persistUsers([...users, newUser]);
+    const nextAuth = { isAuthenticated: true, user: newUser };
+    setAuth(nextAuth);
+    writeLocalStorage(AUTH_STORAGE_KEY, nextAuth);
+
+    return {
+      ok: true,
+      message: "Conta criada com sucesso. Você já pode acessar o sistema.",
+    };
+  };
+
+  const updateUserAccess = (id: string, payload: { role?: UserRole; status?: UserStatus }) => {
+    const now = new Date().toISOString();
+    const nextUsers = users.map((user) => {
+      if (user.id !== id) return user;
+      const nextStatus = payload.status ?? user.status;
+      return {
+        ...user,
+        role: payload.role ?? user.role,
+        status: nextStatus,
+        emailConfirmed: nextStatus === "Ativo" ? true : user.emailConfirmed,
+        approvedAt: nextStatus === "Ativo" && user.status !== "Ativo" ? now : user.approvedAt,
+      };
+    });
+    persistUsers(nextUsers);
   };
 
   const logout = () => {
@@ -103,7 +221,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       hydrated,
       auth,
+      users,
       login,
+      registerUser,
+      updateUserAccess,
       logout,
       themeMode,
       setThemeMode,
@@ -120,6 +241,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [
       hydrated,
       auth,
+      users,
       themeMode,
       simulations,
       orders,

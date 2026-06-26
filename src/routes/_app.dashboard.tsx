@@ -43,6 +43,8 @@ import { formatCompactCurrency, formatCurrency, formatDateTime, formatPercent } 
 import { getSimulationTotals } from "@/lib/calculations";
 import { downloadTextFile } from "@/lib/actions";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
+import { useAppContext } from "@/features/app/app-context";
+import { canCreateSimulation } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/dashboard")({
   component: DashboardPage,
@@ -71,6 +73,8 @@ function formatKpi(item: (typeof dashboardKpis)[number]) {
 }
 
 function DashboardPage() {
+  const { auth } = useAppContext();
+
   function exportDashboardReport() {
     downloadTextFile(
       "dashboard-master-flow.txt",
@@ -91,11 +95,13 @@ function DashboardPage() {
             <Button variant="outline" onClick={exportDashboardReport}>
               Exportar relatório
             </Button>
-            <Button asChild>
-              <Link to="/simulacoes">
-                <Plus /> Nova simulação
-              </Link>
-            </Button>
+            {canCreateSimulation(auth.user) ? (
+              <Button asChild>
+                <Link to="/simulacoes">
+                  <Plus /> Nova simulação
+                </Link>
+              </Button>
+            ) : null}
           </>
         }
       />

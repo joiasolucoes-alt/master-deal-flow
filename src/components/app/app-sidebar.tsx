@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Truck,
   Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import truckIllustration from "@/assets/master-flow-truck.png";
 import {
@@ -27,29 +28,48 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAppContext } from "@/features/app/app-context";
+import { hasPermission, type Permission } from "@/lib/permissions";
 
 function isNavigationItemActive(currentPath: string, itemPath: string) {
   if (itemPath === "/dashboard") return currentPath === itemPath;
   return currentPath === itemPath || currentPath.startsWith(`${itemPath}/`);
 }
 
-const navigation = [
-  { title: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
-  { title: "Negociações", to: "/negociacoes", icon: Handshake },
-  { title: "Simulações", to: "/simulacoes", icon: BriefcaseBusiness },
-  { title: "Aprovações", to: "/aprovacoes", icon: ClipboardCheck },
-  { title: "Pedidos", to: "/pedidos", icon: Boxes },
-  { title: "Financeiro", to: "/financeiro", icon: Wallet },
-  { title: "Fretes", to: "/fretes", icon: Truck },
-  { title: "Entregas", to: "/entregas", icon: PackageSearch },
-  { title: "Relatórios", to: "/relatorios", icon: FileChartColumn },
-  { title: "Configurações", to: "/configuracoes", icon: Settings },
+const navigation: Array<{
+  title: string;
+  to: string;
+  icon: LucideIcon;
+  permission: Permission;
+}> = [
+  { title: "Dashboard", to: "/dashboard", icon: LayoutDashboard, permission: "dashboard:view" },
+  { title: "Negociações", to: "/negociacoes", icon: Handshake, permission: "negotiations:view" },
+  {
+    title: "Simulações",
+    to: "/simulacoes",
+    icon: BriefcaseBusiness,
+    permission: "simulations:view",
+  },
+  {
+    title: "Aprovações",
+    to: "/aprovacoes",
+    icon: ClipboardCheck,
+    permission: "approvals:view",
+  },
+  { title: "Pedidos", to: "/pedidos", icon: Boxes, permission: "orders:view" },
+  { title: "Financeiro", to: "/financeiro", icon: Wallet, permission: "finance:view" },
+  { title: "Fretes", to: "/fretes", icon: Truck, permission: "freights:view" },
+  { title: "Entregas", to: "/entregas", icon: PackageSearch, permission: "deliveries:view" },
+  { title: "Relatórios", to: "/relatorios", icon: FileChartColumn, permission: "reports:view" },
+  { title: "Configurações", to: "/configuracoes", icon: Settings, permission: "settings:manage" },
 ] as const;
 
 export function AppSidebar() {
   const currentPath = useRouterState({ select: (state) => state.location.pathname });
+  const { auth } = useAppContext();
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
+  const visibleNavigation = navigation.filter((item) => hasPermission(auth.user, item.permission));
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -78,7 +98,7 @@ export function AppSidebar() {
 
       <SidebarContent className="px-2">
         <SidebarMenu>
-          {navigation.map((item) => {
+          {visibleNavigation.map((item) => {
             const active = isNavigationItemActive(currentPath, item.to);
             return (
               <SidebarMenuItem key={item.to}>

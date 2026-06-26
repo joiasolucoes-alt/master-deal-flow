@@ -8,6 +8,8 @@ export const appUser: User = {
   unit: "Matriz Cataguases",
   initials: "JS",
   avatarHue: "from-info to-primary",
+  status: "Ativo",
+  emailConfirmed: true,
 };
 
 export const users: User[] = [
@@ -20,6 +22,8 @@ export const users: User[] = [
     unit: "Filial Rio de Janeiro",
     initials: "CM",
     avatarHue: "from-warning to-primary",
+    status: "Ativo",
+    emailConfirmed: true,
   },
   {
     id: "user-pedro",
@@ -29,15 +33,41 @@ export const users: User[] = [
     unit: "Filial Espírito Santo",
     initials: "PC",
     avatarHue: "from-info to-chart-2",
+    status: "Ativo",
+    emailConfirmed: true,
   },
   {
     id: "user-ana",
     name: "Ana Paula",
-    role: "Aprovação",
+    role: "Aprovador",
     email: "ana.paula@masterflow.com.br",
     unit: "Matriz Cataguases",
     initials: "AP",
     avatarHue: "from-chart-3 to-chart-4",
+    status: "Ativo",
+    emailConfirmed: true,
+  },
+  {
+    id: "user-marcos",
+    name: "Marcos Lima",
+    role: "Financeiro",
+    email: "marcos.lima@masterflow.com.br",
+    unit: "Matriz Cataguases",
+    initials: "ML",
+    avatarHue: "from-success to-info",
+    status: "Ativo",
+    emailConfirmed: true,
+  },
+  {
+    id: "user-admin",
+    name: "Mariana Rocha",
+    role: "Admin",
+    email: "mariana.rocha@masterflow.com.br",
+    unit: "Matriz Cataguases",
+    initials: "MR",
+    avatarHue: "from-primary to-warning",
+    status: "Ativo",
+    emailConfirmed: true,
   },
 ];
 
