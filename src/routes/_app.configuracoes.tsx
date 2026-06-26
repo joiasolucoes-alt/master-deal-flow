@@ -7,19 +7,34 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useAppContext } from "@/features/app/app-context";
-import { users } from "@/data/users";
 import { UserAvatar } from "@/components/app/user-avatar";
-import { notifyActionUnavailable } from "@/lib/actions";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
+import type { UserRole, UserStatus } from "@/data/types";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/configuracoes")({
   component: SettingsPage,
 });
 
 function SettingsPage() {
-  const { auth, themeMode, setThemeMode } = useAppContext();
+  const { auth, users, updateUserAccess, themeMode, setThemeMode } = useAppContext();
   const user = auth.user;
+  const roleOptions: UserRole[] = ["Comercial", "Negociações", "Aprovador", "Financeiro", "Admin"];
+  const statusOptions: UserStatus[] = ["Ativo", "Bloqueado"];
+
+  function changeUserAccess(id: string, payload: { role?: UserRole; status?: UserStatus }) {
+    updateUserAccess(id, payload);
+    toast.success("Acesso do usuário atualizado.");
+  }
 
   return (
     <div className="space-y-6">
@@ -116,24 +131,82 @@ function SettingsPage() {
               {users.map((u) => (
                 <div
                   key={u.id}
-                  className="flex items-center justify-between rounded-2xl border border-border p-3"
+                  className="grid gap-4 rounded-2xl border border-border p-3 lg:grid-cols-[1fr_180px_160px_auto]"
                 >
                   <div className="flex items-center gap-3">
                     <UserAvatar name={u.name} initials={u.initials} />
                     <div>
-                      <p className="font-medium text-foreground">{u.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {u.role} • {u.unit}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-foreground">{u.name}</p>
+                        <Badge
+                          variant={u.status === "Bloqueado" ? "destructive" : "outline"}
+                          className={
+                            u.status === "Ativo"
+                              ? "border-success/30 bg-success-soft text-success"
+                              : undefined
+                          }
+                        >
+                          {u.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{u.email}</p>
+                      <p className="text-sm text-muted-foreground">{u.unit}</p>
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => notifyActionUnavailable(`Editar usuário: ${u.name}`)}
+
+                  <Select
+                    value={u.role}
+                    onValueChange={(role) =>
+                      changeUserAccess(u.id, { role: role as UserRole })
+                    }
                   >
-                    Editar
-                  </Button>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roleOptions.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {role}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={u.status}
+                    onValueChange={(status) =>
+                      changeUserAccess(u.id, { status: status as UserStatus })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {u.status !== "Ativo" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => changeUserAccess(u.id, { status: "Ativo" })}
+                    >
+                      Desbloquear
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => changeUserAccess(u.id, { status: "Bloqueado" })}
+                    >
+                      Bloquear
+                    </Button>
+                  )}
                 </div>
               ))}
             </CardContent>

@@ -1,4 +1,6 @@
 export type ThemeMode = "light" | "dark" | "system";
+export type UserRole = "Comercial" | "Negociações" | "Aprovador" | "Financeiro" | "Admin";
+export type UserStatus = "Pendente" | "Ativo" | "Bloqueado";
 
 export type AppStatus =
   | "Rascunho"
@@ -19,11 +21,15 @@ export type Viability = "Pendente" | "Viável" | "Atenção" | "Inviável";
 export interface User {
   id: string;
   name: string;
-  role: string;
+  role: UserRole;
   email: string;
   unit: string;
   initials: string;
   avatarHue: string;
+  status: UserStatus;
+  emailConfirmed: boolean;
+  createdAt?: string;
+  approvedAt?: string;
 }
 
 export interface Client {

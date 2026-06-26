@@ -20,6 +20,7 @@ import { useAppContext } from "@/features/app/app-context";
 import { getSimulationTotals } from "@/lib/calculations";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
+import { canCreateSimulation } from "@/lib/permissions";
 import { BadgeDollarSign, CheckCircle2, FileSpreadsheet, TriangleAlert } from "lucide-react";
 import type { Simulation } from "@/data/types";
 
@@ -38,7 +39,7 @@ const statusOptions = [
 
 function SimulationsPage() {
   const navigate = useNavigate();
-  const { simulations } = useAppContext();
+  const { auth, simulations } = useAppContext();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("Todos");
   const [owner, setOwner] = useState("Todos");
@@ -150,9 +151,11 @@ function SimulationsPage() {
         title="Central de simulações"
         description="Consulte, edite e crie simulações para apoiar a tomada de decisão comercial."
         action={
-          <Button onClick={() => navigate({ to: "/simulacoes/$id", params: { id: "nova" } })}>
-            <Plus /> Nova simulação
-          </Button>
+          canCreateSimulation(auth.user) ? (
+            <Button onClick={() => navigate({ to: "/simulacoes/$id", params: { id: "nova" } })}>
+              <Plus /> Nova simulação
+            </Button>
+          ) : null
         }
       />
 
