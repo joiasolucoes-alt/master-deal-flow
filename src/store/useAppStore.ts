@@ -15,6 +15,7 @@ export type AppStore = AppStoreState & {
   selectedApprovalId: string | null;
   selectedOrderId: string | null;
   setSimulations: (value: Simulation[]) => void;
+  setOrders: (value: Order[]) => void;
   upsertSimulation: (simulation: Simulation, audit?: AuditEvent) => void;
   upsertOrder: (order: Order, audit?: AuditEvent) => void;
   upsertNegotiation: (negotiation: Negotiation) => void;
@@ -26,6 +27,7 @@ export type AppStore = AppStoreState & {
 type PersistedState = Omit<
   AppStore,
   | "setSimulations"
+  | "setOrders"
   | "upsertSimulation"
   | "upsertOrder"
   | "upsertNegotiation"
@@ -105,6 +107,7 @@ function subscribe(listener: Listener) {
 const storeActions = {
   setSimulations: (value: Simulation[]) =>
     setState((current) => ({ ...current, simulations: value })),
+  setOrders: (value: Order[]) => setState((current) => ({ ...current, orders: value })),
   upsertSimulation: (simulation: Simulation, audit?: AuditEvent) =>
     setState((current) => ({
       ...current,
