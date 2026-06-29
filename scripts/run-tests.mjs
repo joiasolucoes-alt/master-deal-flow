@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 
 const MINIMUM_MARGIN_TARGET = 3.5;
 const ATTENTION_MARGIN_TARGET = 0;
+const VALID_DATA_PROVIDERS = new Set(["local", "supabase"]);
 
 function getExpenseTotal(expense, bases) {
   if (expense.calculationType === "fixed") return expense.value;
-  const base =
-    expense.type === "STRINT" ? "purchaseTotal" : (expense.calculationBase ?? "revenue");
+  const base = expense.type === "STRINT" ? "purchaseTotal" : (expense.calculationBase ?? "revenue");
   return bases[base] * (expense.value / 100);
 }
 
@@ -50,6 +50,30 @@ function getTotals({ products, purchaseItems = [], expenseItems }) {
     markupPercent,
     marginPercent,
     viability,
+  };
+}
+
+function getDataProvider(envValue) {
+  return VALID_DATA_PROVIDERS.has(envValue) ? envValue : "local";
+}
+
+function createOrderRepository({ orders }) {
+  return {
+    async findBySimulationId(simulationId) {
+      return orders.find((order) => order.simulationId === simulationId) ?? null;
+    },
+    async save(order) {
+      const existing = order.simulationId
+        ? (orders.find((item) => item.simulationId === order.simulationId) ?? null)
+        : null;
+
+      if (existing && existing.id !== order.id) {
+        throw new Error(`Simulação já convertida no pedido ${existing.number}.`);
+      }
+
+      orders.unshift(order);
+      return order;
+    },
   };
 }
 
@@ -101,4 +125,25 @@ assert.equal(Math.round(op374.markupPercent * 100), 1967);
 assert.equal(Math.round(op374.marginPercent * 100), 585);
 assert.equal(op374.viability, "Viável");
 
-console.log("Calculation smoke tests passed.");
+assert.equal(getDataProvider("supabase"), "supabase");
+assert.equal(getDataProvider("local"), "local");
+assert.equal(getDataProvider("qualquer-coisa"), "local");
+assert.equal(getDataProvider(undefined), "local");
+
+const orderRepository = createOrderRepository({
+  orders: [{ id: "ord-1", number: "PED 1", simulationId: "sim-1" }],
+});
+
+await assert.rejects(
+  () => orderRepository.save({ id: "ord-2", number: "PED 2", simulationId: "sim-1" }),
+  /Simulação já convertida/,
+);
+
+const savedOrder = await orderRepository.save({
+  id: "ord-1",
+  number: "PED 1",
+  simulationId: "sim-1",
+});
+assert.equal(savedOrder.id, "ord-1");
+
+console.log("Calculation and data provider smoke tests passed.");

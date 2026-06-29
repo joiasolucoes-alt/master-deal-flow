@@ -10,6 +10,11 @@ import { applyTheme, getStoredTheme } from "@/lib/theme";
 import { users as seedUsers } from "@/data/users";
 import { useAppStore } from "@/store/useAppStore";
 import type { Order, Simulation, ThemeMode, User, UserRole, UserStatus } from "@/data/types";
+import { isSupabaseProvider } from "@/lib/dataProvider";
+import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
+import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
+import { createSupabaseOrderRepository } from "@/features/orders/repositories/supabaseOrderRepository";
+import { toast } from "sonner";
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -61,6 +66,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const simulations = useAppStore((store) => store.simulations);
   const orders = useAppStore((store) => store.orders);
   const setSimulationsStore = useAppStore((store) => store.setSimulations);
+  const setOrdersStore = useAppStore((store) => store.setOrders);
   const upsertSimulationStore = useAppStore((store) => store.upsertSimulation);
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
   const selectedApprovalId = useAppStore((store) => store.selectedApprovalId);
@@ -73,7 +79,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setThemeModeState(storedTheme);
     applyTheme(storedTheme);
 
-    const storedUsers = readLocalStorage<User[]>(USER_STORAGE_KEY, seedUsers).map(normalizeStoredUser);
+    const storedUsers = readLocalStorage<User[]>(USER_STORAGE_KEY, seedUsers).map(
+      normalizeStoredUser,
+    );
     setUsers(storedUsers);
     writeLocalStorage(USER_STORAGE_KEY, storedUsers);
 
@@ -99,6 +107,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     media.addEventListener("change", handle);
     return () => media.removeEventListener("change", handle);
   }, [themeMode, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || !isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      toast.error("Supabase não configurado. Usando dados locais por enquanto.");
+      return;
+    }
+
+    let cancelled = false;
+    const simulationRepository = createSupabaseSimulationRepository();
+    const orderRepository = createSupabaseOrderRepository();
+
+    async function loadRemoteData() {
+      try {
+        const [remoteSimulations, remoteOrders] = await Promise.all([
+          simulationRepository.list(),
+          orderRepository.list(),
+        ]);
+
+        if (cancelled) return;
+        setSimulationsStore(remoteSimulations);
+        setOrdersStore(remoteOrders);
+      } catch (error) {
+        console.error("Falha ao carregar dados do Supabase.", error);
+        toast.error("Não foi possível carregar o Supabase. Mantive os dados locais.");
+      }
+    }
+
+    void loadRemoteData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, setOrdersStore, setSimulationsStore]);
 
   const setThemeMode = (mode: ThemeMode) => {
     setThemeModeState(mode);
@@ -222,10 +266,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const upsertSimulation = (simulation: Simulation) => {
     upsertSimulationStore(simulation);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. A simulação ficou salva apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseSimulationRepository();
+    void repository.save(simulation).catch((error) => {
+      console.error("Falha ao salvar simulação no Supabase.", error);
+      toast.error("Falha ao salvar simulação no Supabase. Dados locais preservados.");
+    });
   };
 
   const upsertOrder = (order: Order) => {
     upsertOrderStore(order);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. O pedido ficou salvo apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseOrderRepository();
+    void repository.save(order).catch((error) => {
+      console.error("Falha ao salvar pedido no Supabase.", error);
+      toast.error("Falha ao salvar pedido no Supabase. Dados locais preservados.");
+    });
   };
 
   const value = useMemo<AppContextValue>(

@@ -156,9 +156,7 @@ function SettingsPage() {
 
                   <Select
                     value={u.role}
-                    onValueChange={(role) =>
-                      changeUserAccess(u.id, { role: role as UserRole })
-                    }
+                    onValueChange={(role) => changeUserAccess(u.id, { role: role as UserRole })}
                   >
                     <SelectTrigger>
                       <SelectValue />
