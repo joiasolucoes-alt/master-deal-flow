@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { isSupabaseProvider } from "@/lib/dataProvider";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -18,7 +19,7 @@ export function getSupabaseConfigStatus() {
 
 export function getSupabaseClient() {
   if (!supabaseUrl || !supabaseAnonKey) {
-    if (!missingConfigLogged) {
+    if (isSupabaseProvider() && !missingConfigLogged) {
       console.error(
         "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local or keep VITE_DATA_PROVIDER=local.",
       );
@@ -39,8 +40,6 @@ export function getSupabaseClient() {
 
   return client;
 }
-
-export const supabase = getSupabaseClient();
 
 export async function ensureSupabaseSession() {
   const client = getSupabaseClient();
