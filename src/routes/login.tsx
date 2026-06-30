@@ -87,7 +87,7 @@ function LoginPage() {
               Bem-vindo MasterFlow
             </h1>
             <p className="text-sm text-muted-foreground">
-              Acesse sua conta Supabase para continuar gerenciando suas negociações.
+              Acesse sua conta para continuar gerenciando suas negociações.
             </p>
           </div>
 
@@ -99,6 +99,7 @@ function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
                 required
               />
             </div>
@@ -111,6 +112,7 @@ function LoginPage() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
                   required
                 />
                 <button
