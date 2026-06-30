@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAppContext } from "@/features/app/app-context";
-import logoAsset from "@/assets/logo-master.png.asset.json";
 import truckIllustration from "@/assets/master-flow-truck.png";
 import { notifyActionUnavailable } from "@/lib/actions";
 import { toast } from "sonner";
@@ -34,7 +33,7 @@ function LoginPage() {
         <div className="flex items-center gap-3">
           <div className="h-12 w-10 overflow-hidden rounded-md">
             <img
-              src={logoAsset.url}
+              src="/logo-master.svg"
               alt="Master"
               className="h-full max-w-none object-cover object-left"
             />
