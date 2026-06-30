@@ -14,7 +14,7 @@ import { applyTheme, getStoredTheme } from "@/lib/theme";
 import { users as seedUsers } from "@/data/users";
 import { useAppStore } from "@/store/useAppStore";
 import type { Order, Simulation, ThemeMode, User, UserRole, UserStatus } from "@/data/types";
-import { isSupabaseProvider } from "@/lib/dataProvider";
+import { getDataProvider, isSupabaseProvider } from "@/lib/dataProvider";
 import { getSupabaseClient, getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import { createSupabaseOrderRepository } from "@/features/orders/repositories/supabaseOrderRepository";
@@ -287,6 +287,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
+    if (!isSupabaseProvider()) {
+      setAuth((current) => ({ ...current, isLoading: false, accessError: null }));
+      return;
+    }
+
     const client = getSupabaseClient();
     if (!client) {
       clearAuthContext();
@@ -364,15 +369,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (email: string, password: string) => {
-    const client = getSupabaseClient();
-    if (!email.trim() || !password.trim()) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !password.trim()) {
       return { ok: false, message: "E-mail e senha são obrigatórios." };
     }
+
+    if (getDataProvider() === "local") {
+      const localUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
+      if (!localUser || localUser.password !== password) {
+        clearAuthContext();
+        return { ok: false, message: "Credenciais inválidas." };
+      }
+      if (localUser.status !== "Ativo") {
+        clearAuthContext();
+        return { ok: false, message: "Usuário sem acesso ativo ao Master Flow." };
+      }
+
+      setAuth({
+        isAuthenticated: true,
+        hasAccess: true,
+        isLoading: false,
+        session: null,
+        supabaseUser: null,
+        user: localUser,
+        profile: { id: localUser.id, full_name: localUser.name, email: localUser.email },
+        memberships: [],
+        currentOrganization: null,
+        currentUnit: null,
+        role: localUser.role,
+        accessError: null,
+      });
+      return { ok: true };
+    }
+
+    const client = getSupabaseClient();
     if (!client) return { ok: false, message: "Erro de conexão com Supabase." };
 
     setAuth((current) => ({ ...current, isLoading: true, accessError: null }));
     const { data, error } = await client.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       password,
     });
 
