@@ -16,19 +16,17 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { login, registerUser, auth, hydrated } = useAppContext();
+  const { login, auth, hydrated } = useAppContext();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("admin@masterflow.com.br");
-  const [password, setPassword] = useState("admin");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [registerName, setRegisterName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (hydrated && auth.isAuthenticated) navigate({ to: "/dashboard" });
-  }, [hydrated, auth.isAuthenticated, navigate]);
+    if (hydrated && auth.isAuthenticated && auth.hasAccess) navigate({ to: "/dashboard" });
+  }, [hydrated, auth.hasAccess, auth.isAuthenticated, navigate]);
 
   return (
     <div className="grid min-h-dvh bg-background lg:grid-cols-2">
@@ -63,42 +61,24 @@ function LoginPage() {
 
       <main className="grid place-items-center px-6 py-12">
         <form
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault();
-            if (mode === "register") {
-              if (!registerName.trim() || !email.trim() || !password.trim()) {
-                toast.error("Informe nome, e-mail e senha para criar a conta.");
-                return;
-              }
-              if (password !== confirmPassword) {
-                toast.error("As senhas não conferem.");
-                return;
-              }
-
-              const result = registerUser({
-                name: registerName,
-                email,
-                password,
-              });
-              if (result.ok) {
-                toast.success(result.message);
-                navigate({ to: "/dashboard" });
-                return;
-              }
-              toast.error(result.message);
-              return;
-            }
-
             if (!email.trim() || !password.trim()) {
-              toast.error("Informe e-mail e senha para continuar.");
+              toast.error("E-mail e senha são obrigatórios.");
               return;
             }
-            const result = login(email, password);
-            if (!result.ok) {
-              toast.error(result.message);
-              return;
+
+            setIsSubmitting(true);
+            try {
+              const result = await login(email, password);
+              if (!result.ok) {
+                toast.error(result.message);
+                return;
+              }
+              navigate({ to: "/dashboard" });
+            } finally {
+              setIsSubmitting(false);
             }
-            navigate({ to: "/dashboard" });
           }}
           className="w-full max-w-md space-y-6"
         >
@@ -107,52 +87,11 @@ function LoginPage() {
               Bem-vindo MasterFlow
             </h1>
             <p className="text-sm text-muted-foreground">
-              {mode === "login"
-                ? "Acesse sua conta para continuar gerenciando suas negociações."
-                : "Crie sua conta com e-mail e senha. O perfil inicial será Comercial."}
+              Acesse sua conta Supabase para continuar gerenciando suas negociações.
             </p>
           </div>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-border bg-muted/30 p-1">
-              <Button
-                type="button"
-                variant={mode === "login" ? "default" : "ghost"}
-                onClick={() => {
-                  setMode("login");
-                  setEmail("admin@masterflow.com.br");
-                  setPassword("admin");
-                  setConfirmPassword("");
-                }}
-              >
-                Entrar
-              </Button>
-              <Button
-                type="button"
-                variant={mode === "register" ? "default" : "ghost"}
-                onClick={() => {
-                  setMode("register");
-                  setEmail("");
-                  setPassword("");
-                  setConfirmPassword("");
-                }}
-              >
-                Cadastrar
-              </Button>
-            </div>
-
-            {mode === "register" ? (
-              <div className="space-y-2">
-                <Label htmlFor="register-name">Nome completo</Label>
-                <Input
-                  id="register-name"
-                  value={registerName}
-                  onChange={(e) => setRegisterName(e.target.value)}
-                  required
-                />
-              </div>
-            ) : null}
-
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>
               <Input
@@ -185,38 +124,29 @@ function LoginPage() {
               </div>
             </div>
 
-            {mode === "register" ? (
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirmar senha</Label>
-                <Input
-                  id="confirm-password"
-                  type={showPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                />
-              </div>
-            ) : null}
-
-            {mode === "login" ? (
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Checkbox checked={remember} onCheckedChange={(v) => setRemember(Boolean(v))} />
-                  Manter conectado
-                </label>
-                <button
-                  type="button"
-                  onClick={() => notifyActionUnavailable("Recuperação de senha")}
-                  className="text-sm font-medium text-primary hover:underline"
-                >
-                  Esqueci minha senha
-                </button>
-              </div>
-            ) : null}
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox checked={remember} onCheckedChange={(v) => setRemember(Boolean(v))} />
+                Manter conectado
+              </label>
+              <button
+                type="button"
+                onClick={() => notifyActionUnavailable("Recuperação de senha")}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Esqueci minha senha
+              </button>
+            </div>
           </div>
 
-          <Button type="submit" className="h-12 w-full text-base">
-            {mode === "login" ? "Entrar" : "Criar conta"}
+          {auth.accessError ? <p className="text-sm text-destructive">{auth.accessError}</p> : null}
+
+          <Button
+            type="submit"
+            className="h-12 w-full text-base"
+            disabled={isSubmitting || auth.isLoading}
+          >
+            {isSubmitting || auth.isLoading ? "Autenticando..." : "Entrar"}
           </Button>
 
           <p className="text-center text-xs text-muted-foreground">
