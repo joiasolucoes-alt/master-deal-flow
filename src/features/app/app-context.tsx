@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Session, User as SupabaseUser } from "@supabase/supabase-js";
+import type { AuthError, Session, User as SupabaseUser } from "@supabase/supabase-js";
 import { SIMULATION_STORAGE_KEY, THEME_STORAGE_KEY, USER_STORAGE_KEY } from "@/lib/constants";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
@@ -80,6 +80,18 @@ interface AppContextValue {
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
+
+function getSupabaseLoginErrorMessage(error: AuthError) {
+  if (error.code === "email_not_confirmed") {
+    return "Seu e-mail ainda não foi confirmado. Confirme pelo link enviado pelo Supabase ou desative a confirmação de e-mail no projeto.";
+  }
+
+  if (error.code === "invalid_credentials") {
+    return "Credenciais inválidas.";
+  }
+
+  return error.message || "Não foi possível autenticar no Supabase.";
+}
 
 function normalizeStoredUser(user: User): User {
   const isSeedAdmin = user.id === "user-admin";
@@ -287,7 +299,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (!isSupabaseProvider()) {
+    if (!getSupabaseConfigStatus().configured) {
       setAuth((current) => ({ ...current, isLoading: false, accessError: null }));
       return;
     }
@@ -374,11 +386,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { ok: false, message: "E-mail e senha são obrigatórios." };
     }
 
+    const config = getSupabaseConfigStatus();
+    const client = config.configured ? getSupabaseClient() : null;
+    let supabaseLoginErrorMessage: string | null = null;
+
+    if (client) {
+      setAuth((current) => ({ ...current, isLoading: true, accessError: null }));
+      const { data, error } = await client.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+
+      if (error) {
+        console.error("Falha no login Supabase.", { code: error.code, status: error.status });
+        supabaseLoginErrorMessage = getSupabaseLoginErrorMessage(error);
+        clearAuthContext();
+      } else if (!data.session) {
+        clearAuthContext();
+        supabaseLoginErrorMessage = "Não foi possível iniciar uma sessão válida.";
+      } else {
+        await refreshUserContext(data.session);
+        return { ok: true };
+      }
+
+      if (isSupabaseProvider()) {
+        return { ok: false, message: supabaseLoginErrorMessage ?? "Credenciais inválidas." };
+      }
+    }
+
     if (getDataProvider() === "local") {
       const localUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
       if (!localUser || localUser.password !== password) {
         clearAuthContext();
-        return { ok: false, message: "Credenciais inválidas." };
+        return { ok: false, message: supabaseLoginErrorMessage ?? "Credenciais inválidas." };
       }
       if (localUser.status !== "Ativo") {
         clearAuthContext();
@@ -402,28 +442,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     }
 
-    const client = getSupabaseClient();
-    if (!client) return { ok: false, message: "Erro de conexão com Supabase." };
-
-    setAuth((current) => ({ ...current, isLoading: true, accessError: null }));
-    const { data, error } = await client.auth.signInWithPassword({
-      email: normalizedEmail,
-      password,
-    });
-
-    if (error) {
-      console.error("Falha no login Supabase.", { code: error.code, status: error.status });
-      clearAuthContext();
-      return { ok: false, message: "Credenciais inválidas." };
-    }
-
-    if (!data.session) {
-      clearAuthContext();
-      return { ok: false, message: "Não foi possível iniciar uma sessão válida." };
-    }
-
-    await refreshUserContext(data.session);
-    return { ok: true };
+    return { ok: false, message: "Erro de conexão com Supabase." };
   };
 
   const registerUser = (_payload: { name: string; email: string; password: string }) => ({
