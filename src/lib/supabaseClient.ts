@@ -32,6 +32,7 @@ export function getSupabaseClient() {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
+        detectSessionInUrl: true,
       },
     });
   }
@@ -48,14 +49,5 @@ export async function ensureSupabaseSession() {
   const { data } = await client.auth.getSession();
   if (data.session) return data.session;
 
-  const result = await client.auth.signInAnonymously();
-  if (result.error) {
-    console.error(
-      "Supabase session could not be started. Enable anonymous sign-ins or configure Supabase Auth before using VITE_DATA_PROVIDER=supabase.",
-      result.error,
-    );
-    throw result.error;
-  }
-
-  return result.data.session;
+  throw new Error("Sessão Supabase ausente. Faça login novamente.");
 }

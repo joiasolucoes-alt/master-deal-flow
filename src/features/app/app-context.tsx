@@ -1,31 +1,65 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  AUTH_STORAGE_KEY,
-  SIMULATION_STORAGE_KEY,
-  THEME_STORAGE_KEY,
-  USER_STORAGE_KEY,
-} from "@/lib/constants";
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import type { Session, User as SupabaseUser } from "@supabase/supabase-js";
+import { SIMULATION_STORAGE_KEY, THEME_STORAGE_KEY, USER_STORAGE_KEY } from "@/lib/constants";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
 import { users as seedUsers } from "@/data/users";
 import { useAppStore } from "@/store/useAppStore";
 import type { Order, Simulation, ThemeMode, User, UserRole, UserStatus } from "@/data/types";
 import { isSupabaseProvider } from "@/lib/dataProvider";
-import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
+import { getSupabaseClient, getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import { createSupabaseOrderRepository } from "@/features/orders/repositories/supabaseOrderRepository";
 import { toast } from "sonner";
 
+type AuthProfile = {
+  id?: string;
+  auth_user_id?: string;
+  full_name?: string | null;
+  name?: string | null;
+  email?: string | null;
+  default_unit_id?: string | null;
+};
+
+type AuthMembership = {
+  id: string;
+  organization_id: string;
+  unit_id: string | null;
+  user_id: string;
+  role: string;
+  organizations?: { id: string; name: string } | null;
+  units?: { id: string; name: string } | null;
+};
+
 interface AuthState {
   isAuthenticated: boolean;
+  hasAccess: boolean;
+  isLoading: boolean;
+  session: Session | null;
+  supabaseUser: SupabaseUser | null;
   user: User | null;
+  profile: AuthProfile | null;
+  memberships: AuthMembership[];
+  currentOrganization: AuthMembership["organizations"] | null;
+  currentUnit: AuthMembership["units"] | null;
+  role: string | null;
+  accessError: string | null;
 }
 
 interface AppContextValue {
   hydrated: boolean;
   auth: AuthState;
   users: User[];
-  login: (email: string, password: string) => { ok: boolean; message?: string };
+  login: (email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
+  refreshUserContext: (session?: Session | null) => Promise<void>;
   registerUser: (payload: { name: string; email: string; password: string }) => {
     ok: boolean;
     message: string;
@@ -61,7 +95,20 @@ function normalizeStoredUser(user: User): User {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
-  const [auth, setAuth] = useState<AuthState>({ isAuthenticated: false, user: null });
+  const [auth, setAuth] = useState<AuthState>({
+    isAuthenticated: false,
+    hasAccess: false,
+    isLoading: true,
+    session: null,
+    supabaseUser: null,
+    user: null,
+    profile: null,
+    memberships: [],
+    currentOrganization: null,
+    currentUnit: null,
+    role: null,
+    accessError: null,
+  });
   const [users, setUsers] = useState<User[]>(seedUsers);
   const simulations = useAppStore((store) => store.simulations);
   const orders = useAppStore((store) => store.orders);
@@ -85,18 +132,174 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUsers(storedUsers);
     writeLocalStorage(USER_STORAGE_KEY, storedUsers);
 
-    const storedAuth = readLocalStorage<AuthState>(AUTH_STORAGE_KEY, {
-      isAuthenticated: false,
-      user: null,
-    });
-    const currentUser = storedAuth.user
-      ? (storedUsers.find((user) => user.id === storedAuth.user?.id) ??
-        normalizeStoredUser(storedAuth.user))
-      : null;
-    setAuth({ ...storedAuth, user: currentUser });
-
     setHydrated(true);
   }, []);
+
+  const clearAuthContext = useCallback(() => {
+    setAuth((current) => ({
+      ...current,
+      isAuthenticated: false,
+      hasAccess: false,
+      isLoading: false,
+      session: null,
+      supabaseUser: null,
+      user: null,
+      profile: null,
+      memberships: [],
+      currentOrganization: null,
+      currentUnit: null,
+      role: null,
+      accessError: null,
+    }));
+  }, []);
+
+  const mapRole = (role?: string | null): UserRole => {
+    const normalized = role?.toLowerCase();
+    if (normalized === "admin") return "Admin";
+    if (normalized === "gestor") return "Negociações";
+    if (normalized === "aprovador") return "Aprovador";
+    if (normalized === "financeiro") return "Financeiro";
+    return "Comercial";
+  };
+
+  const refreshUserContext = useCallback(
+    async (sessionOverride?: Session | null) => {
+      const client = getSupabaseClient();
+      if (!client) {
+        setAuth((current) => ({
+          ...current,
+          isLoading: false,
+          accessError: "Erro de conexão com Supabase.",
+        }));
+        return;
+      }
+
+      setAuth((current) => ({ ...current, isLoading: true, accessError: null }));
+      const session = sessionOverride ?? (await client.auth.getSession()).data.session;
+      if (!session) {
+        clearAuthContext();
+        return;
+      }
+
+      const supabaseUser = session.user;
+      try {
+        const { data: loadedProfile, error: profileError } = await client
+          .from("profiles")
+          .select("id, auth_user_id, full_name, name, email, default_unit_id")
+          .eq("auth_user_id", supabaseUser.id)
+          .maybeSingle();
+
+        if (profileError) throw new Error("Falha ao carregar perfil do usuário.");
+
+        let profile = loadedProfile;
+
+        if (!profile) {
+          const { data: insertedProfile, error: insertError } = await client
+            .from("profiles")
+            .insert({
+              auth_user_id: supabaseUser.id,
+              full_name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
+              email: supabaseUser.email,
+            })
+            .select("id, auth_user_id, full_name, name, email, default_unit_id")
+            .maybeSingle();
+
+          if (insertError) {
+            setAuth((current) => ({
+              ...current,
+              isAuthenticated: true,
+              hasAccess: false,
+              isLoading: false,
+              session,
+              supabaseUser,
+              accessError:
+                "Seu usuário foi autenticado, mas ainda não possui perfil no Master Flow. Solicite liberação ao administrador.",
+            }));
+            return;
+          }
+          profile = insertedProfile;
+        }
+
+        const { data: memberships, error: membershipError } = await client
+          .from("organization_members")
+          .select(
+            "id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)",
+          )
+          .eq("user_id", supabaseUser.id);
+
+        if (membershipError) throw new Error("Usuário autenticado, mas sem acesso ao Master Flow.");
+
+        const activeMemberships = (memberships ?? []) as unknown as AuthMembership[];
+        const currentMembership = activeMemberships[0] ?? null;
+        const role = currentMembership?.role ?? null;
+        const displayName = profile?.full_name ?? profile?.name ?? supabaseUser.email ?? "Usuário";
+        const unitName = currentMembership?.units?.name ?? "Sem unidade";
+        const appAuthUser: User = {
+          id: supabaseUser.id,
+          name: displayName,
+          email: supabaseUser.email ?? profile?.email ?? "",
+          role: mapRole(role),
+          unit: unitName,
+          initials:
+            displayName
+              .split(" ")
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((part: string) => part[0]?.toUpperCase())
+              .join("") || "MF",
+          avatarHue: "from-info to-primary",
+          status: currentMembership ? "Ativo" : "Pendente",
+          emailConfirmed: Boolean(supabaseUser.email_confirmed_at),
+        };
+
+        setAuth({
+          isAuthenticated: true,
+          hasAccess: activeMemberships.length > 0,
+          isLoading: false,
+          session,
+          supabaseUser,
+          user: appAuthUser,
+          profile: profile as AuthProfile | null,
+          memberships: activeMemberships,
+          currentOrganization: currentMembership?.organizations ?? null,
+          currentUnit: currentMembership?.units ?? null,
+          role,
+          accessError: activeMemberships.length
+            ? null
+            : "Seu usuário foi autenticado, mas ainda não possui acesso a nenhuma organização no Master Flow.",
+        });
+      } catch (error) {
+        console.error("Falha ao carregar contexto de autenticação.", error);
+        setAuth((current) => ({
+          ...current,
+          isAuthenticated: true,
+          hasAccess: false,
+          isLoading: false,
+          session,
+          supabaseUser,
+          accessError:
+            error instanceof Error ? error.message : "Falha ao carregar perfil do usuário.",
+        }));
+      }
+    },
+    [clearAuthContext],
+  );
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const client = getSupabaseClient();
+    if (!client) {
+      clearAuthContext();
+      return;
+    }
+
+    void refreshUserContext();
+    const { data: subscription } = client.auth.onAuthStateChange((_event, session) => {
+      void refreshUserContext(session);
+    });
+
+    return () => subscription.subscription.unsubscribe();
+  }, [clearAuthContext, hydrated, refreshUserContext]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -109,7 +312,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [themeMode, hydrated]);
 
   useEffect(() => {
-    if (!hydrated || !isSupabaseProvider()) return;
+    if (!hydrated || !auth.hasAccess || !isSupabaseProvider()) return;
 
     const config = getSupabaseConfigStatus();
     if (!config.configured) {
@@ -142,7 +345,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, setOrdersStore, setSimulationsStore]);
+  }, [auth.hasAccess, hydrated, setOrdersStore, setSimulationsStore]);
 
   const setThemeMode = (mode: ThemeMode) => {
     setThemeModeState(mode);
@@ -156,86 +359,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuth((current) => {
       if (!current.user) return current;
       const updatedCurrentUser = nextUsers.find((user) => user.id === current.user?.id);
-      if (!updatedCurrentUser) return current;
-      const nextAuth = { ...current, user: updatedCurrentUser };
-      writeLocalStorage(AUTH_STORAGE_KEY, nextAuth);
-      return nextAuth;
+      return updatedCurrentUser ? { ...current, user: updatedCurrentUser } : current;
     });
   };
 
-  const login = (email: string, password: string) => {
-    const selectedUser = users.find(
-      (user) => user.email.toLowerCase() === email.trim().toLowerCase(),
-    );
+  const login = async (email: string, password: string) => {
+    const client = getSupabaseClient();
+    if (!email.trim() || !password.trim()) {
+      return { ok: false, message: "E-mail e senha são obrigatórios." };
+    }
+    if (!client) return { ok: false, message: "Erro de conexão com Supabase." };
 
-    if (!selectedUser) {
-      return {
-        ok: false,
-        message: "E-mail não encontrado. Cadastre-se ou confira o endereço informado.",
-      };
+    setAuth((current) => ({ ...current, isLoading: true, accessError: null }));
+    const { data, error } = await client.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    if (error) {
+      console.error("Falha no login Supabase.", { code: error.code, status: error.status });
+      clearAuthContext();
+      return { ok: false, message: "Credenciais inválidas." };
     }
 
-    if ((selectedUser.password ?? "masterflow") !== password) {
-      return {
-        ok: false,
-        message: "Senha incorreta.",
-      };
+    if (!data.session) {
+      clearAuthContext();
+      return { ok: false, message: "Não foi possível iniciar uma sessão válida." };
     }
 
-    if (selectedUser.status === "Bloqueado") {
-      return {
-        ok: false,
-        message: "Usuário bloqueado. Procure o admin do sistema.",
-      };
-    }
-
-    const next = { isAuthenticated: true, user: selectedUser };
-    setAuth(next);
-    writeLocalStorage(AUTH_STORAGE_KEY, next);
+    await refreshUserContext(data.session);
     return { ok: true };
   };
 
-  const registerUser = (payload: { name: string; email: string; password: string }) => {
-    const email = payload.email.trim().toLowerCase();
-    if (users.some((user) => user.email.toLowerCase() === email)) {
-      return {
-        ok: false,
-        message: "Este e-mail já está cadastrado no sistema.",
-      };
-    }
-
-    const name = payload.name.trim();
-    const initials = name
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("");
-    const newUser: User = {
-      id: `user-${Date.now()}`,
-      name,
-      role: "Comercial",
-      email,
-      password: payload.password,
-      unit: "Sem unidade",
-      initials: initials || "NU",
-      avatarHue: "from-info to-primary",
-      status: "Ativo",
-      emailConfirmed: true,
-      createdAt: new Date().toISOString(),
-      approvedAt: new Date().toISOString(),
-    };
-
-    persistUsers([...users, newUser]);
-    const nextAuth = { isAuthenticated: true, user: newUser };
-    setAuth(nextAuth);
-    writeLocalStorage(AUTH_STORAGE_KEY, nextAuth);
-
-    return {
-      ok: true,
-      message: "Conta criada com sucesso. Você já pode acessar o sistema.",
-    };
-  };
+  const registerUser = (_payload: { name: string; email: string; password: string }) => ({
+    ok: false,
+    message:
+      "Cadastro local desativado. Solicite a criação do usuário no Supabase Auth ao administrador.",
+  });
 
   const updateUserAccess = (id: string, payload: { role?: UserRole; status?: UserStatus }) => {
     const now = new Date().toISOString();
@@ -254,9 +414,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    const next = { isAuthenticated: false, user: null };
-    setAuth(next);
-    writeLocalStorage(AUTH_STORAGE_KEY, next);
+    const client = getSupabaseClient();
+    clearAuthContext();
+    void client?.auth.signOut();
   };
 
   const setSimulations = (value: Simulation[]) => {
@@ -311,6 +471,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       users,
       login,
       registerUser,
+      refreshUserContext,
       updateUserAccess,
       logout,
       themeMode,
