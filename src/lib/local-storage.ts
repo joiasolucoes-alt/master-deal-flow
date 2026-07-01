@@ -10,5 +10,9 @@ export function readLocalStorage<T>(key: string, fallback: T): T {
 
 export function writeLocalStorage<T>(key: string, value: T) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.warn(`Falha ao gravar ${key} no armazenamento local.`, error);
+  }
 }

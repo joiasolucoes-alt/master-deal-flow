@@ -73,12 +73,20 @@ function readPersisted(): PersistedState {
     const raw = window.localStorage.getItem(STORE_KEY);
     if (!raw) {
       const initialState = baseState();
-      window.localStorage.setItem(STORE_KEY, JSON.stringify(initialState));
+      try {
+        window.localStorage.setItem(STORE_KEY, JSON.stringify(initialState));
+      } catch (error) {
+        console.warn("Falha ao inicializar estado global no armazenamento local.", error);
+      }
       return initialState;
     }
 
     const persisted = mergeSeedSimulations({ ...baseState(), ...JSON.parse(raw) });
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(persisted));
+    try {
+      window.localStorage.setItem(STORE_KEY, JSON.stringify(persisted));
+    } catch (error) {
+      console.warn("Falha ao atualizar estado global no armazenamento local.", error);
+    }
     return persisted;
   } catch {
     return baseState();
@@ -89,7 +97,12 @@ let state: PersistedState = readPersisted();
 const listeners = new Set<Listener>();
 
 function persistState() {
-  if (typeof window !== "undefined") window.localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Falha ao gravar estado global no armazenamento local.", error);
+  }
 }
 
 function setState(updater: (current: PersistedState) => PersistedState) {

@@ -98,10 +98,23 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-const BOOTSTRAP_ADMIN_EMAILS = new Set([
-  "djalmajr1994@gmail.com",
-  "gabriellageti@gmail.com",
-]);
+const BOOTSTRAP_ADMIN_EMAILS = new Set(["djalmajr1994@gmail.com", "gabriellageti@gmail.com"]);
+const AUTH_REQUEST_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(
+  promise: PromiseLike<T>,
+  message = "A conexão demorou mais que o esperado.",
+  timeoutMs = AUTH_REQUEST_TIMEOUT_MS,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
 
 function getSupabaseLoginErrorMessage(error: AuthError) {
   if (error.code === "email_not_confirmed") {
@@ -173,13 +186,14 @@ function normalizeRpcAuthContext(data: unknown): AuthContextPayload | null {
   };
 }
 
-async function loadUserContextFromRpc(
-  client: SupabaseClient,
-): Promise<AuthContextPayload | null> {
+async function loadUserContextFromRpc(client: SupabaseClient): Promise<AuthContextPayload | null> {
   const { data, error } = await client.rpc("get_my_master_flow_context");
 
   if (error) {
-    console.warn("Função get_my_master_flow_context indisponível; usando consultas diretas.", error);
+    console.warn(
+      "Função get_my_master_flow_context indisponível; usando consultas diretas.",
+      error,
+    );
     return null;
   }
 
@@ -225,7 +239,9 @@ async function loadUserMemberships(
   const { data: profileMemberships, error: profileMembershipError } = profile?.id
     ? await client
         .from("organization_members")
-        .select("id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)")
+        .select(
+          "id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)",
+        )
         .eq("user_id", profile.id)
     : { data: null, error: null };
 
@@ -242,7 +258,8 @@ async function loadUserMemberships(
 
   const bootstrapRole = getBootstrapRole(profile, supabaseUser);
   if (bootstrapRole) {
-    const unitName = profile?.default_unit_id || profile?.unit_id ? "Matriz Cataguases" : "Todas as unidades";
+    const unitName =
+      profile?.default_unit_id || profile?.unit_id ? "Matriz Cataguases" : "Todas as unidades";
 
     return [
       {
@@ -278,7 +295,9 @@ async function loadUserMemberships(
       : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
   ]);
 
-  const unit = units?.[0] ? ({ id: units[0].id, name: units[0].name } as AuthMembership["units"]) : null;
+  const unit = units?.[0]
+    ? ({ id: units[0].id, name: units[0].name } as AuthMembership["units"])
+    : null;
 
   return Promise.all(
     organizationIds.map(async (organizationId) => {
@@ -330,17 +349,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setSelectedOrderId = useAppStore((store) => store.setSelectedOrderId);
 
   useEffect(() => {
-    const storedTheme = getStoredTheme();
-    setThemeModeState(storedTheme);
-    applyTheme(storedTheme);
+    try {
+      const storedTheme = getStoredTheme();
+      setThemeModeState(storedTheme);
+      applyTheme(storedTheme);
 
-    const storedUsers = readLocalStorage<User[]>(USER_STORAGE_KEY, seedUsers).map(
-      normalizeStoredUser,
-    );
-    setUsers(storedUsers);
-    writeLocalStorage(USER_STORAGE_KEY, storedUsers);
-
-    setHydrated(true);
+      const storedUsers = readLocalStorage<User[]>(USER_STORAGE_KEY, seedUsers).map(
+        normalizeStoredUser,
+      );
+      setUsers(storedUsers);
+      writeLocalStorage(USER_STORAGE_KEY, storedUsers);
+    } catch (error) {
+      console.error("Falha ao inicializar preferências locais.", error);
+      toast.error("Falha ao ler dados locais. Iniciando com dados padrão.");
+    } finally {
+      setHydrated(true);
+    }
   }, []);
 
   const clearAuthContext = useCallback(() => {
@@ -383,7 +407,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       setAuth((current) => ({ ...current, isLoading: true, accessError: null }));
-      const session = sessionOverride ?? (await client.auth.getSession()).data.session;
+      let session: Session | null = null;
+      try {
+        session =
+          sessionOverride ??
+          (
+            await withTimeout(
+              client.auth.getSession(),
+              "Não foi possível recuperar sua sessão. Verifique a conexão e tente novamente.",
+            )
+          ).data.session;
+      } catch (error) {
+        console.error("Falha ao recuperar sessão Supabase.", error);
+        setAuth((current) => ({
+          ...current,
+          isLoading: false,
+          accessError:
+            error instanceof Error ? error.message : "Não foi possível recuperar sua sessão.",
+        }));
+        return;
+      }
+
       if (!session) {
         clearAuthContext();
         return;
@@ -391,30 +435,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const supabaseUser = session.user;
       try {
-        const rpcContext = await loadUserContextFromRpc(client);
+        const rpcContext = await withTimeout(
+          loadUserContextFromRpc(client),
+          "Não foi possível carregar o contexto do usuário no tempo esperado.",
+        );
         let profile = rpcContext?.profile ?? null;
 
         if (!profile) {
-          const { data: loadedProfile, error: profileError } = await client
-            .from("profiles")
-            .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
-            .eq("auth_user_id", supabaseUser.id)
-            .maybeSingle();
+          const { data: loadedProfile, error: profileError } = await withTimeout(
+            client
+              .from("profiles")
+              .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
+              .eq("auth_user_id", supabaseUser.id)
+              .maybeSingle(),
+            "Não foi possível carregar o perfil do usuário no tempo esperado.",
+          );
 
           if (profileError) throw new Error("Falha ao carregar perfil do usuário.");
 
           profile = loadedProfile;
 
           if (!profile) {
-            const { data: insertedProfile, error: insertError } = await client
-              .from("profiles")
-              .insert({
-                auth_user_id: supabaseUser.id,
-                full_name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
-                email: supabaseUser.email,
-              })
-              .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
-              .maybeSingle();
+            const { data: insertedProfile, error: insertError } = await withTimeout(
+              client
+                .from("profiles")
+                .insert({
+                  auth_user_id: supabaseUser.id,
+                  full_name:
+                    supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
+                  email: supabaseUser.email,
+                })
+                .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
+                .maybeSingle(),
+              "Não foi possível criar seu perfil no tempo esperado.",
+            );
 
             if (insertError) {
               setAuth((current) => ({
@@ -435,7 +489,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const activeMemberships = rpcContext?.memberships.length
           ? rpcContext.memberships
-          : await loadUserMemberships(client, supabaseUser, profile as AuthProfile | null);
+          : await withTimeout(
+              loadUserMemberships(client, supabaseUser, profile as AuthProfile | null),
+              "Não foi possível carregar suas permissões no tempo esperado.",
+            );
         const currentMembership = activeMemberships[0] ?? null;
         const role = currentMembership?.role ?? null;
         const displayName = profile?.full_name ?? profile?.name ?? supabaseUser.email ?? "Usuário";
@@ -586,10 +643,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (client) {
       setAuth((current) => ({ ...current, isLoading: true, accessError: null }));
-      const { data, error } = await client.auth.signInWithPassword({
-        email: normalizedEmail,
-        password,
-      });
+      let loginResult: Awaited<ReturnType<typeof client.auth.signInWithPassword>>;
+      try {
+        loginResult = await withTimeout(
+          client.auth.signInWithPassword({
+            email: normalizedEmail,
+            password,
+          }),
+          "O login demorou mais que o esperado. Verifique a conexão e tente novamente.",
+        );
+      } catch (error) {
+        console.error("Falha no login Supabase.", error);
+        clearAuthContext();
+        return {
+          ok: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "O login demorou mais que o esperado. Tente novamente.",
+        };
+      }
+
+      const { data, error } = loginResult;
 
       if (error) {
         console.error("Falha no login Supabase.", { code: error.code, status: error.status });

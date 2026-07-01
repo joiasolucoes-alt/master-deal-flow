@@ -12,8 +12,12 @@ export function resolveTheme(mode: ThemeMode): "light" | "dark" {
 
 export function getStoredTheme(): ThemeMode {
   if (typeof window === "undefined") return "system";
-  const theme = window.localStorage.getItem(THEME_STORAGE_KEY);
-  if (theme === "light" || theme === "dark" || theme === "system") return theme;
+  try {
+    const theme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (theme === "light" || theme === "dark" || theme === "system") return theme;
+  } catch (error) {
+    console.warn("Falha ao ler tema salvo.", error);
+  }
   return "system";
 }
 
