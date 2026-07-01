@@ -7,7 +7,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { AuthError, Session, User as SupabaseUser } from "@supabase/supabase-js";
+import type {
+  AuthError,
+  Session,
+  SupabaseClient,
+  User as SupabaseUser,
+} from "@supabase/supabase-js";
 import { SIMULATION_STORAGE_KEY, THEME_STORAGE_KEY, USER_STORAGE_KEY } from "@/lib/constants";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
@@ -26,6 +31,8 @@ type AuthProfile = {
   full_name?: string | null;
   name?: string | null;
   email?: string | null;
+  role?: string | null;
+  unit_id?: string | null;
   default_unit_id?: string | null;
 };
 
@@ -104,6 +111,111 @@ function normalizeStoredUser(user: User): User {
   };
 }
 
+function normalizeDatabaseRole(role?: string | null): string | null {
+  const normalized = role?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("admin")) return "admin";
+  if (normalized.includes("gest") || normalized.includes("negocia")) return "gestor";
+  if (normalized.includes("aprov")) return "aprovador";
+  if (normalized.includes("financ")) return "financeiro";
+  if (normalized.includes("comerc")) return "comercial";
+  return normalized;
+}
+
+function normalizeOrganizationIds(data: unknown): string[] {
+  if (!Array.isArray(data)) return [];
+
+  return data
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        const row = item as Record<string, unknown>;
+        return row.current_user_organizations ?? row.organization_id ?? row.id;
+      }
+      return null;
+    })
+    .filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+async function resolveMembershipRole(
+  client: SupabaseClient,
+  organizationId: string,
+  profileRole?: string | null,
+) {
+  const roles = ["admin", "gestor", "aprovador", "financeiro", "comercial"];
+
+  for (const role of roles) {
+    const { data, error } = await client.rpc("has_role", {
+      _org_id: organizationId,
+      _roles: [role],
+    });
+    if (!error && data === true) return role;
+  }
+
+  return normalizeDatabaseRole(profileRole) ?? "comercial";
+}
+
+async function loadUserMemberships(
+  client: SupabaseClient,
+  supabaseUser: SupabaseUser,
+  profile: AuthProfile | null,
+): Promise<AuthMembership[]> {
+  const { data: directMemberships, error: membershipError } = await client
+    .from("organization_members")
+    .select("id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)")
+    .eq("user_id", supabaseUser.id);
+
+  if (membershipError) {
+    console.warn("Falha ao consultar vínculos diretos do usuário.", membershipError);
+  }
+
+  if (directMemberships?.length) {
+    return directMemberships as unknown as AuthMembership[];
+  }
+
+  const { data: organizationRpcData, error: organizationRpcError } = await client.rpc(
+    "current_user_organizations",
+  );
+  if (organizationRpcError) {
+    console.warn("Falha ao consultar organizações via função de segurança.", organizationRpcError);
+    return [];
+  }
+
+  const organizationIds = normalizeOrganizationIds(organizationRpcData);
+  if (!organizationIds.length) return [];
+
+  const [{ data: organizations }, { data: units }] = await Promise.all([
+    client.from("organizations").select("id, name").in("id", organizationIds),
+    profile?.default_unit_id || profile?.unit_id
+      ? client
+          .from("units")
+          .select("id, name")
+          .in("id", [profile.default_unit_id ?? profile.unit_id])
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const unit = units?.[0] ? ({ id: units[0].id, name: units[0].name } as AuthMembership["units"]) : null;
+
+  return Promise.all(
+    organizationIds.map(async (organizationId) => {
+      const organization = organizations?.find((item) => item.id === organizationId) ?? null;
+      const role = await resolveMembershipRole(client, organizationId, profile?.role);
+
+      return {
+        id: `${organizationId}:${supabaseUser.id}`,
+        organization_id: organizationId,
+        unit_id: unit?.id ?? null,
+        user_id: supabaseUser.id,
+        role,
+        organizations: organization
+          ? { id: organization.id, name: organization.name }
+          : { id: organizationId, name: "Master Distribuidora e Logística" },
+        units: unit,
+      } satisfies AuthMembership;
+    }),
+  );
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
@@ -166,7 +278,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const mapRole = (role?: string | null): UserRole => {
-    const normalized = role?.toLowerCase();
+    const normalized = normalizeDatabaseRole(role);
     if (normalized === "admin") return "Admin";
     if (normalized === "gestor") return "Negociações";
     if (normalized === "aprovador") return "Aprovador";
@@ -197,7 +309,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const { data: loadedProfile, error: profileError } = await client
           .from("profiles")
-          .select("id, auth_user_id, full_name, name, email, default_unit_id")
+          .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
           .eq("auth_user_id", supabaseUser.id)
           .maybeSingle();
 
@@ -213,7 +325,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               full_name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
               email: supabaseUser.email,
             })
-            .select("id, auth_user_id, full_name, name, email, default_unit_id")
+            .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
             .maybeSingle();
 
           if (insertError) {
@@ -232,16 +344,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           profile = insertedProfile;
         }
 
-        const { data: memberships, error: membershipError } = await client
-          .from("organization_members")
-          .select(
-            "id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)",
-          )
-          .eq("user_id", supabaseUser.id);
-
-        if (membershipError) throw new Error("Usuário autenticado, mas sem acesso ao Master Flow.");
-
-        const activeMemberships = (memberships ?? []) as unknown as AuthMembership[];
+        const activeMemberships = await loadUserMemberships(
+          client,
+          supabaseUser,
+          profile as AuthProfile | null,
+        );
         const currentMembership = activeMemberships[0] ?? null;
         const role = currentMembership?.role ?? null;
         const displayName = profile?.full_name ?? profile?.name ?? supabaseUser.email ?? "Usuário";
