@@ -7,7 +7,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { AuthError, Session, User as SupabaseUser } from "@supabase/supabase-js";
+import type {
+  AuthError,
+  Session,
+  SupabaseClient,
+  User as SupabaseUser,
+} from "@supabase/supabase-js";
 import { SIMULATION_STORAGE_KEY, THEME_STORAGE_KEY, USER_STORAGE_KEY } from "@/lib/constants";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
@@ -26,6 +31,8 @@ type AuthProfile = {
   full_name?: string | null;
   name?: string | null;
   email?: string | null;
+  role?: string | null;
+  unit_id?: string | null;
   default_unit_id?: string | null;
 };
 
@@ -37,6 +44,16 @@ type AuthMembership = {
   role: string;
   organizations?: { id: string; name: string } | null;
   units?: { id: string; name: string } | null;
+};
+
+type AuthContextPayload = {
+  profile: AuthProfile | null;
+  memberships: AuthMembership[];
+};
+
+type SupabaseAuthContextPayload = {
+  profile?: AuthProfile | null;
+  memberships?: AuthMembership[] | null;
 };
 
 interface AuthState {
@@ -81,6 +98,11 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+const BOOTSTRAP_ADMIN_EMAILS = new Set([
+  "djalmajr1994@gmail.com",
+  "gabriellageti@gmail.com",
+]);
+
 function getSupabaseLoginErrorMessage(error: AuthError) {
   if (error.code === "email_not_confirmed") {
     return "Seu e-mail ainda não foi confirmado. Confirme pelo link enviado pelo Supabase ou desative a confirmação de e-mail no projeto.";
@@ -102,6 +124,180 @@ function normalizeStoredUser(user: User): User {
     status: user.status === "Pendente" ? "Ativo" : (user.status ?? "Ativo"),
     emailConfirmed: user.emailConfirmed ?? true,
   };
+}
+
+function normalizeDatabaseRole(role?: string | null): string | null {
+  const normalized = role?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("admin")) return "admin";
+  if (normalized.includes("gest") || normalized.includes("negocia")) return "gestor";
+  if (normalized.includes("aprov")) return "aprovador";
+  if (normalized.includes("financ")) return "financeiro";
+  if (normalized.includes("comerc")) return "comercial";
+  return normalized;
+}
+
+function getBootstrapRole(profile: AuthProfile | null, supabaseUser: SupabaseUser) {
+  const role = normalizeDatabaseRole(profile?.role);
+  if (role) return role;
+
+  const email = (supabaseUser.email ?? profile?.email ?? "").trim().toLowerCase();
+  if (BOOTSTRAP_ADMIN_EMAILS.has(email)) return "admin";
+
+  return null;
+}
+
+function normalizeOrganizationIds(data: unknown): string[] {
+  if (!Array.isArray(data)) return [];
+
+  return data
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        const row = item as Record<string, unknown>;
+        return row.current_user_organizations ?? row.organization_id ?? row.id;
+      }
+      return null;
+    })
+    .filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function normalizeRpcAuthContext(data: unknown): AuthContextPayload | null {
+  if (!data || typeof data !== "object") return null;
+
+  const payload = data as SupabaseAuthContextPayload;
+  const memberships = Array.isArray(payload.memberships) ? payload.memberships : [];
+  return {
+    profile: payload.profile ?? null,
+    memberships: memberships.filter((item) => item?.organization_id && item?.user_id),
+  };
+}
+
+async function loadUserContextFromRpc(
+  client: SupabaseClient,
+): Promise<AuthContextPayload | null> {
+  const { data, error } = await client.rpc("get_my_master_flow_context");
+
+  if (error) {
+    console.warn("Função get_my_master_flow_context indisponível; usando consultas diretas.", error);
+    return null;
+  }
+
+  return normalizeRpcAuthContext(data);
+}
+
+async function resolveMembershipRole(
+  client: SupabaseClient,
+  organizationId: string,
+  profileRole?: string | null,
+) {
+  const roles = ["admin", "gestor", "aprovador", "financeiro", "comercial"];
+
+  for (const role of roles) {
+    const { data, error } = await client.rpc("has_role", {
+      _org_id: organizationId,
+      _roles: [role],
+    });
+    if (!error && data === true) return role;
+  }
+
+  return normalizeDatabaseRole(profileRole) ?? "comercial";
+}
+
+async function loadUserMemberships(
+  client: SupabaseClient,
+  supabaseUser: SupabaseUser,
+  profile: AuthProfile | null,
+): Promise<AuthMembership[]> {
+  const { data: directMemberships, error: membershipError } = await client
+    .from("organization_members")
+    .select("id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)")
+    .eq("user_id", supabaseUser.id);
+
+  if (membershipError) {
+    console.warn("Falha ao consultar vínculos diretos do usuário.", membershipError);
+  }
+
+  if (directMemberships?.length) {
+    return directMemberships as unknown as AuthMembership[];
+  }
+
+  const { data: profileMemberships, error: profileMembershipError } = profile?.id
+    ? await client
+        .from("organization_members")
+        .select("id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)")
+        .eq("user_id", profile.id)
+    : { data: null, error: null };
+
+  if (profileMembershipError) {
+    console.warn("Falha ao consultar vínculos pelo perfil legado.", profileMembershipError);
+  }
+
+  if (profileMemberships?.length) {
+    return (profileMemberships as unknown as AuthMembership[]).map((membership) => ({
+      ...membership,
+      user_id: supabaseUser.id,
+    }));
+  }
+
+  const bootstrapRole = getBootstrapRole(profile, supabaseUser);
+  if (bootstrapRole) {
+    const unitName = profile?.default_unit_id || profile?.unit_id ? "Matriz Cataguases" : "Todas as unidades";
+
+    return [
+      {
+        id: `bootstrap:${supabaseUser.id}`,
+        organization_id: "bootstrap-master-flow",
+        unit_id: profile?.default_unit_id ?? profile?.unit_id ?? null,
+        user_id: supabaseUser.id,
+        role: bootstrapRole,
+        organizations: { id: "bootstrap-master-flow", name: "Master Distribuidora e Logística" },
+        units: { id: profile?.default_unit_id ?? profile?.unit_id ?? "all", name: unitName },
+      },
+    ];
+  }
+
+  const { data: organizationRpcData, error: organizationRpcError } = await client.rpc(
+    "current_user_organizations",
+  );
+  if (organizationRpcError) {
+    console.warn("Falha ao consultar organizações via função de segurança.", organizationRpcError);
+    return [];
+  }
+
+  const organizationIds = normalizeOrganizationIds(organizationRpcData);
+  if (!organizationIds.length) return [];
+
+  const [{ data: organizations }, { data: units }] = await Promise.all([
+    client.from("organizations").select("id, name").in("id", organizationIds),
+    profile?.default_unit_id || profile?.unit_id
+      ? client
+          .from("units")
+          .select("id, name")
+          .in("id", [(profile.default_unit_id ?? profile.unit_id) as string])
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+  ]);
+
+  const unit = units?.[0] ? ({ id: units[0].id, name: units[0].name } as AuthMembership["units"]) : null;
+
+  return Promise.all(
+    organizationIds.map(async (organizationId) => {
+      const organization = organizations?.find((item) => item.id === organizationId) ?? null;
+      const role = await resolveMembershipRole(client, organizationId, profile?.role);
+
+      return {
+        id: `${organizationId}:${supabaseUser.id}`,
+        organization_id: organizationId,
+        unit_id: unit?.id ?? null,
+        user_id: supabaseUser.id,
+        role,
+        organizations: organization
+          ? { id: organization.id, name: organization.name }
+          : { id: organizationId, name: "Master Distribuidora e Logística" },
+        units: unit,
+      } satisfies AuthMembership;
+    }),
+  );
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -166,7 +362,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const mapRole = (role?: string | null): UserRole => {
-    const normalized = role?.toLowerCase();
+    const normalized = normalizeDatabaseRole(role);
     if (normalized === "admin") return "Admin";
     if (normalized === "gestor") return "Negociações";
     if (normalized === "aprovador") return "Aprovador";
@@ -195,53 +391,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const supabaseUser = session.user;
       try {
-        const { data: loadedProfile, error: profileError } = await client
-          .from("profiles")
-          .select("id, auth_user_id, full_name, name, email, default_unit_id")
-          .eq("auth_user_id", supabaseUser.id)
-          .maybeSingle();
-
-        if (profileError) throw new Error("Falha ao carregar perfil do usuário.");
-
-        let profile = loadedProfile;
+        const rpcContext = await loadUserContextFromRpc(client);
+        let profile = rpcContext?.profile ?? null;
 
         if (!profile) {
-          const { data: insertedProfile, error: insertError } = await client
+          const { data: loadedProfile, error: profileError } = await client
             .from("profiles")
-            .insert({
-              auth_user_id: supabaseUser.id,
-              full_name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
-              email: supabaseUser.email,
-            })
-            .select("id, auth_user_id, full_name, name, email, default_unit_id")
+            .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
+            .eq("auth_user_id", supabaseUser.id)
             .maybeSingle();
 
-          if (insertError) {
-            setAuth((current) => ({
-              ...current,
-              isAuthenticated: true,
-              hasAccess: false,
-              isLoading: false,
-              session,
-              supabaseUser,
-              accessError:
-                "Seu usuário foi autenticado, mas ainda não possui perfil no Master Flow. Solicite liberação ao administrador.",
-            }));
-            return;
+          if (profileError) throw new Error("Falha ao carregar perfil do usuário.");
+
+          profile = loadedProfile;
+
+          if (!profile) {
+            const { data: insertedProfile, error: insertError } = await client
+              .from("profiles")
+              .insert({
+                auth_user_id: supabaseUser.id,
+                full_name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
+                email: supabaseUser.email,
+              })
+              .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
+              .maybeSingle();
+
+            if (insertError) {
+              setAuth((current) => ({
+                ...current,
+                isAuthenticated: true,
+                hasAccess: false,
+                isLoading: false,
+                session,
+                supabaseUser,
+                accessError:
+                  "Seu usuário foi autenticado, mas ainda não possui perfil no Master Flow. Solicite liberação ao administrador.",
+              }));
+              return;
+            }
+            profile = insertedProfile;
           }
-          profile = insertedProfile;
         }
 
-        const { data: memberships, error: membershipError } = await client
-          .from("organization_members")
-          .select(
-            "id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)",
-          )
-          .eq("user_id", supabaseUser.id);
-
-        if (membershipError) throw new Error("Usuário autenticado, mas sem acesso ao Master Flow.");
-
-        const activeMemberships = (memberships ?? []) as unknown as AuthMembership[];
+        const activeMemberships = rpcContext?.memberships.length
+          ? rpcContext.memberships
+          : await loadUserMemberships(client, supabaseUser, profile as AuthProfile | null);
         const currentMembership = activeMemberships[0] ?? null;
         const role = currentMembership?.role ?? null;
         const displayName = profile?.full_name ?? profile?.name ?? supabaseUser.email ?? "Usuário";
