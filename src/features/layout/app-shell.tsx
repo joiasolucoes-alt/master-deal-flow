@@ -12,6 +12,7 @@ export function AppShell() {
   const { hydrated, auth, logout } = useAppContext();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isCheckingInitialAuth = !hydrated || (auth.isLoading && !auth.isAuthenticated);
 
   useEffect(() => {
     if (hydrated && !auth.isLoading && !auth.isAuthenticated) {
@@ -25,7 +26,7 @@ export function AppShell() {
     }
   }, [auth.hasAccess, auth.user, hydrated, navigate, pathname]);
 
-  if (!hydrated || auth.isLoading) {
+  if (isCheckingInitialAuth) {
     return (
       <div className="min-h-dvh bg-background p-6">
         <LoadingState title="Inicializando Master Flow" />

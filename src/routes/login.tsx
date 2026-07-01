@@ -142,12 +142,8 @@ function LoginPage() {
 
           {auth.accessError ? <p className="text-sm text-destructive">{auth.accessError}</p> : null}
 
-          <Button
-            type="submit"
-            className="h-12 w-full text-base"
-            disabled={isSubmitting || auth.isLoading}
-          >
-            {isSubmitting || auth.isLoading ? "Autenticando..." : "Entrar"}
+          <Button type="submit" className="h-12 w-full text-base" disabled={isSubmitting}>
+            {isSubmitting ? "Autenticando..." : "Entrar"}
           </Button>
 
           <p className="text-center text-xs text-muted-foreground">
