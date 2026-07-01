@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -100,6 +101,7 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 const BOOTSTRAP_ADMIN_EMAILS = new Set(["djalmajr1994@gmail.com", "gabriellageti@gmail.com"]);
 const AUTH_REQUEST_TIMEOUT_MS = 12_000;
+const AUTH_LOADING_GUARD_MS = AUTH_REQUEST_TIMEOUT_MS + 3_000;
 
 function withTimeout<T>(
   promise: PromiseLike<T>,
@@ -321,6 +323,7 @@ async function loadUserMemberships(
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
+  const authBootstrapStartedRef = useRef(false);
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [auth, setAuth] = useState<AuthState>({
     isAuthenticated: false,
@@ -562,12 +565,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     void refreshUserContext();
+    authBootstrapStartedRef.current = true;
     const { data: subscription } = client.auth.onAuthStateChange((_event, session) => {
-      void refreshUserContext(session);
+      if (_event === "INITIAL_SESSION" && authBootstrapStartedRef.current) return;
+      window.setTimeout(() => {
+        void refreshUserContext(session);
+      }, 0);
     });
 
     return () => subscription.subscription.unsubscribe();
   }, [clearAuthContext, hydrated, refreshUserContext]);
+
+  useEffect(() => {
+    if (!hydrated || !auth.isLoading) return;
+
+    const guard = window.setTimeout(() => {
+      setAuth((current) => {
+        if (!current.isLoading) return current;
+        return {
+          ...current,
+          isLoading: false,
+          accessError: "A validação do login demorou mais que o esperado. Saia e entre novamente.",
+        };
+      });
+    }, AUTH_LOADING_GUARD_MS);
+
+    return () => window.clearTimeout(guard);
+  }, [auth.isLoading, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
