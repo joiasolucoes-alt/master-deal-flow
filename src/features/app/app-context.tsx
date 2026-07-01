@@ -46,6 +46,16 @@ type AuthMembership = {
   units?: { id: string; name: string } | null;
 };
 
+type AuthContextPayload = {
+  profile: AuthProfile | null;
+  memberships: AuthMembership[];
+};
+
+type SupabaseAuthContextPayload = {
+  profile?: AuthProfile | null;
+  memberships?: AuthMembership[] | null;
+};
+
 interface AuthState {
   isAuthenticated: boolean;
   hasAccess: boolean;
@@ -137,6 +147,30 @@ function normalizeOrganizationIds(data: unknown): string[] {
     .filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
+function normalizeRpcAuthContext(data: unknown): AuthContextPayload | null {
+  if (!data || typeof data !== "object") return null;
+
+  const payload = data as SupabaseAuthContextPayload;
+  const memberships = Array.isArray(payload.memberships) ? payload.memberships : [];
+  return {
+    profile: payload.profile ?? null,
+    memberships: memberships.filter((item) => item?.organization_id && item?.user_id),
+  };
+}
+
+async function loadUserContextFromRpc(
+  client: SupabaseClient,
+): Promise<AuthContextPayload | null> {
+  const { data, error } = await client.rpc("get_my_master_flow_context");
+
+  if (error) {
+    console.warn("Função get_my_master_flow_context indisponível; usando consultas diretas.", error);
+    return null;
+  }
+
+  return normalizeRpcAuthContext(data);
+}
+
 async function resolveMembershipRole(
   client: SupabaseClient,
   organizationId: string,
@@ -190,8 +224,8 @@ async function loadUserMemberships(
       ? client
           .from("units")
           .select("id, name")
-          .in("id", [profile.default_unit_id ?? profile.unit_id])
-      : Promise.resolve({ data: [] }),
+          .in("id", [(profile.default_unit_id ?? profile.unit_id) as string])
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
   ]);
 
   const unit = units?.[0] ? ({ id: units[0].id, name: units[0].name } as AuthMembership["units"]) : null;
@@ -307,48 +341,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const supabaseUser = session.user;
       try {
-        const { data: loadedProfile, error: profileError } = await client
-          .from("profiles")
-          .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
-          .eq("auth_user_id", supabaseUser.id)
-          .maybeSingle();
-
-        if (profileError) throw new Error("Falha ao carregar perfil do usuário.");
-
-        let profile = loadedProfile;
+        const rpcContext = await loadUserContextFromRpc(client);
+        let profile = rpcContext?.profile ?? null;
 
         if (!profile) {
-          const { data: insertedProfile, error: insertError } = await client
+          const { data: loadedProfile, error: profileError } = await client
             .from("profiles")
-            .insert({
-              auth_user_id: supabaseUser.id,
-              full_name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
-              email: supabaseUser.email,
-            })
-            .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
+            .select("id, auth_user_id, full_name, name, email, default_unit_id")
+            .eq("auth_user_id", supabaseUser.id)
             .maybeSingle();
 
-          if (insertError) {
-            setAuth((current) => ({
-              ...current,
-              isAuthenticated: true,
-              hasAccess: false,
-              isLoading: false,
-              session,
-              supabaseUser,
-              accessError:
-                "Seu usuário foi autenticado, mas ainda não possui perfil no Master Flow. Solicite liberação ao administrador.",
-            }));
-            return;
+          if (profileError) throw new Error("Falha ao carregar perfil do usuário.");
+
+          profile = loadedProfile;
+
+          if (!profile) {
+            const { data: insertedProfile, error: insertError } = await client
+              .from("profiles")
+              .insert({
+                auth_user_id: supabaseUser.id,
+                full_name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
+                email: supabaseUser.email,
+              })
+              .select("id, auth_user_id, full_name, name, email, default_unit_id")
+              .maybeSingle();
+
+            if (insertError) {
+              setAuth((current) => ({
+                ...current,
+                isAuthenticated: true,
+                hasAccess: false,
+                isLoading: false,
+                session,
+                supabaseUser,
+                accessError:
+                  "Seu usuário foi autenticado, mas ainda não possui perfil no Master Flow. Solicite liberação ao administrador.",
+              }));
+              return;
+            }
+            profile = insertedProfile;
           }
-          profile = insertedProfile;
         }
 
-        const activeMemberships = await loadUserMemberships(
-          client,
-          supabaseUser,
-          profile as AuthProfile | null,
-        );
+        const activeMemberships = rpcContext?.memberships.length
+          ? rpcContext.memberships
+          : await loadUserMemberships(client, supabaseUser, profile as AuthProfile | null);
         const currentMembership = activeMemberships[0] ?? null;
         const role = currentMembership?.role ?? null;
         const displayName = profile?.full_name ?? profile?.name ?? supabaseUser.email ?? "Usuário";
