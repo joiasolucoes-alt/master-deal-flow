@@ -98,6 +98,11 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+const BOOTSTRAP_ADMIN_EMAILS = new Set([
+  "djalmajr1994@gmail.com",
+  "gabriellageti@gmail.com",
+]);
+
 function getSupabaseLoginErrorMessage(error: AuthError) {
   if (error.code === "email_not_confirmed") {
     return "Seu e-mail ainda não foi confirmado. Confirme pelo link enviado pelo Supabase ou desative a confirmação de e-mail no projeto.";
@@ -130,6 +135,16 @@ function normalizeDatabaseRole(role?: string | null): string | null {
   if (normalized.includes("financ")) return "financeiro";
   if (normalized.includes("comerc")) return "comercial";
   return normalized;
+}
+
+function getBootstrapRole(profile: AuthProfile | null, supabaseUser: SupabaseUser) {
+  const role = normalizeDatabaseRole(profile?.role);
+  if (role) return role;
+
+  const email = (supabaseUser.email ?? profile?.email ?? "").trim().toLowerCase();
+  if (BOOTSTRAP_ADMIN_EMAILS.has(email)) return "admin";
+
+  return null;
 }
 
 function normalizeOrganizationIds(data: unknown): string[] {
@@ -223,6 +238,23 @@ async function loadUserMemberships(
       ...membership,
       user_id: supabaseUser.id,
     }));
+  }
+
+  const bootstrapRole = getBootstrapRole(profile, supabaseUser);
+  if (bootstrapRole) {
+    const unitName = profile?.default_unit_id || profile?.unit_id ? "Matriz Cataguases" : "Todas as unidades";
+
+    return [
+      {
+        id: `bootstrap:${supabaseUser.id}`,
+        organization_id: "bootstrap-master-flow",
+        unit_id: profile?.default_unit_id ?? profile?.unit_id ?? null,
+        user_id: supabaseUser.id,
+        role: bootstrapRole,
+        organizations: { id: "bootstrap-master-flow", name: "Master Distribuidora e Logística" },
+        units: { id: profile?.default_unit_id ?? profile?.unit_id ?? "all", name: unitName },
+      },
+    ];
   }
 
   const { data: organizationRpcData, error: organizationRpcError } = await client.rpc(
@@ -365,7 +397,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!profile) {
           const { data: loadedProfile, error: profileError } = await client
             .from("profiles")
-            .select("id, auth_user_id, full_name, name, email, default_unit_id")
+            .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
             .eq("auth_user_id", supabaseUser.id)
             .maybeSingle();
 
@@ -381,7 +413,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 full_name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
                 email: supabaseUser.email,
               })
-              .select("id, auth_user_id, full_name, name, email, default_unit_id")
+              .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
               .maybeSingle();
 
             if (insertError) {
