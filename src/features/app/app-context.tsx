@@ -207,6 +207,24 @@ async function loadUserMemberships(
     return directMemberships as unknown as AuthMembership[];
   }
 
+  const { data: profileMemberships, error: profileMembershipError } = profile?.id
+    ? await client
+        .from("organization_members")
+        .select("id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)")
+        .eq("user_id", profile.id)
+    : { data: null, error: null };
+
+  if (profileMembershipError) {
+    console.warn("Falha ao consultar vínculos pelo perfil legado.", profileMembershipError);
+  }
+
+  if (profileMemberships?.length) {
+    return (profileMemberships as unknown as AuthMembership[]).map((membership) => ({
+      ...membership,
+      user_id: supabaseUser.id,
+    }));
+  }
+
   const { data: organizationRpcData, error: organizationRpcError } = await client.rpc(
     "current_user_organizations",
   );
