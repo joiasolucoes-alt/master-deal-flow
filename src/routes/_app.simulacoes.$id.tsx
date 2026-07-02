@@ -86,6 +86,15 @@ export const Route = createFileRoute("/_app/simulacoes/$id")({
 const STEPS = ["Pedido", "Produtos", "NF/Custos", "Despesas", "Pagamento", "Resumo"];
 const ORDER_CATALOG_STORAGE_KEY = "master-flow-order-catalogs";
 const SIMULATION_FORM_DRAFT_STORAGE_KEY = "master-flow-simulation-form-drafts";
+const STANDARD_EXPENSE_TYPES: ExpenseItem["type"][] = [
+  "Frete",
+  "Comissão",
+  "Custo NF",
+  "STRINT",
+  "PIS E COFINS",
+  "Financeiro",
+  "Outros",
+];
 const REQUIRED_TEXT_FIELDS: Array<
   [
     keyof Pick<
@@ -260,6 +269,22 @@ function clearSavedSimulationFormDraft(key: string) {
   writeLocalStorage<SavedSimulationFormDrafts>(SIMULATION_FORM_DRAFT_STORAGE_KEY, nextDrafts);
 }
 
+function normalizeExpenseItems(items: ExpenseItem[]) {
+  const seenZeroTypes = new Set<ExpenseItem["type"]>();
+
+  return items.filter((item) => {
+    const value = Number(item.value) || 0;
+    const isZero = value === 0;
+    const isStandard = STANDARD_EXPENSE_TYPES.includes(item.type);
+
+    if (!isStandard && isZero) return false;
+    if (isZero && seenZeroTypes.has(item.type)) return false;
+    if (isZero) seenZeroTypes.add(item.type);
+
+    return true;
+  });
+}
+
 function SimulationDetailPage() {
   const { id } = useParams({ from: "/_app/simulacoes/$id" });
   const navigate = useNavigate();
@@ -313,6 +338,14 @@ function SimulationDetailPage() {
     if (!canOpenSimulation) return;
     writeSavedSimulationFormDraft(draftStorageKey, draft, step);
   }, [canOpenSimulation, draft, draftStorageKey, step]);
+
+  useEffect(() => {
+    setDraft((current) => {
+      const normalizedExpenseItems = normalizeExpenseItems(current.expenseItems);
+      if (normalizedExpenseItems.length === current.expenseItems.length) return current;
+      return { ...current, expenseItems: normalizedExpenseItems };
+    });
+  }, [draftStorageKey]);
 
   if (!canOpenSimulation) {
     return (
@@ -1502,18 +1535,25 @@ function ExpensesStep({
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
   function addItem() {
+    const usedTypes = new Set(draft.expenseItems.map((item) => item.type));
+    const nextType = STANDARD_EXPENSE_TYPES.find((type) => !usedTypes.has(type)) ?? "Outros";
     const item: ExpenseItem = {
       id: `ex-${Date.now()}`,
-      type: "Frete",
+      type: nextType,
       calculationType: "fixed",
       value: 0,
     };
-    setDraft((d) => ({ ...d, expenseItems: [...d.expenseItems, item] }));
+    setDraft((d) => ({
+      ...d,
+      expenseItems: normalizeExpenseItems([...d.expenseItems, item]),
+    }));
   }
   function updateItem(id: string, patch: Partial<ExpenseItem>) {
     setDraft((d) => ({
       ...d,
-      expenseItems: d.expenseItems.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+      expenseItems: normalizeExpenseItems(
+        d.expenseItems.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+      ),
     }));
   }
   function remove(id: string) {
@@ -1555,20 +1595,7 @@ function ExpensesStep({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {[
-                          "Frete",
-                          "Comissão",
-                          "Custo NF",
-                          "Custo fiscal",
-                          "Financeiro",
-                          "PIS E COFINS",
-                          "STRINT",
-                          "Tributos",
-                          "Pallets",
-                          "Chapa/Descarga",
-                          "Seguro",
-                          "Outros",
-                        ].map((t) => (
+                        {STANDARD_EXPENSE_TYPES.map((t) => (
                           <SelectItem key={t} value={t}>
                             {t}
                           </SelectItem>
