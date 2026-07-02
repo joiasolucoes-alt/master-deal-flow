@@ -68,6 +68,9 @@ export interface NotificationItem {
   href?: string;
   entityType?: "approval" | "delivery" | "simulation" | "order" | "negotiation";
   entityId?: string;
+  targetUserId?: string;
+  targetUserEmail?: string;
+  targetUserName?: string;
 }
 
 export interface SimulationProduct {

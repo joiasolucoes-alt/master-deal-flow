@@ -69,6 +69,7 @@ import { formatCurrency, formatPercent, formatPrecisePercent } from "@/lib/forma
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
+import { useAppStore } from "@/store/useAppStore";
 import {
   canConvertSimulationToOrder,
   canCreateSimulation,
@@ -221,6 +222,7 @@ function SimulationDetailPage() {
   const { id } = useParams({ from: "/_app/simulacoes/$id" });
   const navigate = useNavigate();
   const { auth, simulations, orders, upsertSimulation, upsertOrder } = useAppContext();
+  const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
   const initial = simulations.find((s) => s.id === id) ?? createEmptySimulation(currentUser);
   const [draft, setDraft] = useState<Simulation>(initial);
@@ -327,6 +329,19 @@ function SimulationDetailPage() {
     const next = { ...draft, orderId, convertedAt: new Date().toISOString() };
     upsertSimulation(next);
     upsertOrder(order);
+    addNotification({
+      id: `not-${Date.now()}`,
+      title: "Pedido criado",
+      description: `${order.number} foi criado a partir da simulação ${draft.number}.`,
+      type: "success",
+      createdAt: new Date().toISOString(),
+      unread: true,
+      entityType: "order",
+      entityId: order.id,
+      targetUserId: currentUser?.id,
+      targetUserEmail: currentUser?.email,
+      targetUserName: draft.owner,
+    });
     setDraft(next);
     toast.success(`Pedido ${orderNumber} criado.`, {
       action: {
@@ -351,9 +366,22 @@ function SimulationDetailPage() {
     const next = { ...draft, status: "Pendente de aprovação" as const };
     if (!window.confirm("Enviar esta simulação para aprovação?")) return;
     upsertSimulation(next);
+    addNotification({
+      id: `not-${Date.now()}`,
+      title: "Simulação enviada para aprovação",
+      description: `${next.number} foi enviada para análise.`,
+      type: "warning",
+      createdAt: new Date().toISOString(),
+      unread: true,
+      entityType: "approval",
+      entityId: next.id,
+      targetUserId: currentUser?.id,
+      targetUserEmail: currentUser?.email,
+      targetUserName: next.owner,
+    });
     setDraft(next);
     toast.success("Simulação enviada para aprovação");
-    navigate({ to: "/aprovacoes" });
+    navigate({ to: "/simulacoes/$id", params: { id: next.id } });
   }
 
   return (

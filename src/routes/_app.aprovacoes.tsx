@@ -19,6 +19,7 @@ import { ClipboardCheck, FileWarning, ThumbsDown, ThumbsUp } from "lucide-react"
 import { toast } from "sonner";
 import type { Simulation } from "@/data/types";
 import { convertSimulationToOrder } from "@/features/simulations/services/simulationService";
+import { useAppStore } from "@/store/useAppStore";
 import {
   canApproveSimulation,
   canReviewApprovals,
@@ -45,6 +46,7 @@ function ApprovalsPage() {
     selectedApprovalId,
     setSelectedApprovalId,
   } = useAppContext();
+  const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
   const canReview = canReviewApprovals(currentUser);
   const pending = useMemo(
@@ -111,6 +113,17 @@ function ApprovalsPage() {
       const existingOrder = orders.find((order) => order.simulationId === selected.id);
       if (existingOrder || selected.orderId) {
         upsertSimulation(nextSimulation);
+        addNotification({
+          id: `not-${Date.now()}`,
+          title: "Simulação aprovada",
+          description: `${selected.number} foi aprovada.`,
+          type: "success",
+          createdAt: new Date().toISOString(),
+          unread: true,
+          entityType: "simulation",
+          entityId: selected.id,
+          targetUserName: selected.owner,
+        });
         toast.success("Simulação aprovada");
       } else {
         const conversion = convertSimulationToOrder(
@@ -120,10 +133,32 @@ function ApprovalsPage() {
         );
         upsertSimulation(conversion.simulation);
         upsertOrder(conversion.order);
+        addNotification({
+          id: `not-${Date.now()}`,
+          title: "Simulação aprovada",
+          description: `${selected.number} foi aprovada e virou o pedido ${conversion.order.number}.`,
+          type: "success",
+          createdAt: new Date().toISOString(),
+          unread: true,
+          entityType: "order",
+          entityId: conversion.order.id,
+          targetUserName: selected.owner,
+        });
         toast.success(`Simulação aprovada e pedido ${conversion.order.number} criado.`);
       }
     } else {
       upsertSimulation(nextSimulation);
+      addNotification({
+        id: `not-${Date.now()}`,
+        title: decision === "adjust" ? "Ajuste solicitado na simulação" : "Simulação reprovada",
+        description: `${selected.number}: ${map[decision].toLowerCase()}.`,
+        type: decision === "adjust" ? "warning" : "info",
+        createdAt: new Date().toISOString(),
+        unread: true,
+        entityType: "simulation",
+        entityId: selected.id,
+        targetUserName: selected.owner,
+      });
       toast.success(`Simulação ${map[decision].toLowerCase()}`);
     }
     setComment("");

@@ -35,7 +35,23 @@ export function AppHeader() {
   const negotiations = useAppStore((store) => store.negotiations);
   const orders = useAppStore((store) => store.orders);
   const markNotificationRead = useAppStore((store) => store.markNotificationRead);
-  const unread = notifications.filter((item) => item.unread).length;
+  const visibleNotifications = useMemo(() => {
+    if (user?.role === "Admin") return notifications;
+    const userEmail = user?.email?.trim().toLowerCase();
+    const userName = user?.name?.trim().toLowerCase();
+
+    return notifications.filter((item) => {
+      if (item.targetUserId && item.targetUserId === user?.id) return true;
+      if (item.targetUserEmail && item.targetUserEmail.trim().toLowerCase() === userEmail) {
+        return true;
+      }
+      if (item.targetUserName && item.targetUserName.trim().toLowerCase() === userName) {
+        return true;
+      }
+      return false;
+    });
+  }, [notifications, user?.email, user?.id, user?.name, user?.role]);
+  const unread = visibleNotifications.filter((item) => item.unread).length;
   const trimmedQuery = query.trim().toLowerCase();
   const searchResults = useMemo<SearchResult[]>(() => {
     if (trimmedQuery.length < 2) return [];
@@ -96,6 +112,26 @@ export function AppHeader() {
   function openNotification(item: (typeof notifications)[number]) {
     markNotificationRead(item.id);
     window.setTimeout(() => {
+      if (item.entityType === "approval" && item.entityId) {
+        if (user?.role === "Admin" || user?.role === "Aprovador") {
+          navigate({ to: "/aprovacoes" });
+        } else {
+          navigate({ to: "/simulacoes/$id", params: { id: item.entityId } });
+        }
+        return;
+      }
+      if (item.entityType === "simulation" && item.entityId) {
+        navigate({ to: "/simulacoes/$id", params: { id: item.entityId } });
+        return;
+      }
+      if (item.entityType === "order" && item.entityId) {
+        navigate({ to: "/pedidos/$id", params: { id: item.entityId } });
+        return;
+      }
+      if (item.entityType === "negotiation" && item.entityId) {
+        navigate({ to: "/negociacoes/$id", params: { id: item.entityId } });
+        return;
+      }
       if (item.href === "/aprovacoes") navigate({ to: "/aprovacoes" });
       if (item.href === "/entregas") navigate({ to: "/entregas" });
       if (item.href === "/simulacoes") navigate({ to: "/simulacoes" });
@@ -184,24 +220,30 @@ export function AppHeader() {
             <DropdownMenuContent align="end" className="w-96 max-w-[90vw] rounded-2xl p-2">
               <DropdownMenuLabel>Notificações</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {notifications.map((item) => (
-                <DropdownMenuItem
-                  key={item.id}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    openNotification(item);
-                  }}
-                  className="items-start rounded-xl px-3 py-3"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-foreground">{item.title}</span>
-                      {item.unread ? <span className="h-2 w-2 rounded-full bg-primary" /> : null}
+              {visibleNotifications.length ? (
+                visibleNotifications.map((item) => (
+                  <DropdownMenuItem
+                    key={item.id}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      openNotification(item);
+                    }}
+                    className="items-start rounded-xl px-3 py-3"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground">{item.title}</span>
+                        {item.unread ? <span className="h-2 w-2 rounded-full bg-primary" /> : null}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{item.description}</p>
                     </div>
-                    <p className="text-sm text-muted-foreground">{item.description}</p>
-                  </div>
-                </DropdownMenuItem>
-              ))}
+                  </DropdownMenuItem>
+                ))
+              ) : (
+                <div className="px-3 py-4 text-sm text-muted-foreground">
+                  Nenhuma notificação para sua conta.
+                </div>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
