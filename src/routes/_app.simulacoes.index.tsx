@@ -21,6 +21,7 @@ import { getSimulationTotals } from "@/lib/calculations";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import { canCreateSimulation } from "@/lib/permissions";
+import { filterSimulationsForUser } from "@/lib/visibility";
 import { BadgeDollarSign, CheckCircle2, FileSpreadsheet, TriangleAlert } from "lucide-react";
 import type { Simulation } from "@/data/types";
 
@@ -44,14 +45,19 @@ function SimulationsPage() {
   const [status, setStatus] = useState("Todos");
   const [owner, setOwner] = useState("Todos");
 
+  const visibleSimulations = useMemo(
+    () => filterSimulationsForUser(simulations, auth.user),
+    [auth.user, simulations],
+  );
+
   const owners = useMemo(
-    () => ["Todos", ...Array.from(new Set(simulations.map((s) => s.owner)))],
-    [simulations],
+    () => ["Todos", ...Array.from(new Set(visibleSimulations.map((s) => s.owner)))],
+    [visibleSimulations],
   );
 
   const filtered = useMemo(
     () =>
-      simulations.filter((sim) => {
+      visibleSimulations.filter((sim) => {
         if (status !== "Todos" && sim.status !== status) return false;
         if (owner !== "Todos" && sim.owner !== owner) return false;
         if (
@@ -63,21 +69,21 @@ function SimulationsPage() {
           return false;
         return true;
       }),
-    [simulations, search, status, owner],
+    [visibleSimulations, search, status, owner],
   );
 
   const summary = useMemo(() => {
-    const total = simulations.length;
-    const approved = simulations.filter((s) => s.status === "Aprovada").length;
-    const pending = simulations.filter(
+    const total = visibleSimulations.length;
+    const approved = visibleSimulations.filter((s) => s.status === "Aprovada").length;
+    const pending = visibleSimulations.filter(
       (s) =>
         s.status === "Pendente de aprovação" ||
         s.status === "Em análise" ||
         s.status === "Rascunho",
     ).length;
-    const revenue = simulations.reduce((sum, s) => sum + getSimulationTotals(s).revenue, 0);
+    const revenue = visibleSimulations.reduce((sum, s) => sum + getSimulationTotals(s).revenue, 0);
     return { total, approved, pending, revenue };
-  }, [simulations]);
+  }, [visibleSimulations]);
 
   const columns: DataColumn<Simulation>[] = [
     {

@@ -6,7 +6,9 @@ import { DataTable, type DataColumn } from "@/components/app/data-table";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { belongsToUser, canViewAllFlows } from "@/lib/visibility";
 
 export const Route = createFileRoute("/_app/fretes")({
   component: FreightsPage,
@@ -22,6 +24,7 @@ interface Freight {
   weight: string;
   status: "Cotação" | "Aprovado" | "Em rota" | "Entregue";
   loading: string;
+  owner: string;
 }
 
 const freights: Freight[] = [
@@ -35,6 +38,7 @@ const freights: Freight[] = [
     weight: "11.4t",
     status: "Em rota",
     loading: "2026-06-15T08:00:00-03:00",
+    owner: "Pedro Costa",
   },
   {
     id: "f2",
@@ -46,6 +50,7 @@ const freights: Freight[] = [
     weight: "22.8t",
     status: "Aprovado",
     loading: "2026-06-18T07:30:00-03:00",
+    owner: "Carla Mendes",
   },
   {
     id: "f3",
@@ -57,6 +62,7 @@ const freights: Freight[] = [
     weight: "9.6t",
     status: "Cotação",
     loading: "2026-06-19T09:00:00-03:00",
+    owner: "João Silva",
   },
   {
     id: "f4",
@@ -68,6 +74,7 @@ const freights: Freight[] = [
     weight: "14.2t",
     status: "Entregue",
     loading: "2026-06-10T06:00:00-03:00",
+    owner: "Ana Paula",
   },
 ];
 
@@ -116,9 +123,13 @@ const columns: DataColumn<Freight>[] = [
 ];
 
 function FreightsPage() {
-  const total = freights.length;
-  const transit = freights.filter((f) => f.status === "Em rota").length;
-  const value = freights.reduce((s, f) => s + f.value, 0);
+  const { auth } = useAppContext();
+  const visibleFreights = canViewAllFlows(auth.user)
+    ? freights
+    : freights.filter((freight) => belongsToUser(freight.owner, auth.user));
+  const total = visibleFreights.length;
+  const transit = visibleFreights.filter((f) => f.status === "Em rota").length;
+  const value = visibleFreights.reduce((s, f) => s + f.value, 0);
 
   return (
     <div className="space-y-6">
@@ -144,7 +155,7 @@ function FreightsPage() {
         <CardContent>
           <DataTable
             columns={columns}
-            data={freights}
+            data={visibleFreights}
             emptyTitle="Sem fretes"
             emptyDescription="Nenhum frete contratado no momento."
           />

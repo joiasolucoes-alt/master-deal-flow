@@ -6,17 +6,20 @@ import { StatusBadge } from "@/components/app/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { orders } from "@/data/orders";
+import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { filterOrdersForUser } from "@/lib/visibility";
 
 export const Route = createFileRoute("/_app/entregas")({
   component: DeliveriesPage,
 });
 
 function DeliveriesPage() {
-  const inTransit = orders.filter((o) => o.status === "Em rota");
-  const delivered = orders.filter((o) => o.status === "Entregue");
-  const upcoming = orders.filter((o) => o.status !== "Entregue");
+  const { auth, orders } = useAppContext();
+  const visibleOrders = filterOrdersForUser(orders, auth.user);
+  const inTransit = visibleOrders.filter((o) => o.status === "Em rota");
+  const delivered = visibleOrders.filter((o) => o.status === "Entregue");
+  const upcoming = visibleOrders.filter((o) => o.status !== "Entregue");
 
   return (
     <div className="space-y-6">

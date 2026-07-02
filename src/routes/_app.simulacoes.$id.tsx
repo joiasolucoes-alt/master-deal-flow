@@ -77,6 +77,7 @@ import {
   canSubmitSimulationForApproval,
   isPendingApprovalStatus,
 } from "@/lib/permissions";
+import { filterSimulationsForUser } from "@/lib/visibility";
 
 export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
@@ -224,9 +225,19 @@ function SimulationDetailPage() {
   const { auth, simulations, orders, upsertSimulation, upsertOrder } = useAppContext();
   const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
-  const initial = simulations.find((s) => s.id === id) ?? createEmptySimulation(currentUser);
+  const visibleSimulations = useMemo(
+    () => filterSimulationsForUser(simulations, currentUser),
+    [currentUser, simulations],
+  );
+  const existingSimulation =
+    id === "nova" ? null : visibleSimulations.find((simulation) => simulation.id === id);
+  const initial = useMemo(
+    () => existingSimulation ?? createEmptySimulation(currentUser),
+    [currentUser, existingSimulation],
+  );
   const [draft, setDraft] = useState<Simulation>(initial);
   const [step, setStep] = useState(0);
+  const canOpenSimulation = id === "nova" || Boolean(existingSimulation);
   const totals = useMemo(() => getSimulationTotals(draft), [draft]);
   const costImpact = useMemo(() => getSimulationCostImpact(draft), [draft]);
   const sensitivity = useMemo(() => getSimulationSensitivity(draft), [draft]);
@@ -234,6 +245,28 @@ function SimulationDetailPage() {
   const userCanEdit = canEditSimulation(currentUser, draft);
   const userCanSubmit = canSubmitSimulationForApproval(currentUser, draft);
   const userCanConvert = canConvertSimulationToOrder(currentUser);
+
+  useEffect(() => {
+    setDraft(initial);
+    setStep(0);
+  }, [initial]);
+
+  if (!canOpenSimulation) {
+    return (
+      <div className="space-y-6">
+        <Button asChild variant="ghost" size="sm" className="w-fit">
+          <Link to="/simulacoes">
+            <ArrowLeft /> Voltar para simulações
+          </Link>
+        </Button>
+        <Card className="shadow-card">
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            Simulação não encontrada para sua conta.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   function update<K extends keyof Simulation>(key: K, value: Simulation[K]) {
     setDraft((current) => ({ ...current, [key]: value }));

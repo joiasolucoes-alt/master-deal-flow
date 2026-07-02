@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/store/useAppStore";
 import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import { filterNegotiationsForUser } from "@/lib/visibility";
 import type { Negotiation } from "@/data/types";
 
 export const Route = createFileRoute("/_app/negociacoes")({
@@ -32,10 +33,10 @@ function NegotiationsPage() {
   const [stage, setStage] = useState("Todas");
   const [status, setStatus] = useState("Todos");
 
-  const visibleNegotiations = useMemo(() => {
-    if (auth.user?.role !== "Comercial") return negotiations;
-    return negotiations.filter((item) => item.owner === auth.user?.name);
-  }, [auth.user?.name, auth.user?.role, negotiations]);
+  const visibleNegotiations = useMemo(
+    () => filterNegotiationsForUser(negotiations, auth.user),
+    [auth.user, negotiations],
+  );
 
   const filtered = useMemo(() => {
     return visibleNegotiations.filter((item) => {

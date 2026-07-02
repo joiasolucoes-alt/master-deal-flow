@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Area,
@@ -31,20 +32,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import {
-  dashboardKpis,
-  negotiationStatus,
-  simulationEvolution,
-  topClients,
-} from "@/data/dashboard";
-import { simulationsSeed } from "@/data/simulations";
-import { orders } from "@/data/orders";
+import { simulationEvolution } from "@/data/dashboard";
 import { formatCompactCurrency, formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { getSimulationTotals } from "@/lib/calculations";
 import { downloadTextFile } from "@/lib/actions";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { useAppContext } from "@/features/app/app-context";
 import { canCreateSimulation } from "@/lib/permissions";
+import { useAppStore } from "@/store/useAppStore";
+import {
+  filterNegotiationsForUser,
+  filterOrdersForUser,
+  filterSimulationsForUser,
+} from "@/lib/visibility";
 
 export const Route = createFileRoute("/_app/dashboard")({
   component: DashboardPage,
@@ -66,24 +66,103 @@ const pieColors = [
   "var(--color-chart-5)",
 ];
 
-function formatKpi(item: (typeof dashboardKpis)[number]) {
-  if (item.format === "currencyCompact") return formatCompactCurrency(item.value);
-  if (item.format === "percent") return formatPercent(item.value, 1);
-  return new Intl.NumberFormat("pt-BR").format(item.value);
-}
-
 function DashboardPage() {
-  const { auth } = useAppContext();
+  const { auth, simulations, orders } = useAppContext();
+  const negotiations = useAppStore((store) => store.negotiations);
+  const visibleSimulations = useMemo(
+    () => filterSimulationsForUser(simulations, auth.user),
+    [auth.user, simulations],
+  );
+  const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
+  const visibleNegotiations = useMemo(
+    () => filterNegotiationsForUser(negotiations, auth.user),
+    [auth.user, negotiations],
+  );
+  const pendingApprovals = visibleSimulations.filter(
+    (simulation) =>
+      simulation.status === "Pendente de aprovação" || simulation.status === "Em análise",
+  ).length;
+  const revenue = visibleSimulations.reduce(
+    (sum, simulation) => sum + getSimulationTotals(simulation).revenue,
+    0,
+  );
+  const averageMargin =
+    visibleSimulations.length > 0
+      ? visibleSimulations.reduce(
+          (sum, simulation) => sum + getSimulationTotals(simulation).marginPercent,
+          0,
+        ) / visibleSimulations.length
+      : 0;
+  const dashboardCards = [
+    {
+      label: "Negociações",
+      value: String(visibleNegotiations.length),
+      delta: "0,0%",
+      tone: "info",
+    },
+    { label: "Simulações", value: String(visibleSimulations.length), delta: "0,0%", tone: "info" },
+    {
+      label: "Aprovações pendentes",
+      value: String(pendingApprovals),
+      delta: "0,0%",
+      tone: "warning",
+    },
+    {
+      label: "Pedidos ativos",
+      value: String(visibleOrders.filter((order) => order.status !== "Entregue").length),
+      delta: "0,0%",
+      tone: "success",
+    },
+    {
+      label: "Receita simulada",
+      value: formatCompactCurrency(revenue),
+      delta: "0,0%",
+      tone: "success",
+    },
+    {
+      label: "Margem média",
+      value: formatPercent(averageMargin, 1),
+      delta: "0,0%",
+      tone:
+        averageMargin >= MINIMUM_MARGIN_TARGET
+          ? "success"
+          : averageMargin >= ATTENTION_MARGIN_TARGET
+            ? "warning"
+            : "danger",
+    },
+    {
+      label: "Pedidos entregues",
+      value: String(visibleOrders.filter((order) => order.status === "Entregue").length),
+      delta: "0,0%",
+      tone: "info",
+    },
+  ];
+  const statusData = Object.entries(
+    visibleNegotiations.reduce<Record<string, number>>((acc, negotiation) => {
+      acc[negotiation.status] = (acc[negotiation.status] ?? 0) + 1;
+      return acc;
+    }, {}),
+  ).map(([name, value]) => ({ name, value }));
+  const topClients = Object.entries(
+    [...visibleSimulations, ...visibleOrders].reduce<Record<string, number>>((acc, item) => {
+      const value = "totalValue" in item ? item.totalValue : getSimulationTotals(item).revenue;
+      acc[item.client] = (acc[item.client] ?? 0) + value;
+      return acc;
+    }, {}),
+  )
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
 
   function exportDashboardReport() {
     downloadTextFile(
       "dashboard-master-flow.txt",
-      `Relatório Dashboard\nGerado em: ${new Date().toLocaleString("pt-BR")}\nSimulações recentes: ${simulationsSeed.length}\nPedidos: ${orders.length}`,
+      `Relatório Dashboard\nGerado em: ${new Date().toLocaleString("pt-BR")}\nSimulações visíveis: ${visibleSimulations.length}\nPedidos visíveis: ${visibleOrders.length}`,
     );
   }
 
-  const recentSimulations = simulationsSeed.slice(0, 4);
-  const recentOrders = orders.slice(0, 3);
+  const recentSimulations = visibleSimulations.slice(0, 4);
+  const recentOrders = visibleOrders.slice(0, 3);
 
   return (
     <div className="space-y-6">
@@ -107,12 +186,12 @@ function DashboardPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {dashboardKpis.slice(0, 4).map((kpi, idx) => (
+        {dashboardCards.slice(0, 4).map((kpi, idx) => (
           <StatCard
             key={kpi.label}
             label={kpi.label}
-            value={formatKpi(kpi)}
-            delta={`${kpi.delta > 0 ? "+" : ""}${kpi.delta.toFixed(1)}%`}
+            value={kpi.value}
+            delta={kpi.delta}
             icon={kpiIcons[idx] ?? Handshake}
             tone={kpi.tone as "success" | "warning" | "danger" | "info"}
           />
@@ -120,12 +199,12 @@ function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {dashboardKpis.slice(4).map((kpi, idx) => (
+        {dashboardCards.slice(4).map((kpi, idx) => (
           <StatCard
             key={kpi.label}
             label={kpi.label}
-            value={formatKpi(kpi)}
-            delta={`${kpi.delta > 0 ? "+" : ""}${kpi.delta.toFixed(1)}%`}
+            value={kpi.value}
+            delta={kpi.delta}
             icon={kpiIcons[idx + 4] ?? PiggyBank}
             tone={kpi.tone as "success" | "warning" | "danger" | "info"}
           />
@@ -201,14 +280,14 @@ function DashboardPage() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={negotiationStatus}
+                  data={statusData}
                   dataKey="value"
                   nameKey="name"
                   innerRadius={55}
                   outerRadius={90}
                   paddingAngle={4}
                 >
-                  {negotiationStatus.map((_, idx) => (
+                  {statusData.map((_, idx) => (
                     <Cell key={idx} fill={pieColors[idx % pieColors.length]} />
                   ))}
                 </Pie>
@@ -281,20 +360,24 @@ function DashboardPage() {
             <p className="text-sm text-muted-foreground">Volume nos últimos 30 dias</p>
           </CardHeader>
           <CardContent className="space-y-4">
-            {topClients.map((client) => {
-              const max = topClients[0].value;
-              return (
-                <div key={client.name} className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-foreground">{client.name}</span>
-                    <span className="text-muted-foreground">
-                      {formatCompactCurrency(client.value)}
-                    </span>
+            {topClients.length ? (
+              topClients.map((client) => {
+                const max = topClients[0].value;
+                return (
+                  <div key={client.name} className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-foreground">{client.name}</span>
+                      <span className="text-muted-foreground">
+                        {formatCompactCurrency(client.value)}
+                      </span>
+                    </div>
+                    <Progress value={(client.value / max) * 100} className="h-2" />
                   </div>
-                  <Progress value={(client.value / max) * 100} className="h-2" />
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              <p className="text-sm text-muted-foreground">Nenhum cliente no seu fluxo.</p>
+            )}
           </CardContent>
         </Card>
       </div>

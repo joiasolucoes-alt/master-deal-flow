@@ -16,6 +16,11 @@ import { useAppContext } from "@/features/app/app-context";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { useAppStore } from "@/store/useAppStore";
+import {
+  filterNegotiationsForUser,
+  filterOrdersForUser,
+  filterSimulationsForUser,
+} from "@/lib/visibility";
 
 type SearchResult = {
   id: string;
@@ -35,6 +40,15 @@ export function AppHeader() {
   const negotiations = useAppStore((store) => store.negotiations);
   const orders = useAppStore((store) => store.orders);
   const markNotificationRead = useAppStore((store) => store.markNotificationRead);
+  const visibleSimulations = useMemo(
+    () => filterSimulationsForUser(simulations, user),
+    [simulations, user],
+  );
+  const visibleNegotiations = useMemo(
+    () => filterNegotiationsForUser(negotiations, user),
+    [negotiations, user],
+  );
+  const visibleOrders = useMemo(() => filterOrdersForUser(orders, user), [orders, user]);
   const visibleNotifications = useMemo(() => {
     if (user?.role === "Admin") return notifications;
     const userEmail = user?.email?.trim().toLowerCase();
@@ -56,7 +70,7 @@ export function AppHeader() {
   const searchResults = useMemo<SearchResult[]>(() => {
     if (trimmedQuery.length < 2) return [];
 
-    const negotiationResults = negotiations
+    const negotiationResults = visibleNegotiations
       .filter((item) =>
         `${item.number} ${item.client} ${item.owner} ${item.stage} ${item.status}`
           .toLowerCase()
@@ -71,7 +85,7 @@ export function AppHeader() {
         select: () => navigate({ to: "/negociacoes/$id", params: { id: item.id } }),
       }));
 
-    const simulationResults = simulations
+    const simulationResults = visibleSimulations
       .filter((item) =>
         `${item.number} ${item.client} ${item.supplier} ${item.owner} ${item.status}`
           .toLowerCase()
@@ -86,7 +100,7 @@ export function AppHeader() {
         select: () => navigate({ to: "/simulacoes/$id", params: { id: item.id } }),
       }));
 
-    const orderResults = orders
+    const orderResults = visibleOrders
       .filter((item) =>
         `${item.number} ${item.client} ${item.owner} ${item.status}`
           .toLowerCase()
@@ -102,7 +116,7 @@ export function AppHeader() {
       }));
 
     return [...negotiationResults, ...simulationResults, ...orderResults].slice(0, 8);
-  }, [negotiations, navigate, orders, simulations, trimmedQuery]);
+  }, [navigate, trimmedQuery, visibleNegotiations, visibleOrders, visibleSimulations]);
 
   function selectSearchResult(result: SearchResult) {
     result.select();

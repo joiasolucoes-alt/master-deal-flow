@@ -18,6 +18,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { filterOrdersForUser } from "@/lib/visibility";
 import type { Order } from "@/data/types";
 import { Boxes, PackageCheck, Truck, TruckIcon } from "lucide-react";
 
@@ -27,30 +28,31 @@ export const Route = createFileRoute("/_app/pedidos/")({
 
 function OrdersPage() {
   const navigate = useNavigate();
-  const { orders } = useAppContext();
+  const { auth, orders } = useAppContext();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("Todos");
+  const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
 
   const filtered = useMemo(
     () =>
-      orders.filter((o) => {
+      visibleOrders.filter((o) => {
         if (status !== "Todos" && o.status !== status) return false;
         if (search && !`${o.number} ${o.client}`.toLowerCase().includes(search.toLowerCase()))
           return false;
         return true;
       }),
-    [orders, search, status],
+    [visibleOrders, search, status],
   );
 
   const summary = useMemo(
     () => ({
-      total: orders.length,
-      transit: orders.filter((o) => o.status === "Em rota").length,
-      separation: orders.filter((o) => o.status === "Em separação").length,
-      delivered: orders.filter((o) => o.status === "Entregue").length,
-      value: orders.reduce((sum, o) => sum + o.totalValue, 0),
+      total: visibleOrders.length,
+      transit: visibleOrders.filter((o) => o.status === "Em rota").length,
+      separation: visibleOrders.filter((o) => o.status === "Em separação").length,
+      delivered: visibleOrders.filter((o) => o.status === "Entregue").length,
+      value: visibleOrders.reduce((sum, o) => sum + o.totalValue, 0),
     }),
-    [orders],
+    [visibleOrders],
   );
 
   const columns: DataColumn<Order>[] = [

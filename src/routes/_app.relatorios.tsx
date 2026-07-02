@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Bar,
@@ -17,9 +18,16 @@ import { Download, FileText, Share2 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { negotiationStatus, simulationEvolution, topClients } from "@/data/dashboard";
 import { formatCompactCurrency, formatCurrency } from "@/lib/format";
 import { downloadTextFile, notifyActionUnavailable } from "@/lib/actions";
+import { useAppContext } from "@/features/app/app-context";
+import { useAppStore } from "@/store/useAppStore";
+import { getSimulationTotals } from "@/lib/calculations";
+import {
+  filterNegotiationsForUser,
+  filterOrdersForUser,
+  filterSimulationsForUser,
+} from "@/lib/visibility";
 
 export const Route = createFileRoute("/_app/relatorios")({
   component: ReportsPage,
@@ -56,6 +64,44 @@ const pieColors = [
 ];
 
 function ReportsPage() {
+  const { auth, simulations, orders } = useAppContext();
+  const negotiations = useAppStore((store) => store.negotiations);
+  const visibleSimulations = useMemo(
+    () => filterSimulationsForUser(simulations, auth.user),
+    [auth.user, simulations],
+  );
+  const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
+  const visibleNegotiations = useMemo(
+    () => filterNegotiationsForUser(negotiations, auth.user),
+    [auth.user, negotiations],
+  );
+  const simulationEvolution = Object.entries(
+    visibleSimulations.reduce<Record<string, number>>((acc, simulation) => {
+      const day = new Date(simulation.createdAt).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+      });
+      acc[day] = (acc[day] ?? 0) + getSimulationTotals(simulation).revenue;
+      return acc;
+    }, {}),
+  ).map(([day, value]) => ({ day, value }));
+  const negotiationStatus = Object.entries(
+    visibleNegotiations.reduce<Record<string, number>>((acc, negotiation) => {
+      acc[negotiation.status] = (acc[negotiation.status] ?? 0) + 1;
+      return acc;
+    }, {}),
+  ).map(([name, value]) => ({ name, value }));
+  const topClients = Object.entries(
+    [...visibleSimulations, ...visibleOrders].reduce<Record<string, number>>((acc, item) => {
+      const value = "totalValue" in item ? item.totalValue : getSimulationTotals(item).revenue;
+      acc[item.client] = (acc[item.client] ?? 0) + value;
+      return acc;
+    }, {}),
+  )
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+
   function exportReports() {
     downloadTextFile(
       "relatorios-master-flow.txt",

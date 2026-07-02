@@ -7,8 +7,9 @@ import { DataTable, type DataColumn } from "@/components/app/data-table";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { orders } from "@/data/orders";
+import { useAppContext } from "@/features/app/app-context";
 import { formatCompactCurrency, formatCurrency, formatDate } from "@/lib/format";
+import { canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
 
 export const Route = createFileRoute("/_app/financeiro")({
   component: FinancialPage,
@@ -76,14 +77,22 @@ const cashflow = [
 ];
 
 function FinancialPage() {
-  const totalReceive = receivables
+  const { auth, orders } = useAppContext();
+  const visibleOrders = filterOrdersForUser(orders, auth.user);
+  const visibleClients = new Set(visibleOrders.map((order) => order.client));
+  const visibleReceivables = canViewAllFlows(auth.user)
+    ? receivables
+    : receivables.filter((receivable) => visibleClients.has(receivable.client));
+  const totalReceive = visibleReceivables
     .filter((r) => r.status !== "Pago")
     .reduce((sum, r) => sum + r.value, 0);
-  const overdue = receivables
+  const overdue = visibleReceivables
     .filter((r) => r.status === "Vencido")
     .reduce((sum, r) => sum + r.value, 0);
-  const paid = receivables.filter((r) => r.status === "Pago").reduce((sum, r) => sum + r.value, 0);
-  const ordersValue = orders.reduce((sum, o) => sum + o.totalValue, 0);
+  const paid = visibleReceivables
+    .filter((r) => r.status === "Pago")
+    .reduce((sum, r) => sum + r.value, 0);
+  const ordersValue = visibleOrders.reduce((sum, o) => sum + o.totalValue, 0);
 
   const columns: DataColumn<Receivable>[] = [
     {
@@ -200,7 +209,7 @@ function FinancialPage() {
             <TabsContent value="all" className="pt-4">
               <DataTable
                 columns={columns}
-                data={receivables}
+                data={visibleReceivables}
                 emptyTitle="Sem registros"
                 emptyDescription="Não há contas para exibir."
               />
@@ -208,7 +217,7 @@ function FinancialPage() {
             <TabsContent value="pending" className="pt-4">
               <DataTable
                 columns={columns}
-                data={receivables.filter((r) => r.status === "A vencer")}
+                data={visibleReceivables.filter((r) => r.status === "A vencer")}
                 emptyTitle="Sem registros"
                 emptyDescription="Não há contas a vencer."
               />
@@ -216,7 +225,7 @@ function FinancialPage() {
             <TabsContent value="overdue" className="pt-4">
               <DataTable
                 columns={columns}
-                data={receivables.filter((r) => r.status === "Vencido")}
+                data={visibleReceivables.filter((r) => r.status === "Vencido")}
                 emptyTitle="Sem vencidos"
                 emptyDescription="Sem contas vencidas."
               />
@@ -224,7 +233,7 @@ function FinancialPage() {
             <TabsContent value="paid" className="pt-4">
               <DataTable
                 columns={columns}
-                data={receivables.filter((r) => r.status === "Pago")}
+                data={visibleReceivables.filter((r) => r.status === "Pago")}
                 emptyTitle="Sem pagamentos"
                 emptyDescription="Sem contas pagas."
               />

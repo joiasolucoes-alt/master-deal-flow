@@ -15,8 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { orders } from "@/data/orders";
+import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
+import { filterOrdersForUser } from "@/lib/visibility";
 
 export const Route = createFileRoute("/_app/pedidos/$id")({
   component: OrderDetailPage,
@@ -24,7 +25,8 @@ export const Route = createFileRoute("/_app/pedidos/$id")({
 
 function OrderDetailPage() {
   const { id } = useParams({ from: "/_app/pedidos/$id" });
-  const order = orders.find((o) => o.id === id);
+  const { auth, orders } = useAppContext();
+  const order = filterOrdersForUser(orders, auth.user).find((o) => o.id === id);
   if (!order) {
     return (
       <div className="space-y-6">
