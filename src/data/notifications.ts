@@ -8,6 +8,8 @@ export const notifications: NotificationItem[] = [
     type: "warning",
     createdAt: "2026-06-16T08:40:00-03:00",
     unread: true,
+    href: "/aprovacoes",
+    entityType: "approval",
   },
   {
     id: "not-2",
@@ -16,6 +18,8 @@ export const notifications: NotificationItem[] = [
     type: "info",
     createdAt: "2026-06-16T07:25:00-03:00",
     unread: true,
+    href: "/entregas",
+    entityType: "delivery",
   },
   {
     id: "not-3",
@@ -24,5 +28,7 @@ export const notifications: NotificationItem[] = [
     type: "success",
     createdAt: "2026-06-15T18:10:00-03:00",
     unread: false,
+    href: "/simulacoes",
+    entityType: "simulation",
   },
 ];

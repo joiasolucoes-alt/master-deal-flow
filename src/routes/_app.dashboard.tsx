@@ -172,9 +172,12 @@ function DashboardPage() {
                 <Tooltip
                   contentStyle={{
                     background: "var(--color-card)",
+                    color: "var(--color-card-foreground)",
                     borderRadius: 12,
                     border: "1px solid var(--color-border)",
                   }}
+                  labelStyle={{ color: "var(--color-card-foreground)" }}
+                  itemStyle={{ color: "var(--color-card-foreground)" }}
                   formatter={(v) => formatCurrency(Number(v))}
                 />
                 <Area
@@ -213,9 +216,12 @@ function DashboardPage() {
                 <Tooltip
                   contentStyle={{
                     background: "var(--color-card)",
+                    color: "var(--color-card-foreground)",
                     borderRadius: 12,
                     border: "1px solid var(--color-border)",
                   }}
+                  labelStyle={{ color: "var(--color-card-foreground)" }}
+                  itemStyle={{ color: "var(--color-card-foreground)" }}
                 />
               </PieChart>
             </ResponsiveContainer>

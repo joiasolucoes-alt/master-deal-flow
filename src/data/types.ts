@@ -65,6 +65,9 @@ export interface NotificationItem {
   type: "info" | "warning" | "success";
   createdAt: string;
   unread: boolean;
+  href?: string;
+  entityType?: "approval" | "delivery" | "simulation" | "order" | "negotiation";
+  entityId?: string;
 }
 
 export interface SimulationProduct {

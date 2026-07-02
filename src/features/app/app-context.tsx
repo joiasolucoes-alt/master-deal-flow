@@ -82,6 +82,7 @@ interface AppContextValue {
     ok: boolean;
     message: string;
   };
+  updateCurrentProfile: (payload: { name: string }) => Promise<{ ok: boolean; message?: string }>;
   updateUserAccess: (id: string, payload: { role?: UserRole; status?: UserStatus }) => void;
   logout: () => void;
   themeMode: ThemeMode;
@@ -760,6 +761,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     persistUsers(nextUsers);
   };
 
+  const updateCurrentProfile = async (payload: { name: string }) => {
+    const name = payload.name.trim();
+    if (!name) return { ok: false, message: "Informe o nome do perfil." };
+
+    const client = getSupabaseClient();
+    const profileId = auth.profile?.id;
+
+    if (client && profileId) {
+      const { error } = await client
+        .from("profiles")
+        .update({ full_name: name, name, updated_at: new Date().toISOString() })
+        .eq("id", profileId);
+
+      if (error) {
+        console.error("Falha ao atualizar perfil.", error);
+        return { ok: false, message: "Não foi possível salvar o perfil agora." };
+      }
+    }
+
+    setAuth((current) => ({
+      ...current,
+      user: current.user ? { ...current.user, name } : current.user,
+      profile: current.profile ? { ...current.profile, full_name: name, name } : current.profile,
+    }));
+
+    return { ok: true };
+  };
+
   const logout = () => {
     const client = getSupabaseClient();
     clearAuthContext();
@@ -818,6 +847,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       users,
       login,
       registerUser,
+      updateCurrentProfile,
       refreshUserContext,
       updateUserAccess,
       logout,

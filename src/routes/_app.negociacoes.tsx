@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { negotiations } from "@/data/negotiations";
+import { useAppStore } from "@/store/useAppStore";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import type { Negotiation } from "@/data/types";
 
@@ -24,6 +24,7 @@ export const Route = createFileRoute("/_app/negociacoes")({
 });
 
 function NegotiationsPage() {
+  const negotiations = useAppStore((store) => store.negotiations);
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("Todas");
   const [status, setStatus] = useState("Todos");
@@ -39,7 +40,7 @@ function NegotiationsPage() {
         return false;
       return true;
     });
-  }, [search, stage, status]);
+  }, [negotiations, search, stage, status]);
 
   const columns: DataColumn<Negotiation>[] = [
     {
@@ -76,6 +77,21 @@ function NegotiationsPage() {
       cell: (n) => <span className="text-sm text-muted-foreground">{n.nextAction}</span>,
     },
     { key: "status", header: "Status", cell: (n) => <StatusBadge status={n.status} /> },
+  ];
+  const stageDescriptions = [
+    ["Oportunidade", "Contato ou demanda ainda em avaliação comercial."],
+    ["Simulação", "Valores, custos, despesas e margem estão sendo montados."],
+    ["Aprovação", "Simulação enviada para análise do responsável aprovador."],
+    ["Pedido", "Negociação aprovada e convertida em pedido operacional."],
+    ["Concluída", "Fluxo finalizado após entrega, recebimento e fechamento."],
+    ["Cancelada", "Negociação encerrada sem seguir para pedido."],
+  ];
+  const statusDescriptions = [
+    ["Aberta", "Ainda existe ação comercial em andamento."],
+    ["Aguardando definição", "Depende de retorno, ajuste ou decisão antes de avançar."],
+    ["Aprovada", "Condição comercial validada para seguir o fluxo."],
+    ["Convertida", "Já virou pedido dentro do sistema."],
+    ["Cancelada", "Não seguirá no fluxo."],
   ];
 
   return (
@@ -157,6 +173,29 @@ function NegotiationsPage() {
           </Select>
         </label>
       </FilterBar>
+
+      <div className="grid gap-4 rounded-2xl border border-border bg-card p-4 shadow-card lg:grid-cols-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Etapas</h2>
+          <div className="mt-3 grid gap-2 text-sm">
+            {stageDescriptions.map(([label, description]) => (
+              <p key={label} className="text-muted-foreground">
+                <span className="font-medium text-foreground">{label}:</span> {description}
+              </p>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Status</h2>
+          <div className="mt-3 grid gap-2 text-sm">
+            {statusDescriptions.map(([label, description]) => (
+              <p key={label} className="text-muted-foreground">
+                <span className="font-medium text-foreground">{label}:</span> {description}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <DataTable
         columns={columns}

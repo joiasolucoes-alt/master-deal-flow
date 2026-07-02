@@ -20,6 +20,7 @@ export type AppStore = AppStoreState & {
   upsertOrder: (order: Order, audit?: AuditEvent) => void;
   upsertNegotiation: (negotiation: Negotiation) => void;
   addNotification: (notification: NotificationItem) => void;
+  markNotificationRead: (id: string) => void;
   setSelectedApprovalId: (id: string | null) => void;
   setSelectedOrderId: (id: string | null) => void;
 };
@@ -32,6 +33,7 @@ type PersistedState = Omit<
   | "upsertOrder"
   | "upsertNegotiation"
   | "addNotification"
+  | "markNotificationRead"
   | "setSelectedApprovalId"
   | "setSelectedOrderId"
 >;
@@ -148,6 +150,13 @@ const storeActions = {
     setState((current) => ({
       ...current,
       notifications: [notification, ...current.notifications],
+    })),
+  markNotificationRead: (id: string) =>
+    setState((current) => ({
+      ...current,
+      notifications: current.notifications.map((notification) =>
+        notification.id === id ? { ...notification, unread: false } : notification,
+      ),
     })),
   setSelectedApprovalId: (id: string | null) =>
     setState((current) => ({ ...current, selectedApprovalId: id })),

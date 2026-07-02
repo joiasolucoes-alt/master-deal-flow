@@ -46,7 +46,9 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "simulations:create",
     "simulations:edit-own",
     "simulations:submit",
+    "approvals:view",
     "orders:view",
+    "deliveries:view",
   ],
   Negociações: [
     "dashboard:view",
