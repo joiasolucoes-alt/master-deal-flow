@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -85,6 +85,7 @@ export const Route = createFileRoute("/_app/simulacoes/$id")({
 
 const STEPS = ["Pedido", "Produtos", "NF/Custos", "Despesas", "Pagamento", "Resumo"];
 const ORDER_CATALOG_STORAGE_KEY = "master-flow-order-catalogs";
+const SIMULATION_FORM_DRAFT_STORAGE_KEY = "master-flow-simulation-form-drafts";
 const REQUIRED_TEXT_FIELDS: Array<
   [
     keyof Pick<
@@ -131,6 +132,14 @@ interface OrderCatalogs {
   owners: OrderCatalogItem[];
   units: OrderCatalogItem[];
 }
+
+interface SavedSimulationFormDraft {
+  draft: Simulation;
+  step: number;
+  updatedAt: string;
+}
+
+type SavedSimulationFormDrafts = Record<string, SavedSimulationFormDraft>;
 
 function createInitialOrderCatalogs(): OrderCatalogs {
   return {
@@ -219,6 +228,38 @@ function createEmptySimulation(user?: User | null): Simulation {
   };
 }
 
+function clampStep(value?: number) {
+  if (typeof value !== "number" || Number.isNaN(value)) return 0;
+  return Math.max(0, Math.min(STEPS.length - 1, value));
+}
+
+function getSimulationFormDraftKey(routeId: string, userId?: string, userEmail?: string) {
+  if (routeId !== "nova") return routeId;
+  return `nova:${userId ?? userEmail ?? "visitante"}`;
+}
+
+function readSavedSimulationFormDraft(key: string) {
+  const drafts = readLocalStorage<SavedSimulationFormDrafts>(SIMULATION_FORM_DRAFT_STORAGE_KEY, {});
+  return drafts[key];
+}
+
+function writeSavedSimulationFormDraft(key: string, draft: Simulation, step: number) {
+  const drafts = readLocalStorage<SavedSimulationFormDrafts>(SIMULATION_FORM_DRAFT_STORAGE_KEY, {});
+  writeLocalStorage<SavedSimulationFormDrafts>(SIMULATION_FORM_DRAFT_STORAGE_KEY, {
+    ...drafts,
+    [key]: { draft, step, updatedAt: new Date().toISOString() },
+  });
+}
+
+function clearSavedSimulationFormDraft(key: string) {
+  if (typeof window === "undefined") return;
+  const drafts = readLocalStorage<SavedSimulationFormDrafts>(SIMULATION_FORM_DRAFT_STORAGE_KEY, {});
+  if (!drafts[key]) return;
+  const nextDrafts = { ...drafts };
+  delete nextDrafts[key];
+  writeLocalStorage<SavedSimulationFormDrafts>(SIMULATION_FORM_DRAFT_STORAGE_KEY, nextDrafts);
+}
+
 function SimulationDetailPage() {
   const { id } = useParams({ from: "/_app/simulacoes/$id" });
   const navigate = useNavigate();
@@ -231,12 +272,27 @@ function SimulationDetailPage() {
   );
   const existingSimulation =
     id === "nova" ? null : visibleSimulations.find((simulation) => simulation.id === id);
+  const draftStorageKey = useMemo(
+    () => getSimulationFormDraftKey(id, currentUser?.id, currentUser?.email),
+    [currentUser?.email, currentUser?.id, id],
+  );
+  const savedFormDraft = useMemo(
+    () => readSavedSimulationFormDraft(draftStorageKey),
+    [draftStorageKey],
+  );
+  const canUseSavedFormDraft = Boolean(
+    savedFormDraft?.draft && (id === "nova" || savedFormDraft.draft.id === existingSimulation?.id),
+  );
   const initial = useMemo(
-    () => existingSimulation ?? createEmptySimulation(currentUser),
-    [currentUser, existingSimulation],
+    () =>
+      canUseSavedFormDraft
+        ? savedFormDraft!.draft
+        : (existingSimulation ?? createEmptySimulation(currentUser)),
+    [canUseSavedFormDraft, currentUser, existingSimulation, savedFormDraft],
   );
   const [draft, setDraft] = useState<Simulation>(initial);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(canUseSavedFormDraft ? clampStep(savedFormDraft?.step) : 0);
+  const activeDraftStorageKeyRef = useRef(draftStorageKey);
   const canOpenSimulation = id === "nova" || Boolean(existingSimulation);
   const totals = useMemo(() => getSimulationTotals(draft), [draft]);
   const costImpact = useMemo(() => getSimulationCostImpact(draft), [draft]);
@@ -247,9 +303,16 @@ function SimulationDetailPage() {
   const userCanConvert = canConvertSimulationToOrder(currentUser);
 
   useEffect(() => {
+    if (activeDraftStorageKeyRef.current === draftStorageKey) return;
+    activeDraftStorageKeyRef.current = draftStorageKey;
     setDraft(initial);
-    setStep(0);
-  }, [initial]);
+    setStep(canUseSavedFormDraft ? clampStep(savedFormDraft?.step) : 0);
+  }, [canUseSavedFormDraft, draftStorageKey, initial, savedFormDraft?.step]);
+
+  useEffect(() => {
+    if (!canOpenSimulation) return;
+    writeSavedSimulationFormDraft(draftStorageKey, draft, step);
+  }, [canOpenSimulation, draft, draftStorageKey, step]);
 
   if (!canOpenSimulation) {
     return (
@@ -287,7 +350,11 @@ function SimulationDetailPage() {
     }
 
     upsertSimulation(draft);
+    clearSavedSimulationFormDraft(draftStorageKey);
     toast.success("Simulação salva como rascunho");
+    if (id === "nova") {
+      navigate({ to: "/simulacoes/$id", params: { id: draft.id } });
+    }
   }
 
   function duplicateCurrentSimulation() {
@@ -312,6 +379,7 @@ function SimulationDetailPage() {
       convertedAt: undefined,
     };
     upsertSimulation(copy);
+    clearSavedSimulationFormDraft(draftStorageKey);
     toast.success(`Simulação duplicada: ${copy.number}`);
     navigate({ to: "/simulacoes/$id", params: { id } });
   }
@@ -362,6 +430,7 @@ function SimulationDetailPage() {
     const next = { ...draft, orderId, convertedAt: new Date().toISOString() };
     upsertSimulation(next);
     upsertOrder(order);
+    clearSavedSimulationFormDraft(draftStorageKey);
     addNotification({
       id: `not-${Date.now()}`,
       title: "Pedido criado",
@@ -399,6 +468,7 @@ function SimulationDetailPage() {
     const next = { ...draft, status: "Pendente de aprovação" as const };
     if (!window.confirm("Enviar esta simulação para aprovação?")) return;
     upsertSimulation(next);
+    clearSavedSimulationFormDraft(draftStorageKey);
     addNotification({
       id: `not-${Date.now()}`,
       title: "Simulação enviada para aprovação",
