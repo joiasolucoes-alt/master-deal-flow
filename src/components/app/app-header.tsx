@@ -52,7 +52,7 @@ export function AppHeader() {
         title: item.number,
         description: `${item.client} • ${item.stage} • ${item.status}`,
         type: "Negociação" as const,
-        select: () => navigate({ to: "/negociacoes" }),
+        select: () => navigate({ to: "/negociacoes/$id", params: { id: item.id } }),
       }));
 
     const simulationResults = simulations
@@ -95,11 +95,13 @@ export function AppHeader() {
 
   function openNotification(item: (typeof notifications)[number]) {
     markNotificationRead(item.id);
-    if (item.href === "/aprovacoes") navigate({ to: "/aprovacoes" });
-    if (item.href === "/entregas") navigate({ to: "/entregas" });
-    if (item.href === "/simulacoes") navigate({ to: "/simulacoes" });
-    if (item.href === "/pedidos") navigate({ to: "/pedidos" });
-    if (item.href === "/negociacoes") navigate({ to: "/negociacoes" });
+    window.setTimeout(() => {
+      if (item.href === "/aprovacoes") navigate({ to: "/aprovacoes" });
+      if (item.href === "/entregas") navigate({ to: "/entregas" });
+      if (item.href === "/simulacoes") navigate({ to: "/simulacoes" });
+      if (item.href === "/pedidos") navigate({ to: "/pedidos" });
+      if (item.href === "/negociacoes") navigate({ to: "/negociacoes" });
+    }, 0);
   }
 
   return (
@@ -185,7 +187,10 @@ export function AppHeader() {
               {notifications.map((item) => (
                 <DropdownMenuItem
                   key={item.id}
-                  onClick={() => openNotification(item)}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    openNotification(item);
+                  }}
                   className="items-start rounded-xl px-3 py-3"
                 >
                   <div className="space-y-1">

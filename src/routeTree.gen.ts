@@ -27,6 +27,7 @@ import { Route as AppSimulacoesIndexRouteImport } from './routes/_app.simulacoes
 import { Route as AppPedidosIndexRouteImport } from './routes/_app.pedidos.index'
 import { Route as AppSimulacoesIdRouteImport } from './routes/_app.simulacoes.$id'
 import { Route as AppPedidosIdRouteImport } from './routes/_app.pedidos.$id'
+import { Route as AppNegociacoesIdRouteImport } from './routes/_app.negociacoes.$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -117,6 +118,11 @@ const AppPedidosIdRoute = AppPedidosIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AppPedidosRoute,
 } as any)
+const AppNegociacoesIdRoute = AppNegociacoesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppNegociacoesRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -127,11 +133,12 @@ export interface FileRoutesByFullPath {
   '/entregas': typeof AppEntregasRoute
   '/financeiro': typeof AppFinanceiroRoute
   '/fretes': typeof AppFretesRoute
-  '/negociacoes': typeof AppNegociacoesRoute
+  '/negociacoes': typeof AppNegociacoesRouteWithChildren
   '/pedidos': typeof AppPedidosRouteWithChildren
   '/perfil': typeof AppPerfilRoute
   '/relatorios': typeof AppRelatoriosRoute
   '/simulacoes': typeof AppSimulacoesRouteWithChildren
+  '/negociacoes/$id': typeof AppNegociacoesIdRoute
   '/pedidos/$id': typeof AppPedidosIdRoute
   '/simulacoes/$id': typeof AppSimulacoesIdRoute
   '/pedidos/': typeof AppPedidosIndexRoute
@@ -146,9 +153,10 @@ export interface FileRoutesByTo {
   '/entregas': typeof AppEntregasRoute
   '/financeiro': typeof AppFinanceiroRoute
   '/fretes': typeof AppFretesRoute
-  '/negociacoes': typeof AppNegociacoesRoute
+  '/negociacoes': typeof AppNegociacoesRouteWithChildren
   '/perfil': typeof AppPerfilRoute
   '/relatorios': typeof AppRelatoriosRoute
+  '/negociacoes/$id': typeof AppNegociacoesIdRoute
   '/pedidos/$id': typeof AppPedidosIdRoute
   '/simulacoes/$id': typeof AppSimulacoesIdRoute
   '/pedidos': typeof AppPedidosIndexRoute
@@ -165,11 +173,12 @@ export interface FileRoutesById {
   '/_app/entregas': typeof AppEntregasRoute
   '/_app/financeiro': typeof AppFinanceiroRoute
   '/_app/fretes': typeof AppFretesRoute
-  '/_app/negociacoes': typeof AppNegociacoesRoute
+  '/_app/negociacoes': typeof AppNegociacoesRouteWithChildren
   '/_app/pedidos': typeof AppPedidosRouteWithChildren
   '/_app/perfil': typeof AppPerfilRoute
   '/_app/relatorios': typeof AppRelatoriosRoute
   '/_app/simulacoes': typeof AppSimulacoesRouteWithChildren
+  '/_app/negociacoes/$id': typeof AppNegociacoesIdRoute
   '/_app/pedidos/$id': typeof AppPedidosIdRoute
   '/_app/simulacoes/$id': typeof AppSimulacoesIdRoute
   '/_app/pedidos/': typeof AppPedidosIndexRoute
@@ -191,6 +200,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/relatorios'
     | '/simulacoes'
+    | '/negociacoes/$id'
     | '/pedidos/$id'
     | '/simulacoes/$id'
     | '/pedidos/'
@@ -208,6 +218,7 @@ export interface FileRouteTypes {
     | '/negociacoes'
     | '/perfil'
     | '/relatorios'
+    | '/negociacoes/$id'
     | '/pedidos/$id'
     | '/simulacoes/$id'
     | '/pedidos'
@@ -228,6 +239,7 @@ export interface FileRouteTypes {
     | '/_app/perfil'
     | '/_app/relatorios'
     | '/_app/simulacoes'
+    | '/_app/negociacoes/$id'
     | '/_app/pedidos/$id'
     | '/_app/simulacoes/$id'
     | '/_app/pedidos/'
@@ -368,8 +380,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPedidosIdRouteImport
       parentRoute: typeof AppPedidosRoute
     }
+    '/_app/negociacoes/$id': {
+      id: '/_app/negociacoes/$id'
+      path: '/$id'
+      fullPath: '/negociacoes/$id'
+      preLoaderRoute: typeof AppNegociacoesIdRouteImport
+      parentRoute: typeof AppNegociacoesRoute
+    }
   }
 }
+
+interface AppNegociacoesRouteChildren {
+  AppNegociacoesIdRoute: typeof AppNegociacoesIdRoute
+}
+
+const AppNegociacoesRouteChildren: AppNegociacoesRouteChildren = {
+  AppNegociacoesIdRoute: AppNegociacoesIdRoute,
+}
+
+const AppNegociacoesRouteWithChildren = AppNegociacoesRoute._addFileChildren(
+  AppNegociacoesRouteChildren,
+)
 
 interface AppPedidosRouteChildren {
   AppPedidosIdRoute: typeof AppPedidosIdRoute
@@ -406,7 +437,7 @@ interface AppRouteChildren {
   AppEntregasRoute: typeof AppEntregasRoute
   AppFinanceiroRoute: typeof AppFinanceiroRoute
   AppFretesRoute: typeof AppFretesRoute
-  AppNegociacoesRoute: typeof AppNegociacoesRoute
+  AppNegociacoesRoute: typeof AppNegociacoesRouteWithChildren
   AppPedidosRoute: typeof AppPedidosRouteWithChildren
   AppPerfilRoute: typeof AppPerfilRoute
   AppRelatoriosRoute: typeof AppRelatoriosRoute
@@ -420,7 +451,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppEntregasRoute: AppEntregasRoute,
   AppFinanceiroRoute: AppFinanceiroRoute,
   AppFretesRoute: AppFretesRoute,
-  AppNegociacoesRoute: AppNegociacoesRoute,
+  AppNegociacoesRoute: AppNegociacoesRouteWithChildren,
   AppPedidosRoute: AppPedidosRouteWithChildren,
   AppPerfilRoute: AppPerfilRoute,
   AppRelatoriosRoute: AppRelatoriosRoute,

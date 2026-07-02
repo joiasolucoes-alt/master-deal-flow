@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Plus, Search } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { FilterBar } from "@/components/app/filter-bar";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/store/useAppStore";
+import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import type { Negotiation } from "@/data/types";
 
@@ -24,13 +25,20 @@ export const Route = createFileRoute("/_app/negociacoes")({
 });
 
 function NegotiationsPage() {
+  const { auth } = useAppContext();
+  const navigate = useNavigate();
   const negotiations = useAppStore((store) => store.negotiations);
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("Todas");
   const [status, setStatus] = useState("Todos");
 
+  const visibleNegotiations = useMemo(() => {
+    if (auth.user?.role !== "Comercial") return negotiations;
+    return negotiations.filter((item) => item.owner === auth.user?.name);
+  }, [auth.user?.name, auth.user?.role, negotiations]);
+
   const filtered = useMemo(() => {
-    return negotiations.filter((item) => {
+    return visibleNegotiations.filter((item) => {
       if (stage !== "Todas" && item.stage !== stage) return false;
       if (status !== "Todos" && item.status !== status) return false;
       if (
@@ -40,7 +48,7 @@ function NegotiationsPage() {
         return false;
       return true;
     });
-  }, [negotiations, search, stage, status]);
+  }, [search, stage, status, visibleNegotiations]);
 
   const columns: DataColumn<Negotiation>[] = [
     {
@@ -78,22 +86,6 @@ function NegotiationsPage() {
     },
     { key: "status", header: "Status", cell: (n) => <StatusBadge status={n.status} /> },
   ];
-  const stageDescriptions = [
-    ["Oportunidade", "Contato ou demanda ainda em avaliação comercial."],
-    ["Simulação", "Valores, custos, despesas e margem estão sendo montados."],
-    ["Aprovação", "Simulação enviada para análise do responsável aprovador."],
-    ["Pedido", "Negociação aprovada e convertida em pedido operacional."],
-    ["Concluída", "Fluxo finalizado após entrega, recebimento e fechamento."],
-    ["Cancelada", "Negociação encerrada sem seguir para pedido."],
-  ];
-  const statusDescriptions = [
-    ["Aberta", "Ainda existe ação comercial em andamento."],
-    ["Aguardando definição", "Depende de retorno, ajuste ou decisão antes de avançar."],
-    ["Aprovada", "Condição comercial validada para seguir o fluxo."],
-    ["Convertida", "Já virou pedido dentro do sistema."],
-    ["Cancelada", "Não seguirá no fluxo."],
-  ];
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -174,32 +166,12 @@ function NegotiationsPage() {
         </label>
       </FilterBar>
 
-      <div className="grid gap-4 rounded-2xl border border-border bg-card p-4 shadow-card lg:grid-cols-2">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Etapas</h2>
-          <div className="mt-3 grid gap-2 text-sm">
-            {stageDescriptions.map(([label, description]) => (
-              <p key={label} className="text-muted-foreground">
-                <span className="font-medium text-foreground">{label}:</span> {description}
-              </p>
-            ))}
-          </div>
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Status</h2>
-          <div className="mt-3 grid gap-2 text-sm">
-            {statusDescriptions.map(([label, description]) => (
-              <p key={label} className="text-muted-foreground">
-                <span className="font-medium text-foreground">{label}:</span> {description}
-              </p>
-            ))}
-          </div>
-        </div>
-      </div>
-
       <DataTable
         columns={columns}
         data={filtered}
+        onRowClick={(negotiation) =>
+          navigate({ to: "/negociacoes/$id", params: { id: negotiation.id } })
+        }
         emptyTitle="Nenhuma negociação encontrada"
         emptyDescription="Ajuste os filtros ou crie uma nova negociação para começar."
       />
