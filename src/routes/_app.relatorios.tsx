@@ -218,18 +218,15 @@ function ReportsPage() {
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topClients} layout="vertical">
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--color-border)"
-                  horizontal={false}
-                />
+              <BarChart data={topClients} layout="vertical" margin={{ left: 8, right: 16, top: 8, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
                 <XAxis
                   type="number"
                   stroke="var(--color-muted-foreground)"
                   tickFormatter={(v) => formatCompactCurrency(v as number)}
                   tickLine={false}
                   axisLine={false}
+                  tick={{ fontSize: 12 }}
                 />
                 <YAxis
                   type="category"
@@ -237,17 +234,21 @@ function ReportsPage() {
                   stroke="var(--color-muted-foreground)"
                   tickLine={false}
                   axisLine={false}
-                  width={160}
+                  tick={{ fontSize: 12 }}
+                  width={180}
                 />
                 <Tooltip
+                  cursor={{ fill: "color-mix(in oklab, var(--color-primary) 8%, transparent)" }}
                   formatter={(v) => formatCurrency(Number(v))}
                   contentStyle={{
                     background: "var(--color-card)",
+                    color: "var(--color-card-foreground)",
                     borderRadius: 12,
                     border: "1px solid var(--color-border)",
+                    boxShadow: "var(--shadow-elevated)",
                   }}
                 />
-                <Bar dataKey="value" radius={[0, 8, 8, 0]} fill="var(--color-primary)" />
+                <Bar dataKey="value" radius={[0, 8, 8, 0]} fill="var(--color-primary)" animationDuration={900} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
