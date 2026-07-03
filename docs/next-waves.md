@@ -1,14 +1,23 @@
 # Próximas ondas
 
-## Onda 1.2 - Operação pós-pedido
+## Onda 2 - Operação pós-pedido
 
-- Financeiro real.
-- Contas a receber.
+### Em andamento
+
+- Financeiro real v1.
+- Contas a receber geradas a partir dos pedidos.
+- Baixa simples de recebimentos.
+- Atualização do progresso de faturamento do pedido.
+- Fretes gerados a partir de pedidos liberados.
+- Avanço operacional do frete refletindo no pedido.
+- Entregas geradas a partir de fretes liberados.
+- Avanço operacional de entrega e ocorrência simples.
+
+### Próximos blocos
+
 - Contas a pagar.
-- Baixa de recebimentos.
-- Frete real.
-- Entrega real.
-- Ocorrências de entrega.
+- Comprovantes/canhotos de entrega.
+- Histórico detalhado de ocorrências de entrega.
 
 ## Onda 1.3 - Resultado realizado
 

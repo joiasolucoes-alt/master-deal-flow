@@ -201,6 +201,83 @@ export interface Order {
   timeline: OrderTimelineEvent[];
 }
 
+export type FinancialTitleType = "receivable" | "payable";
+export type FinancialTitleStatus = "open" | "partial" | "paid" | "overdue" | "cancelled";
+
+export interface FinancialTitle {
+  id: string;
+  orderId?: string;
+  orderNumber?: string;
+  client: string;
+  titleNumber: string;
+  type: FinancialTitleType;
+  status: FinancialTitleStatus;
+  dueDate: string;
+  amount: number;
+  paidAmount: number;
+  paymentMethod: string;
+  bankName: string;
+  notes: string;
+  owner: string;
+  unit: string;
+  createdAt: string;
+  paidAt?: string;
+}
+
+export type FreightStatus = "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled";
+
+export interface FreightRecord {
+  id: string;
+  code: string;
+  orderId?: string;
+  orderNumber?: string;
+  client: string;
+  carrierName: string;
+  driverName: string;
+  vehicleDescription: string;
+  vehiclePlate: string;
+  route: string;
+  freightValue: number;
+  weight: string;
+  status: FreightStatus;
+  pickupDate: string;
+  expectedDeliveryDate: string;
+  owner: string;
+  unit: string;
+  notes: string;
+  createdAt: string;
+  deliveredAt?: string;
+}
+
+export type DeliveryStatus =
+  | "pending"
+  | "loading"
+  | "loaded"
+  | "in_route"
+  | "arrived"
+  | "delivered"
+  | "issue"
+  | "cancelled";
+
+export interface DeliveryRecord {
+  id: string;
+  orderId?: string;
+  orderNumber?: string;
+  freightId?: string;
+  freightCode?: string;
+  client: string;
+  route: string;
+  status: DeliveryStatus;
+  currentLocation: string;
+  expectedDeliveryDate: string;
+  deliveredAt?: string;
+  proofNotes: string;
+  occurrenceNotes: string;
+  owner: string;
+  unit: string;
+  createdAt: string;
+}
+
 export interface Negotiation {
   id: string;
   number: string;

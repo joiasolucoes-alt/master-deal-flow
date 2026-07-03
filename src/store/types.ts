@@ -1,5 +1,8 @@
 import type {
   Client,
+  DeliveryRecord,
+  FinancialTitle,
+  FreightRecord,
   Negotiation,
   NotificationItem,
   Order,
@@ -24,6 +27,9 @@ export interface AppStoreState {
   simulations: Simulation[];
   negotiations: Negotiation[];
   orders: Order[];
+  financialTitles: FinancialTitle[];
+  freights: FreightRecord[];
+  deliveries: DeliveryRecord[];
   clients: Client[];
   suppliers: Supplier[];
   products: Product[];

@@ -98,6 +98,135 @@ function createCatalogRepository(seed = []) {
   };
 }
 
+function parseInstallmentDays(paymentTerms) {
+  const days = paymentTerms
+    .match(/\d+/g)
+    ?.map(Number)
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  return days?.length ? days : [28];
+}
+
+function createFinancialTitlesFromOrder(order) {
+  const days = parseInstallmentDays(order.paymentTerms);
+  const amount = Math.round((order.totalValue / days.length) * 100) / 100;
+  return days.map((day, index) => ({
+    id: `fin-${order.id}-${index + 1}`,
+    orderId: order.id,
+    titleNumber: `${order.number}-PARC-${index + 1}`,
+    type: "receivable",
+    status: "open",
+    dueDate: day,
+    amount: index === days.length - 1 ? order.totalValue - amount * index : amount,
+    paidAmount: 0,
+  }));
+}
+
+function calculateBillingProgress(titles) {
+  const total = titles.reduce((sum, title) => sum + title.amount, 0);
+  const paid = titles.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0);
+  return total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+}
+
+function createFreightFromOrder(order) {
+  return {
+    id: `freight-${order.id}`,
+    orderId: order.id,
+    orderNumber: order.number,
+    status:
+      order.status === "Em rota"
+        ? "in_route"
+        : order.status === "Entregue"
+          ? "delivered"
+          : "quoted",
+    route: `${order.origin} → ${order.destination}`,
+    owner: order.owner,
+  };
+}
+
+function getNextFreightStatus(status) {
+  return {
+    quoted: "hired",
+    hired: "loading",
+    loading: "in_route",
+    in_route: "delivered",
+    delivered: "delivered",
+    cancelled: "cancelled",
+  }[status];
+}
+
+function updateOrderFromFreight(order, freight) {
+  const progressByStatus = {
+    quoted: 0,
+    hired: 15,
+    loading: 35,
+    in_route: 70,
+    delivered: 100,
+    cancelled: 0,
+  };
+  return {
+    ...order,
+    status:
+      freight.status === "delivered"
+        ? "Entregue"
+        : freight.status === "in_route"
+          ? "Em rota"
+          : order.status,
+    deliveryProgress: Math.max(order.deliveryProgress, progressByStatus[freight.status]),
+  };
+}
+
+function createDeliveryFromFreight(freight) {
+  return {
+    id: `delivery-${freight.id}`,
+    orderId: freight.orderId,
+    freightId: freight.id,
+    status:
+      freight.status === "in_route"
+        ? "in_route"
+        : freight.status === "delivered"
+          ? "delivered"
+          : "pending",
+    currentLocation: freight.status === "in_route" ? "Em trânsito" : "Aguardando expedição",
+    occurrenceNotes: "",
+  };
+}
+
+function getNextDeliveryStatus(status) {
+  return {
+    pending: "loading",
+    loading: "loaded",
+    loaded: "in_route",
+    in_route: "arrived",
+    arrived: "delivered",
+    delivered: "delivered",
+    issue: "in_route",
+    cancelled: "cancelled",
+  }[status];
+}
+
+function updateOrderFromDelivery(order, delivery) {
+  const progressByStatus = {
+    pending: 0,
+    loading: 25,
+    loaded: 45,
+    in_route: 70,
+    arrived: 90,
+    delivered: 100,
+    issue: 70,
+    cancelled: 0,
+  };
+  return {
+    ...order,
+    status:
+      delivery.status === "delivered"
+        ? "Entregue"
+        : ["in_route", "arrived", "issue"].includes(delivery.status)
+          ? "Em rota"
+          : order.status,
+    deliveryProgress: Math.max(order.deliveryProgress, progressByStatus[delivery.status]),
+  };
+}
+
 function transitionSimulation(simulation, status, extra = {}) {
   return { ...simulation, status, ...extra };
 }
@@ -215,6 +344,71 @@ productRepository.save({
   active: true,
 });
 assert.equal(productRepository.list()[0].defaultUnitsPerBox, 9);
+
+assert.deepEqual(parseInstallmentDays("7 e 14 dias"), [7, 14]);
+assert.deepEqual(parseInstallmentDays("à vista"), [28]);
+
+const financialTitles = createFinancialTitlesFromOrder({
+  id: "ord-fin-1",
+  number: "PED FIN 1",
+  totalValue: 1000,
+  paymentTerms: "7 e 14 dias",
+});
+assert.equal(financialTitles.length, 2);
+assert.equal(financialTitles[0].amount, 500);
+assert.equal(financialTitles[1].titleNumber, "PED FIN 1-PARC-2");
+assert.equal(calculateBillingProgress(financialTitles), 0);
+assert.equal(
+  calculateBillingProgress([
+    { amount: 500, paidAmount: 500 },
+    { amount: 500, paidAmount: 0 },
+  ]),
+  50,
+);
+assert.equal(
+  calculateBillingProgress([
+    { amount: 500, paidAmount: 500 },
+    { amount: 500, paidAmount: 500 },
+  ]),
+  100,
+);
+
+const freightOrder = {
+  id: "ord-freight-1",
+  number: "PED FRETE 1",
+  origin: "Cataguases • MG",
+  destination: "Juiz de Fora • MG",
+  owner: "Djalma",
+  status: "Em separação",
+  deliveryProgress: 0,
+};
+const freight = createFreightFromOrder(freightOrder);
+assert.equal(freight.id, "freight-ord-freight-1");
+assert.equal(freight.route, "Cataguases • MG → Juiz de Fora • MG");
+assert.equal(getNextFreightStatus("quoted"), "hired");
+assert.equal(getNextFreightStatus("loading"), "in_route");
+const inRouteOrder = updateOrderFromFreight(freightOrder, { ...freight, status: "in_route" });
+assert.equal(inRouteOrder.status, "Em rota");
+assert.equal(inRouteOrder.deliveryProgress, 70);
+const deliveredOrder = updateOrderFromFreight(inRouteOrder, { ...freight, status: "delivered" });
+assert.equal(deliveredOrder.status, "Entregue");
+assert.equal(deliveredOrder.deliveryProgress, 100);
+
+const delivery = createDeliveryFromFreight({ ...freight, status: "in_route" });
+assert.equal(delivery.id, "delivery-freight-ord-freight-1");
+assert.equal(delivery.status, "in_route");
+assert.equal(getNextDeliveryStatus("pending"), "loading");
+assert.equal(getNextDeliveryStatus("arrived"), "delivered");
+const arrivedOrder = updateOrderFromDelivery(freightOrder, { ...delivery, status: "arrived" });
+assert.equal(arrivedOrder.status, "Em rota");
+assert.equal(arrivedOrder.deliveryProgress, 90);
+const issueOrder = updateOrderFromDelivery(freightOrder, {
+  ...delivery,
+  status: "issue",
+  occurrenceNotes: "Cliente ausente.",
+});
+assert.equal(issueOrder.status, "Em rota");
+assert.equal(issueOrder.deliveryProgress, 70);
 
 function requireSupabaseConfig(configured) {
   if (!configured) throw new Error("Supabase não está configurado.");
