@@ -18,7 +18,8 @@ const SIMULATION_SELECT = `
   simulation_items(*),
   simulation_costs(*),
   simulation_purchase_costs(*),
-  simulation_installments(*)
+  simulation_installments(*),
+  approvals(*)
 `;
 
 function requireClient(): SupabaseClient {
