@@ -18,7 +18,7 @@ import { SIMULATION_STORAGE_KEY, THEME_STORAGE_KEY, USER_STORAGE_KEY } from "@/l
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
 import { users as seedUsers } from "@/data/users";
-import { useAppStore } from "@/store/useAppStore";
+import { getAppStoreSnapshot, useAppStore } from "@/store/useAppStore";
 import type {
   Client,
   DeliveryRecord,
@@ -307,6 +307,46 @@ function normalizeStoredUser(user: User): User {
     status: user.status === "Pendente" ? "Ativo" : (user.status ?? "Ativo"),
     emailConfirmed: user.emailConfirmed ?? true,
   };
+}
+
+const PENDING_APPROVAL_STATUSES = new Set<Simulation["status"]>([
+  "Pendente de aprovação",
+  "Em análise",
+]);
+
+function mergeRemoteSimulationsWithLocalPending(
+  remoteSimulations: Simulation[],
+  localSimulations: Simulation[],
+) {
+  const remoteById = new Map(remoteSimulations.map((simulation) => [simulation.id, simulation]));
+  const localPending = localSimulations.filter(
+    (simulation) =>
+      PENDING_APPROVAL_STATUSES.has(simulation.status) &&
+      simulation.approvalFlow?.financial.status === "pending",
+  );
+
+  if (localPending.length === 0) return remoteSimulations;
+
+  const merged = [...remoteSimulations];
+  for (const localSimulation of localPending) {
+    const remoteSimulation = remoteById.get(localSimulation.id);
+    if (!remoteSimulation) {
+      merged.push(localSimulation);
+      continue;
+    }
+
+    if (
+      remoteSimulation.status !== localSimulation.status ||
+      !remoteSimulation.approvalFlow ||
+      remoteSimulation.approvalFlow.financial.status !==
+        localSimulation.approvalFlow?.financial.status
+    ) {
+      const index = merged.findIndex((simulation) => simulation.id === localSimulation.id);
+      if (index >= 0) merged[index] = localSimulation;
+    }
+  }
+
+  return merged;
 }
 
 function normalizeDatabaseRole(role?: string | null): string | null {
@@ -842,7 +882,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ]);
 
         if (cancelled) return;
-        setSimulationsStore(remoteSimulations);
+        setSimulationsStore(
+          mergeRemoteSimulationsWithLocalPending(
+            remoteSimulations,
+            getAppStoreSnapshot().simulations,
+          ),
+        );
         setOrdersStore(remoteOrders);
         setFinancialTitlesStore(remoteFinancialTitles);
         setFreightsStore(remoteFreights);
