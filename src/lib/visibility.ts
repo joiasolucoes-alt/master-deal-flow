@@ -9,6 +9,11 @@ export function canViewAllFlows(user: User | null | undefined) {
   return normalizeRole(user?.role ?? "Comercial") === "Admin";
 }
 
+export function canViewOperationalQueues(user: User | null | undefined) {
+  const role = normalizeRole(user?.role ?? "Comercial");
+  return role === "Admin" || role === "Financeiro" || role === "Aprovador";
+}
+
 export function belongsToUser(owner: string | null | undefined, user: User | null | undefined) {
   if (!user) return false;
   const normalizedOwner = normalize(owner);
@@ -17,11 +22,21 @@ export function belongsToUser(owner: string | null | undefined, user: User | nul
 
 export function filterSimulationsForUser(simulations: Simulation[], user: User | null | undefined) {
   if (canViewAllFlows(user)) return simulations;
-  return simulations.filter((simulation) => belongsToUser(simulation.owner, user));
+  const role = normalizeRole(user?.role ?? "Comercial");
+  return simulations.filter((simulation) => {
+    if (belongsToUser(simulation.owner, user)) return true;
+    if (
+      (role === "Financeiro" || role === "Aprovador") &&
+      (simulation.status === "Pendente de aprovação" || simulation.status === "Em análise")
+    ) {
+      return true;
+    }
+    return false;
+  });
 }
 
 export function filterOrdersForUser(orders: Order[], user: User | null | undefined) {
-  if (canViewAllFlows(user)) return orders;
+  if (canViewOperationalQueues(user)) return orders;
   return orders.filter((order) => belongsToUser(order.owner, user));
 }
 
