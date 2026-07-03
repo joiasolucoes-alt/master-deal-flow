@@ -136,7 +136,7 @@ function ReportsPage() {
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={simulationEvolution}>
+              <LineChart data={simulationEvolution} margin={{ left: 8, right: 12, top: 12, bottom: 4 }}>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   stroke="var(--color-border)"
@@ -147,19 +147,24 @@ function ReportsPage() {
                   stroke="var(--color-muted-foreground)"
                   tickLine={false}
                   axisLine={false}
+                  tick={{ fontSize: 12 }}
                 />
                 <YAxis
                   stroke="var(--color-muted-foreground)"
                   tickFormatter={(v) => formatCompactCurrency(v as number)}
                   tickLine={false}
                   axisLine={false}
+                  tick={{ fontSize: 12 }}
+                  width={64}
                 />
                 <Tooltip
                   formatter={(v) => formatCurrency(Number(v))}
                   contentStyle={{
                     background: "var(--color-card)",
+                    color: "var(--color-card-foreground)",
                     borderRadius: 12,
                     border: "1px solid var(--color-border)",
+                    boxShadow: "var(--shadow-elevated)",
                   }}
                 />
                 <Line
@@ -167,7 +172,9 @@ function ReportsPage() {
                   dataKey="value"
                   stroke="var(--color-primary)"
                   strokeWidth={3}
-                  dot={{ r: 4 }}
+                  dot={{ r: 4, strokeWidth: 2, stroke: "var(--color-card)" }}
+                  activeDot={{ r: 6 }}
+                  animationDuration={900}
                 />
               </LineChart>
             </ResponsiveContainer>
