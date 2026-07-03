@@ -6,8 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAppContext } from "@/features/app/app-context";
-import truckDarkAsset from "@/assets/master-truck-dark.png.asset.json";
-import truckLightAsset from "@/assets/master-truck-light.png.asset.json";
 import { notifyActionUnavailable } from "@/lib/actions";
 import { toast } from "sonner";
 
@@ -47,12 +45,12 @@ function LoginPage() {
         <div className="space-y-6">
           <div className="relative mx-auto w-full overflow-hidden rounded-3xl">
             <img
-              src={truckLightAsset.url}
+              src="/master-truck-light.svg"
               alt="Caminhão Master"
               className="block w-full object-cover transition-transform duration-700 ease-out hover:scale-[1.02] dark:hidden"
             />
             <img
-              src={truckDarkAsset.url}
+              src="/master-truck-dark.svg"
               alt="Caminhão Master"
               className="hidden w-full object-cover transition-transform duration-700 ease-out hover:scale-[1.02] dark:block"
             />
