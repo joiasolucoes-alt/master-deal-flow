@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MotoristaTokenRouteImport } from './routes/motorista.$token'
 import { Route as AppSimulacoesRouteImport } from './routes/_app.simulacoes'
 import { Route as AppRelatoriosRouteImport } from './routes/_app.relatorios'
 import { Route as AppPerfilRouteImport } from './routes/_app.perfil'
@@ -41,6 +42,11 @@ const AppRoute = AppRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MotoristaTokenRoute = MotoristaTokenRouteImport.update({
+  id: '/motorista/$token',
+  path: '/motorista/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppSimulacoesRoute = AppSimulacoesRouteImport.update({
@@ -138,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/perfil': typeof AppPerfilRoute
   '/relatorios': typeof AppRelatoriosRoute
   '/simulacoes': typeof AppSimulacoesRouteWithChildren
+  '/motorista/$token': typeof MotoristaTokenRoute
   '/negociacoes/$id': typeof AppNegociacoesIdRoute
   '/pedidos/$id': typeof AppPedidosIdRoute
   '/simulacoes/$id': typeof AppSimulacoesIdRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/negociacoes': typeof AppNegociacoesRouteWithChildren
   '/perfil': typeof AppPerfilRoute
   '/relatorios': typeof AppRelatoriosRoute
+  '/motorista/$token': typeof MotoristaTokenRoute
   '/negociacoes/$id': typeof AppNegociacoesIdRoute
   '/pedidos/$id': typeof AppPedidosIdRoute
   '/simulacoes/$id': typeof AppSimulacoesIdRoute
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/_app/perfil': typeof AppPerfilRoute
   '/_app/relatorios': typeof AppRelatoriosRoute
   '/_app/simulacoes': typeof AppSimulacoesRouteWithChildren
+  '/motorista/$token': typeof MotoristaTokenRoute
   '/_app/negociacoes/$id': typeof AppNegociacoesIdRoute
   '/_app/pedidos/$id': typeof AppPedidosIdRoute
   '/_app/simulacoes/$id': typeof AppSimulacoesIdRoute
@@ -200,6 +209,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/relatorios'
     | '/simulacoes'
+    | '/motorista/$token'
     | '/negociacoes/$id'
     | '/pedidos/$id'
     | '/simulacoes/$id'
@@ -218,6 +228,7 @@ export interface FileRouteTypes {
     | '/negociacoes'
     | '/perfil'
     | '/relatorios'
+    | '/motorista/$token'
     | '/negociacoes/$id'
     | '/pedidos/$id'
     | '/simulacoes/$id'
@@ -239,6 +250,7 @@ export interface FileRouteTypes {
     | '/_app/perfil'
     | '/_app/relatorios'
     | '/_app/simulacoes'
+    | '/motorista/$token'
     | '/_app/negociacoes/$id'
     | '/_app/pedidos/$id'
     | '/_app/simulacoes/$id'
@@ -250,6 +262,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  MotoristaTokenRoute: typeof MotoristaTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -273,6 +286,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/motorista/$token': {
+      id: '/motorista/$token'
+      path: '/motorista/$token'
+      fullPath: '/motorista/$token'
+      preLoaderRoute: typeof MotoristaTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/simulacoes': {
@@ -464,7 +484,18 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  MotoristaTokenRoute: MotoristaTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

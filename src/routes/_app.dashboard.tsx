@@ -224,7 +224,10 @@ function DashboardPage() {
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={simulationEvolution} margin={{ left: 8, right: 12, top: 12, bottom: 4 }}>
+              <AreaChart
+                data={simulationEvolution}
+                margin={{ left: 8, right: 12, top: 12, bottom: 4 }}
+              >
                 <defs>
                   <linearGradient id="dashArea" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.55} />
