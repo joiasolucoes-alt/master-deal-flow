@@ -34,7 +34,12 @@ function toNumber(value: number | null | undefined) {
 }
 
 function normalizeStatus(status?: string | null): FreightStatus {
+  if (status === "contracted" || status === "arrived_pickup") return "hired";
+  if (status === "loaded") return "loading";
+  if (status === "in_transit") return "in_route";
+  if (status === "completed") return "delivered";
   if (
+    status === "quoted" ||
     status === "hired" ||
     status === "loading" ||
     status === "in_route" ||

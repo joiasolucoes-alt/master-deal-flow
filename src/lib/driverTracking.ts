@@ -6,7 +6,15 @@ export type DriverEventType =
   | "in_transit"
   | "delivered"
   | "proof_uploaded";
-export type FreightTrackingStatus = "contracted" | DriverEventType | "completed" | "cancelled";
+export type FreightTrackingStatus =
+  | "quoted"
+  | "hired"
+  | "loading"
+  | "in_route"
+  | "contracted"
+  | DriverEventType
+  | "completed"
+  | "cancelled";
 
 export interface DriverTrackingEvent {
   id: string;

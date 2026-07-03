@@ -250,6 +250,10 @@ function statusLabel(status: string) {
   return (
     (
       {
+        quoted: "Cotação",
+        hired: "Contratado",
+        loading: "Carregando",
+        in_route: "Em rota",
         contracted: "Contratado",
         arrived_pickup: "Chegou para coleta",
         loaded: "Carregado",

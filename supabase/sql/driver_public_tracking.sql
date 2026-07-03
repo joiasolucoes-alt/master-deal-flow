@@ -18,7 +18,23 @@ alter table public.freights
 
 alter table public.freights drop constraint if exists freights_status_driver_tracking_check;
 alter table public.freights add constraint freights_status_driver_tracking_check
-  check (status in ('contracted','arrived_pickup','loaded','in_transit','delivered','completed','cancelled','Cotação','Aprovado','Em rota','Entregue'));
+  check (status in (
+    'quoted',
+    'hired',
+    'loading',
+    'in_route',
+    'delivered',
+    'cancelled',
+    'contracted',
+    'arrived_pickup',
+    'loaded',
+    'in_transit',
+    'completed',
+    'Cotação',
+    'Aprovado',
+    'Em rota',
+    'Entregue'
+  ));
 
 create table if not exists public.driver_tracking_links (
   id uuid primary key default gen_random_uuid(),
