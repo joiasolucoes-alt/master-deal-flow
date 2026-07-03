@@ -1,6 +1,17 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, Copy, Link2, MapPin, Plus, RotateCw, Truck, XCircle } from "lucide-react";
+import {
+  ArrowRight,
+  Copy,
+  Link2,
+  MapPin,
+  Pencil,
+  Plus,
+  RotateCw,
+  Save,
+  Truck,
+  XCircle,
+} from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
 import { DataTable, type DataColumn } from "@/components/app/data-table";
@@ -8,6 +19,9 @@ import { StatusBadge } from "@/components/app/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useAppContext } from "@/features/app/app-context";
 import type { FreightRecord } from "@/data/types";
 import {
@@ -23,8 +37,22 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_app/fretes")({
   component: FreightsPage,
 });
+
+type FreightFormState = {
+  carrierName: string;
+  driverName: string;
+  vehicleDescription: string;
+  vehiclePlate: string;
+  route: string;
+  freightValue: string;
+  pickupDate: string;
+  expectedDeliveryDate: string;
+  notes: string;
+};
+
 function FreightsPage() {
   const { auth, orders, freights, upsertFreight, upsertOrder } = useAppContext();
+  const [selectedFreightId, setSelectedFreightId] = useState<string | null>(null);
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
   const visibleOrderIds = useMemo(
     () => new Set(visibleOrders.map((order) => order.id)),
@@ -49,6 +77,22 @@ function FreightsPage() {
   const total = visibleFreights.length;
   const transit = visibleFreights.filter((f) => f.status === "in_route").length;
   const value = visibleFreights.reduce((s, f) => s + f.freightValue, 0);
+  const selectedFreight = visibleFreights.find((freight) => freight.id === selectedFreightId);
+  const [form, setForm] = useState<FreightFormState>(() => createFreightFormState());
+
+  useEffect(() => {
+    if (!selectedFreight && visibleFreights.length > 0 && selectedFreightId) {
+      setSelectedFreightId(null);
+    }
+  }, [selectedFreight, selectedFreightId, visibleFreights.length]);
+
+  useEffect(() => {
+    if (!selectedFreight) {
+      setForm(createFreightFormState());
+      return;
+    }
+    setForm(createFreightFormState(selectedFreight));
+  }, [selectedFreight]);
 
   const handleGenerateFreights = () => {
     if (eligibleOrders.length === 0) {
@@ -75,6 +119,33 @@ function FreightsPage() {
     if (order) upsertOrder(updateOrderFromFreight(order, nextFreight));
 
     toast.success(`Frete atualizado para ${getFreightStatusLabel(nextStatus)}.`);
+  };
+
+  const updateForm = (key: keyof FreightFormState, value: string) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleSaveFreightDetails = () => {
+    if (!selectedFreight) return;
+
+    const nextFreight: FreightRecord = {
+      ...selectedFreight,
+      carrierName: form.carrierName.trim() || "Transportadora a definir",
+      driverName: form.driverName.trim(),
+      vehicleDescription: form.vehicleDescription.trim() || "Veículo a definir",
+      vehiclePlate: form.vehiclePlate.trim().toUpperCase(),
+      route: form.route.trim() || selectedFreight.route,
+      freightValue: parseDecimalInput(form.freightValue),
+      pickupDate: fromDateTimeInput(form.pickupDate, selectedFreight.pickupDate),
+      expectedDeliveryDate: fromDateTimeInput(
+        form.expectedDeliveryDate,
+        selectedFreight.expectedDeliveryDate,
+      ),
+      notes: form.notes.trim(),
+    };
+
+    upsertFreight(nextFreight);
+    toast.success("Dados do frete salvos.");
   };
 
   const columns: DataColumn<FreightRecord>[] = [
@@ -158,8 +229,16 @@ function FreightsPage() {
           <DataTable
             columns={columns}
             data={visibleFreights}
+            onRowClick={(freight) => setSelectedFreightId(freight.id)}
             emptyTitle="Sem fretes"
             emptyDescription="Nenhum frete contratado no momento."
+          />
+          <FreightDetailsForm
+            freight={selectedFreight}
+            form={form}
+            onChange={updateForm}
+            onSave={handleSaveFreightDetails}
+            onAdvance={handleAdvanceFreight}
           />
         </CardContent>
       </Card>
@@ -235,4 +314,178 @@ function FreightsPage() {
       </Card>
     </div>
   );
+}
+
+function FreightDetailsForm({
+  freight,
+  form,
+  onChange,
+  onSave,
+  onAdvance,
+}: {
+  freight?: FreightRecord;
+  form: FreightFormState;
+  onChange: (key: keyof FreightFormState, value: string) => void;
+  onSave: () => void;
+  onAdvance: (freight: FreightRecord) => void;
+}) {
+  if (!freight) {
+    return (
+      <div className="mt-4 rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+        Clique em um frete do painel para cadastrar transportadora, veículo, motorista, valor e
+        datas operacionais.
+      </div>
+    );
+  }
+
+  const canAdvance = freight.status !== "delivered" && freight.status !== "cancelled";
+
+  return (
+    <div className="mt-4 rounded-2xl border bg-muted/20 p-4">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Pencil className="h-4 w-4 text-primary" />
+            Cadastro do frete {freight.code}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Pedido {freight.orderNumber ?? "-"} • {freight.client}
+          </p>
+        </div>
+        <StatusBadge status={getFreightStatusLabel(freight.status)} />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <Field label="Transportadora">
+          <Input
+            value={form.carrierName}
+            onChange={(event) => onChange("carrierName", event.target.value)}
+            placeholder="Nome da transportadora"
+          />
+        </Field>
+        <Field label="Motorista">
+          <Input
+            value={form.driverName}
+            onChange={(event) => onChange("driverName", event.target.value)}
+            placeholder="Nome do motorista"
+          />
+        </Field>
+        <Field label="Veículo">
+          <Input
+            value={form.vehicleDescription}
+            onChange={(event) => onChange("vehicleDescription", event.target.value)}
+            placeholder="Truck, carreta, baú..."
+          />
+        </Field>
+        <Field label="Placa">
+          <Input
+            value={form.vehiclePlate}
+            onChange={(event) => onChange("vehiclePlate", event.target.value)}
+            placeholder="ABC-1D23"
+          />
+        </Field>
+        <Field label="Valor do frete">
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.freightValue}
+            onChange={(event) => onChange("freightValue", event.target.value)}
+            placeholder="0,00"
+          />
+        </Field>
+        <Field label="Carregamento">
+          <Input
+            type="datetime-local"
+            value={form.pickupDate}
+            onChange={(event) => onChange("pickupDate", event.target.value)}
+          />
+        </Field>
+        <Field label="Previsão de entrega">
+          <Input
+            type="datetime-local"
+            value={form.expectedDeliveryDate}
+            onChange={(event) => onChange("expectedDeliveryDate", event.target.value)}
+          />
+        </Field>
+        <Field label="Trajeto">
+          <Input
+            value={form.route}
+            onChange={(event) => onChange("route", event.target.value)}
+            placeholder="Origem -> destino"
+          />
+        </Field>
+      </div>
+
+      <Field label="Observações" className="mt-3">
+        <Textarea
+          value={form.notes}
+          onChange={(event) => onChange("notes", event.target.value)}
+          placeholder="Dados de contratação, contato, restrições ou instruções para coleta."
+        />
+      </Field>
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button variant="outline" onClick={onSave}>
+          <Save />
+          Salvar dados do frete
+        </Button>
+        <Button disabled={!canAdvance} onClick={() => onAdvance(freight)}>
+          <ArrowRight />
+          Avançar status
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function createFreightFormState(freight?: FreightRecord): FreightFormState {
+  return {
+    carrierName: freight?.carrierName ?? "",
+    driverName: freight?.driverName ?? "",
+    vehicleDescription: freight?.vehicleDescription ?? "",
+    vehiclePlate: freight?.vehiclePlate ?? "",
+    route: freight?.route ?? "",
+    freightValue: freight ? String(freight.freightValue || "") : "",
+    pickupDate: toDateTimeInput(freight?.pickupDate),
+    expectedDeliveryDate: toDateTimeInput(freight?.expectedDeliveryDate),
+    notes: freight?.notes ?? "",
+  };
+}
+
+function toDateTimeInput(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function fromDateTimeInput(value: string, fallback: string) {
+  if (!value) return fallback;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
+}
+
+function parseDecimalInput(value: string) {
+  const parsed = Number(value.replace(",", "."));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
