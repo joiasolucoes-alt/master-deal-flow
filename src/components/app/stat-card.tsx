@@ -24,7 +24,7 @@ export function StatCard({
   const positive = !delta?.trim().startsWith("-");
 
   return (
-    <Card className="shadow-card">
+    <Card className="hover-lift animate-page shadow-card">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-2">
@@ -49,7 +49,10 @@ export function StatCard({
             ) : null}
           </div>
           <div
-            className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-full", toneMap[tone])}
+            className={cn(
+              "grid h-11 w-11 shrink-0 place-items-center rounded-full transition-transform duration-300 group-hover:scale-110",
+              toneMap[tone],
+            )}
           >
             <Icon className="h-5 w-5" />
           </div>
