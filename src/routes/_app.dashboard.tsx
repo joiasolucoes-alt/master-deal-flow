@@ -293,21 +293,33 @@ function DashboardPage() {
                   innerRadius={55}
                   outerRadius={90}
                   paddingAngle={4}
+                  animationDuration={900}
                 >
                   {statusData.map((_, idx) => (
-                    <Cell key={idx} fill={pieColors[idx % pieColors.length]} />
+                    <Cell
+                      key={idx}
+                      fill={pieColors[idx % pieColors.length]}
+                      stroke="var(--color-card)"
+                      strokeWidth={2}
+                    />
                   ))}
                 </Pie>
-                <Legend verticalAlign="bottom" iconType="circle" />
+                <Legend
+                  verticalAlign="bottom"
+                  iconType="circle"
+                  wrapperStyle={{ fontSize: 12, color: "var(--color-muted-foreground)" }}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "var(--color-card)",
                     color: "var(--color-card-foreground)",
                     borderRadius: 12,
                     border: "1px solid var(--color-border)",
+                    boxShadow: "var(--shadow-elevated)",
                   }}
                   labelStyle={{ color: "var(--color-card-foreground)" }}
                   itemStyle={{ color: "var(--color-card-foreground)" }}
+                  formatter={(v: number, name: string) => [`${v} negociações`, name]}
                 />
               </PieChart>
             </ResponsiveContainer>
