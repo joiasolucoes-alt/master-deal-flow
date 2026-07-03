@@ -24,12 +24,15 @@ export function StatCard({
   const positive = !delta?.trim().startsWith("-");
 
   return (
-    <Card className="hover-lift animate-page shadow-card">
+    <Card className="hover-lift animate-page border-border/90">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-2">
             <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="truncate text-3xl font-semibold tracking-tight text-foreground">
+            <p
+              data-metric
+              className="truncate text-3xl font-bold tracking-[-0.035em] text-foreground"
+            >
               {value}
             </p>
             {delta ? (
@@ -50,7 +53,7 @@ export function StatCard({
           </div>
           <div
             className={cn(
-              "grid h-11 w-11 shrink-0 place-items-center rounded-full transition-transform duration-300 group-hover:scale-110",
+              "grid h-10 w-10 shrink-0 place-items-center rounded-md ring-1 ring-current/10",
               toneMap[tone],
             )}
           >

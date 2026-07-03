@@ -1,19 +1,23 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { ChartNoAxesCombined, ClipboardCheck, Eye, EyeOff, ShieldCheck, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAppContext } from "@/features/app/app-context";
-import truckDarkAsset from "@/assets/master-truck-dark.png.asset.json";
-import truckLightAsset from "@/assets/master-truck-light.png.asset.json";
 import { notifyActionUnavailable } from "@/lib/actions";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
+
+const loginHighlights = [
+  { icon: ChartNoAxesCombined, label: "Simular", text: "Margem e viabilidade" },
+  { icon: ClipboardCheck, label: "Aprovar", text: "Alçadas e decisões" },
+  { icon: Truck, label: "Entregar", text: "Pedido e logística" },
+] as const;
 
 function LoginPage() {
   const { login, auth, hydrated } = useAppContext();
@@ -30,7 +34,8 @@ function LoginPage() {
 
   return (
     <div className="grid min-h-dvh bg-background lg:grid-cols-2">
-      <aside className="hidden flex-col justify-between bg-sidebar p-12 text-sidebar-foreground lg:flex">
+      <aside className="sidebar-surface relative hidden overflow-hidden border-r border-sidebar-border p-12 text-sidebar-foreground lg:flex lg:flex-col lg:justify-between">
+        <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(var(--sidebar-foreground)_1px,transparent_1px),linear-gradient(90deg,var(--sidebar-foreground)_1px,transparent_1px)] [background-size:48px_48px]" />
         <div className="flex items-center gap-3">
           <div className="h-12 w-10 overflow-hidden rounded-md">
             <img
@@ -40,31 +45,38 @@ function LoginPage() {
             />
           </div>
           <div>
-            <p className="text-2xl font-semibold leading-none">master</p>
-            <p className="text-2xl font-semibold leading-none text-primary">Flow</p>
-          </div>
-        </div>
-        <div className="space-y-6">
-          <div className="relative mx-auto w-full overflow-hidden rounded-3xl">
-            <img
-              src={truckLightAsset.url}
-              alt="Caminhão Master"
-              className="block w-full object-cover transition-transform duration-700 ease-out hover:scale-[1.02] dark:hidden"
-            />
-            <img
-              src={truckDarkAsset.url}
-              alt="Caminhão Master"
-              className="hidden w-full object-cover transition-transform duration-700 ease-out hover:scale-[1.02] dark:block"
-            />
-          </div>
-          <div className="space-y-3">
-            <h2 className="text-3xl font-semibold">Gestão completa de negociações</h2>
-            <p className="text-sidebar-foreground/70">
-              Simule, aprove e acompanhe pedidos em uma única plataforma — do orçamento à entrega.
+            <p className="font-display text-2xl font-bold leading-none">Master Flow</p>
+            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-sidebar-foreground/55">
+              Gestão comercial
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-sm text-sidebar-foreground/70">
+        <div className="relative max-w-xl space-y-8">
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+              Controle de ponta a ponta
+            </p>
+            <h2 className="text-4xl font-bold leading-tight">
+              Decisões comerciais com mais clareza e velocidade.
+            </h2>
+            <p className="max-w-lg text-base leading-relaxed text-sidebar-foreground/65">
+              Centralize simulações, aprovações, pedidos e entregas em um fluxo operacional único.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {loginHighlights.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-lg border border-sidebar-border bg-sidebar-elevated/80 p-4"
+              >
+                <item.icon className="mb-6 h-5 w-5 text-primary" />
+                <p className="text-sm font-semibold">{item.label}</p>
+                <p className="mt-1 text-xs text-sidebar-foreground/50">{item.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="relative flex items-center gap-3 text-sm text-sidebar-foreground/60">
           <ShieldCheck className="h-5 w-5 text-primary" />
           Plataforma interna Master Distribuidora e Logística
         </div>
@@ -91,10 +103,10 @@ function LoginPage() {
               setIsSubmitting(false);
             }
           }}
-          className="w-full max-w-md space-y-6"
+          className="w-full max-w-md space-y-6 rounded-xl border border-border bg-card p-7 shadow-elevated sm:p-9"
         >
           <div className="space-y-2 text-center lg:text-left">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+            <h1 className="text-3xl font-bold tracking-[-0.03em] text-foreground">
               Bem-vindo MasterFlow
             </h1>
             <p className="text-sm text-muted-foreground">

@@ -54,11 +54,11 @@ export function AppShell() {
 
   return (
     <SidebarProvider defaultOpen>
-      <div className="flex min-h-dvh w-full bg-shell">
+      <div className="flex min-h-dvh w-full overflow-x-hidden bg-shell">
         <AppSidebar />
-        <SidebarInset className="min-h-dvh bg-shell">
+        <SidebarInset className="min-h-dvh min-w-0 bg-shell">
           <AppHeader />
-          <div key={pathname} className="animate-page flex-1 p-4 md:p-6 lg:p-8">
+          <div key={pathname} className="animate-page min-w-0 flex-1 p-4 md:p-6 lg:p-8">
             <Outlet />
           </div>
         </SidebarInset>

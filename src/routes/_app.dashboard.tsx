@@ -17,13 +17,14 @@ import {
 } from "recharts";
 import {
   ArrowRight,
-  ArrowUpRight,
+  Boxes,
+  BriefcaseBusiness,
   CheckCircle2,
   ClipboardCheck,
   Handshake,
+  Percent,
   PiggyBank,
   Plus,
-  TriangleAlert,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
@@ -51,13 +52,13 @@ export const Route = createFileRoute("/_app/dashboard")({
 });
 
 const kpiIcons = [
-  Handshake,
-  ClipboardCheck,
-  CheckCircle2,
-  TriangleAlert,
   PiggyBank,
-  ArrowUpRight,
-  ArrowUpRight,
+  Percent,
+  ClipboardCheck,
+  Boxes,
+  Handshake,
+  BriefcaseBusiness,
+  CheckCircle2,
 ];
 const pieColors = [
   "var(--color-chart-1)",
@@ -95,34 +96,13 @@ function DashboardPage() {
       : 0;
   const dashboardCards = [
     {
-      label: "Negociações",
-      value: String(visibleNegotiations.length),
-      delta: "0,0%",
-      tone: "info",
-    },
-    { label: "Simulações", value: String(visibleSimulations.length), delta: "0,0%", tone: "info" },
-    {
-      label: "Aprovações pendentes",
-      value: String(pendingApprovals),
-      delta: "0,0%",
-      tone: "warning",
-    },
-    {
-      label: "Pedidos ativos",
-      value: String(visibleOrders.filter((order) => order.status !== "Entregue").length),
-      delta: "0,0%",
-      tone: "success",
-    },
-    {
       label: "Receita simulada",
       value: formatCompactCurrency(revenue),
-      delta: "0,0%",
       tone: "success",
     },
     {
       label: "Margem média",
       value: formatPercent(averageMargin, 1),
-      delta: "0,0%",
       tone:
         averageMargin >= MINIMUM_MARGIN_TARGET
           ? "success"
@@ -131,10 +111,25 @@ function DashboardPage() {
             : "danger",
     },
     {
+      label: "Aprovações pendentes",
+      value: String(pendingApprovals),
+      tone: "warning",
+    },
+    {
+      label: "Pedidos ativos",
+      value: String(visibleOrders.filter((order) => order.status !== "Entregue").length),
+      tone: "info",
+    },
+    {
+      label: "Negociações",
+      value: String(visibleNegotiations.length),
+      tone: "info",
+    },
+    { label: "Simulações", value: String(visibleSimulations.length), tone: "info" },
+    {
       label: "Pedidos entregues",
       value: String(visibleOrders.filter((order) => order.status === "Entregue").length),
-      delta: "0,0%",
-      tone: "info",
+      tone: "success",
     },
   ];
   const statusData = Object.entries(
@@ -185,26 +180,24 @@ function DashboardPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {dashboardCards.slice(0, 4).map((kpi, idx) => (
           <StatCard
             key={kpi.label}
             label={kpi.label}
             value={kpi.value}
-            delta={kpi.delta}
             icon={kpiIcons[idx] ?? Handshake}
             tone={kpi.tone as "success" | "warning" | "danger" | "info"}
           />
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-3">
         {dashboardCards.slice(4).map((kpi, idx) => (
           <StatCard
             key={kpi.label}
             label={kpi.label}
             value={kpi.value}
-            delta={kpi.delta}
             icon={kpiIcons[idx + 4] ?? PiggyBank}
             tone={kpi.tone as "success" | "warning" | "danger" | "info"}
           />
@@ -212,7 +205,7 @@ function DashboardPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
-        <Card className="shadow-card">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Evolução do volume simulado</CardTitle>
@@ -230,7 +223,7 @@ function DashboardPage() {
               >
                 <defs>
                   <linearGradient id="dashArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.55} />
+                    <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.28} />
                     <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -273,7 +266,7 @@ function DashboardPage() {
                   stroke="var(--color-primary)"
                   fill="url(#dashArea)"
                   strokeWidth={2.5}
-                  animationDuration={900}
+                  animationDuration={500}
                   activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)" }}
                 />
               </AreaChart>
@@ -281,7 +274,7 @@ function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-card">
+        <Card>
           <CardHeader>
             <CardTitle>Status das negociações</CardTitle>
             <p className="text-sm text-muted-foreground">Distribuição atual</p>
@@ -296,7 +289,7 @@ function DashboardPage() {
                   innerRadius={55}
                   outerRadius={90}
                   paddingAngle={4}
-                  animationDuration={900}
+                  animationDuration={500}
                 >
                   {statusData.map((_, idx) => (
                     <Cell
@@ -331,7 +324,7 @@ function DashboardPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
-        <Card className="shadow-card">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Simulações recentes</CardTitle>
@@ -349,7 +342,7 @@ function DashboardPage() {
               return (
                 <div
                   key={sim.id}
-                  className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl border border-border bg-background/40 p-4"
+                  className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-border bg-background/40 p-3.5"
                 >
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -376,7 +369,7 @@ function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-card">
+        <Card>
           <CardHeader>
             <CardTitle>Top clientes</CardTitle>
             <p className="text-sm text-muted-foreground">Volume nos últimos 30 dias</p>
@@ -404,7 +397,7 @@ function DashboardPage() {
         </Card>
       </div>
 
-      <Card className="shadow-card">
+      <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Últimos pedidos</CardTitle>
@@ -422,7 +415,7 @@ function DashboardPage() {
           {recentOrders.map((order) => (
             <div
               key={order.id}
-              className="space-y-3 rounded-2xl border border-border bg-background/40 p-4"
+              className="space-y-3 rounded-md border border-border bg-background/40 p-4"
             >
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-foreground">{order.number}</span>
