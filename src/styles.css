@@ -234,4 +234,26 @@
   ::selection {
     background: color-mix(in oklab, var(--primary) 35%, transparent);
   }
+
+  /* Neon primary is unreadable as text on the light shell; darken text-primary
+     only in light mode. Backgrounds/fills keep the bright brand color. */
+  html:not(.dark) .text-primary {
+    color: oklch(0.55 0.19 138);
+  }
+  html:not(.dark) .bg-primary-soft.text-primary,
+  html:not(.dark) .fill-primary {
+    color: oklch(0.55 0.19 138);
+  }
+
+  /* Smooth interactive feedback across the app */
+  button,
+  [role="button"],
+  a {
+    transition:
+      background-color 160ms ease,
+      color 160ms ease,
+      border-color 160ms ease,
+      transform 160ms ease,
+      box-shadow 200ms ease;
+  }
 }
