@@ -175,6 +175,58 @@ function updateOrderFromFreight(order, freight) {
   };
 }
 
+function createDeliveryFromFreight(freight) {
+  return {
+    id: `delivery-${freight.id}`,
+    orderId: freight.orderId,
+    freightId: freight.id,
+    status:
+      freight.status === "in_route"
+        ? "in_route"
+        : freight.status === "delivered"
+          ? "delivered"
+          : "pending",
+    currentLocation: freight.status === "in_route" ? "Em trânsito" : "Aguardando expedição",
+    occurrenceNotes: "",
+  };
+}
+
+function getNextDeliveryStatus(status) {
+  return {
+    pending: "loading",
+    loading: "loaded",
+    loaded: "in_route",
+    in_route: "arrived",
+    arrived: "delivered",
+    delivered: "delivered",
+    issue: "in_route",
+    cancelled: "cancelled",
+  }[status];
+}
+
+function updateOrderFromDelivery(order, delivery) {
+  const progressByStatus = {
+    pending: 0,
+    loading: 25,
+    loaded: 45,
+    in_route: 70,
+    arrived: 90,
+    delivered: 100,
+    issue: 70,
+    cancelled: 0,
+  };
+  return {
+    ...order,
+    status:
+      delivery.status === "delivered"
+        ? "Entregue"
+        : ["in_route", "arrived", "issue"].includes(delivery.status)
+          ? "Em rota"
+          : order.status,
+    deliveryProgress: Math.max(order.deliveryProgress, progressByStatus[delivery.status]),
+  };
+}
+
 function transitionSimulation(simulation, status, extra = {}) {
   return { ...simulation, status, ...extra };
 }
@@ -341,6 +393,22 @@ assert.equal(inRouteOrder.deliveryProgress, 70);
 const deliveredOrder = updateOrderFromFreight(inRouteOrder, { ...freight, status: "delivered" });
 assert.equal(deliveredOrder.status, "Entregue");
 assert.equal(deliveredOrder.deliveryProgress, 100);
+
+const delivery = createDeliveryFromFreight({ ...freight, status: "in_route" });
+assert.equal(delivery.id, "delivery-freight-ord-freight-1");
+assert.equal(delivery.status, "in_route");
+assert.equal(getNextDeliveryStatus("pending"), "loading");
+assert.equal(getNextDeliveryStatus("arrived"), "delivered");
+const arrivedOrder = updateOrderFromDelivery(freightOrder, { ...delivery, status: "arrived" });
+assert.equal(arrivedOrder.status, "Em rota");
+assert.equal(arrivedOrder.deliveryProgress, 90);
+const issueOrder = updateOrderFromDelivery(freightOrder, {
+  ...delivery,
+  status: "issue",
+  occurrenceNotes: "Cliente ausente.",
+});
+assert.equal(issueOrder.status, "Em rota");
+assert.equal(issueOrder.deliveryProgress, 70);
 
 function requireSupabaseConfig(configured) {
   if (!configured) throw new Error("Supabase não está configurado.");

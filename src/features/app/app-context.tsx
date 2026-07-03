@@ -21,6 +21,7 @@ import { users as seedUsers } from "@/data/users";
 import { useAppStore } from "@/store/useAppStore";
 import type {
   Client,
+  DeliveryRecord,
   FinancialTitle,
   FreightRecord,
   Order,
@@ -39,6 +40,7 @@ import { createSupabaseOrderRepository } from "@/features/orders/repositories/su
 import { createSupabaseCatalogRepository } from "@/features/catalogs/repositories/catalogRepository";
 import { createSupabaseFinancialRepository } from "@/features/finance/repositories/supabaseFinancialRepository";
 import { createSupabaseFreightRepository } from "@/features/freights/repositories/supabaseFreightRepository";
+import { createSupabaseDeliveryRepository } from "@/features/deliveries/repositories/supabaseDeliveryRepository";
 import { toast } from "sonner";
 
 type AuthProfile = {
@@ -109,6 +111,7 @@ interface AppContextValue {
   orders: Order[];
   financialTitles: FinancialTitle[];
   freights: FreightRecord[];
+  deliveries: DeliveryRecord[];
   clients: Client[];
   suppliers: Supplier[];
   products: Product[];
@@ -118,6 +121,7 @@ interface AppContextValue {
   upsertOrder: (order: Order) => void;
   upsertFinancialTitle: (title: FinancialTitle) => void;
   upsertFreight: (freight: FreightRecord) => void;
+  upsertDelivery: (delivery: DeliveryRecord) => void;
   upsertClient: (client: Client) => void;
   upsertSupplier: (supplier: Supplier) => void;
   upsertProduct: (product: Product) => void;
@@ -509,6 +513,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const orders = useAppStore((store) => store.orders);
   const financialTitles = useAppStore((store) => store.financialTitles);
   const freights = useAppStore((store) => store.freights);
+  const deliveries = useAppStore((store) => store.deliveries);
   const clients = useAppStore((store) => store.clients);
   const suppliers = useAppStore((store) => store.suppliers);
   const products = useAppStore((store) => store.products);
@@ -516,6 +521,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setOrdersStore = useAppStore((store) => store.setOrders);
   const setFinancialTitlesStore = useAppStore((store) => store.setFinancialTitles);
   const setFreightsStore = useAppStore((store) => store.setFreights);
+  const setDeliveriesStore = useAppStore((store) => store.setDeliveries);
   const setClientsStore = useAppStore((store) => store.setClients);
   const setSuppliersStore = useAppStore((store) => store.setSuppliers);
   const setProductsStore = useAppStore((store) => store.setProducts);
@@ -523,6 +529,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
   const upsertFinancialTitleStore = useAppStore((store) => store.upsertFinancialTitle);
   const upsertFreightStore = useAppStore((store) => store.upsertFreight);
+  const upsertDeliveryStore = useAppStore((store) => store.upsertDelivery);
   const upsertClientStore = useAppStore((store) => store.upsertClient);
   const upsertSupplierStore = useAppStore((store) => store.upsertSupplier);
   const upsertProductStore = useAppStore((store) => store.upsertProduct);
@@ -810,6 +817,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const catalogRepository = createSupabaseCatalogRepository();
     const financialRepository = createSupabaseFinancialRepository();
     const freightRepository = createSupabaseFreightRepository();
+    const deliveryRepository = createSupabaseDeliveryRepository();
 
     async function loadRemoteData() {
       try {
@@ -818,6 +826,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remoteOrders,
           remoteFinancialTitles,
           remoteFreights,
+          remoteDeliveries,
           remoteClients,
           remoteSuppliers,
           remoteProducts,
@@ -826,6 +835,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           orderRepository.list(),
           financialRepository.listTitles(),
           freightRepository.list(),
+          deliveryRepository.list(),
           catalogRepository.listClients(),
           catalogRepository.listSuppliers(),
           catalogRepository.listProducts(),
@@ -836,6 +846,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setOrdersStore(remoteOrders);
         setFinancialTitlesStore(remoteFinancialTitles);
         setFreightsStore(remoteFreights);
+        setDeliveriesStore(remoteDeliveries);
         setClientsStore(remoteClients);
         setSuppliersStore(remoteSuppliers);
         setProductsStore(remoteProducts);
@@ -856,6 +867,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     auth.hasAccess,
     hydrated,
     setClientsStore,
+    setDeliveriesStore,
     setFinancialTitlesStore,
     setFreightsStore,
     setOrdersStore,
@@ -1164,6 +1176,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const upsertDelivery = (delivery: DeliveryRecord) => {
+    upsertDeliveryStore(delivery);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. A entrega ficou salva apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseDeliveryRepository();
+    void repository.save(delivery).catch((error) => {
+      console.error("Falha ao salvar entrega no Supabase.", error);
+      setLastDataError(error instanceof Error ? error.message : "Falha ao salvar entrega.");
+      toast.error("Falha ao salvar entrega no Supabase. Dados locais preservados.");
+    });
+  };
+
   const saveCatalogWithSupabase = <T,>(
     label: string,
     action: () => Promise<T>,
@@ -1229,6 +1262,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       orders,
       financialTitles,
       freights,
+      deliveries,
       clients,
       suppliers,
       products,
@@ -1238,6 +1272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertOrder,
       upsertFinancialTitle,
       upsertFreight,
+      upsertDelivery,
       upsertClient,
       upsertSupplier,
       upsertProduct,
@@ -1255,6 +1290,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       orders,
       financialTitles,
       freights,
+      deliveries,
       clients,
       suppliers,
       products,
@@ -1264,6 +1300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertOrder,
       upsertFinancialTitle,
       upsertFreight,
+      upsertDelivery,
       upsertClient,
       upsertSupplier,
       upsertProduct,

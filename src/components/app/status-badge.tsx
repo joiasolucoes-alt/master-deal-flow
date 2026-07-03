@@ -24,6 +24,10 @@ const statusTone: Record<string, string> = {
   Cotação: "border-transparent bg-info-soft text-info",
   Contratado: "border-transparent bg-success-soft text-success",
   Carregando: "border-transparent bg-warning-soft text-warning",
+  Pendente: "border-transparent bg-info-soft text-info",
+  Carregado: "border-transparent bg-warning-soft text-warning",
+  "No destino": "border-transparent bg-primary-soft text-primary",
+  Ocorrência: "border-transparent bg-danger-soft text-danger",
 };
 
 export function StatusBadge({ status }: { status: string }) {

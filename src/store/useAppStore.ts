@@ -4,6 +4,7 @@ import { negotiations } from "@/data/negotiations";
 import { orders } from "@/data/orders";
 import { financialTitles } from "@/data/financialTitles";
 import { freights } from "@/data/freights";
+import { deliveries } from "@/data/deliveries";
 import { notifications } from "@/data/notifications";
 import { appUser } from "@/data/users";
 import { clients } from "@/data/clients";
@@ -12,6 +13,7 @@ import { products } from "@/data/products";
 import type { AuditEvent, AppStoreState } from "@/store/types";
 import type {
   Client,
+  DeliveryRecord,
   FinancialTitle,
   FreightRecord,
   Negotiation,
@@ -33,6 +35,7 @@ export type AppStore = AppStoreState & {
   setOrders: (value: Order[]) => void;
   setFinancialTitles: (value: FinancialTitle[]) => void;
   setFreights: (value: FreightRecord[]) => void;
+  setDeliveries: (value: DeliveryRecord[]) => void;
   setClients: (value: Client[]) => void;
   setSuppliers: (value: Supplier[]) => void;
   setProducts: (value: Product[]) => void;
@@ -40,6 +43,7 @@ export type AppStore = AppStoreState & {
   upsertOrder: (order: Order, audit?: AuditEvent) => void;
   upsertFinancialTitle: (title: FinancialTitle, audit?: AuditEvent) => void;
   upsertFreight: (freight: FreightRecord, audit?: AuditEvent) => void;
+  upsertDelivery: (delivery: DeliveryRecord, audit?: AuditEvent) => void;
   upsertClient: (client: Client) => void;
   upsertSupplier: (supplier: Supplier) => void;
   upsertProduct: (product: Product) => void;
@@ -56,6 +60,7 @@ type PersistedState = Omit<
   | "setOrders"
   | "setFinancialTitles"
   | "setFreights"
+  | "setDeliveries"
   | "setClients"
   | "setSuppliers"
   | "setProducts"
@@ -63,6 +68,7 @@ type PersistedState = Omit<
   | "upsertOrder"
   | "upsertFinancialTitle"
   | "upsertFreight"
+  | "upsertDelivery"
   | "upsertClient"
   | "upsertSupplier"
   | "upsertProduct"
@@ -80,6 +86,7 @@ function baseState(): PersistedState {
     orders,
     financialTitles,
     freights,
+    deliveries,
     clients,
     suppliers,
     products,
@@ -166,6 +173,8 @@ const storeActions = {
   setFinancialTitles: (value: FinancialTitle[]) =>
     setState((current) => ({ ...current, financialTitles: value })),
   setFreights: (value: FreightRecord[]) => setState((current) => ({ ...current, freights: value })),
+  setDeliveries: (value: DeliveryRecord[]) =>
+    setState((current) => ({ ...current, deliveries: value })),
   setClients: (value: Client[]) => setState((current) => ({ ...current, clients: value })),
   setSuppliers: (value: Supplier[]) => setState((current) => ({ ...current, suppliers: value })),
   setProducts: (value: Product[]) => setState((current) => ({ ...current, products: value })),
@@ -199,6 +208,14 @@ const storeActions = {
       freights: current.freights.some((item) => item.id === freight.id)
         ? current.freights.map((item) => (item.id === freight.id ? freight : item))
         : [freight, ...current.freights],
+      auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
+    })),
+  upsertDelivery: (delivery: DeliveryRecord, audit?: AuditEvent) =>
+    setState((current) => ({
+      ...current,
+      deliveries: current.deliveries.some((item) => item.id === delivery.id)
+        ? current.deliveries.map((item) => (item.id === delivery.id ? delivery : item))
+        : [delivery, ...current.deliveries],
       auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
     })),
   upsertClient: (client: Client) =>

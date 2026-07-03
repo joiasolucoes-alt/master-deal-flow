@@ -249,6 +249,35 @@ export interface FreightRecord {
   deliveredAt?: string;
 }
 
+export type DeliveryStatus =
+  | "pending"
+  | "loading"
+  | "loaded"
+  | "in_route"
+  | "arrived"
+  | "delivered"
+  | "issue"
+  | "cancelled";
+
+export interface DeliveryRecord {
+  id: string;
+  orderId?: string;
+  orderNumber?: string;
+  freightId?: string;
+  freightCode?: string;
+  client: string;
+  route: string;
+  status: DeliveryStatus;
+  currentLocation: string;
+  expectedDeliveryDate: string;
+  deliveredAt?: string;
+  proofNotes: string;
+  occurrenceNotes: string;
+  owner: string;
+  unit: string;
+  createdAt: string;
+}
+
 export interface Negotiation {
   id: string;
   number: string;

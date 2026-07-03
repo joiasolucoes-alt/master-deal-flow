@@ -17,6 +17,8 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 - Baixa simples de recebimento, atualizando o avanço de faturamento do pedido.
 - Fretes com geração a partir de pedidos liberados.
 - Avanço de status do frete refletindo no progresso de entrega do pedido.
+- Entregas com geração a partir de fretes liberados.
+- Avanço de entrega e registro simples de ocorrência.
 - Cálculos da planilha 374 no frontend.
 - Persistência opcional com Supabase via `VITE_DATA_PROVIDER=supabase`.
 - CRUD básico de clientes, fornecedores e produtos em Configurações.
@@ -26,9 +28,10 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 
 - O modo local continua como fallback e para testes offline.
 - RLS por perfil/unidade/responsável ainda deve ser refinado no banco.
-- Entrega detalhada, comissão e lucro realizado ficam para próximas ondas.
+- Comprovantes de entrega, comissão e lucro realizado ficam para próximas ondas.
 - Financeiro ainda está na primeira versão: não há conciliação bancária, contas a pagar ou integração com banco.
 - Frete ainda está na primeira versão: não há cotação real com transportadoras, cálculo de tabela ou comprovantes.
+- Entrega ainda está na primeira versão: não há upload de canhoto, assinatura digital ou rastreamento externo.
 - Notificações são básicas e ainda não têm uma central dedicada.
 
 ## SQL manual
@@ -40,3 +43,4 @@ Nenhum SQL foi aplicado automaticamente. Scripts para execução manual:
 3. `supabase/manual-sql/003_basic_rls_for_homologation.sql`
 4. `supabase/manual-sql/004_wave_2_financial_titles.sql`
 5. `supabase/manual-sql/005_wave_2_freights.sql`
+6. `supabase/manual-sql/006_wave_2_deliveries.sql`
