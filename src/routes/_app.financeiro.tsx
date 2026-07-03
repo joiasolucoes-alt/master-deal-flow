@@ -165,30 +165,52 @@ function FinancialPage() {
         </CardHeader>
         <CardContent className="h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={cashflow}>
+            <BarChart data={cashflow} margin={{ left: 8, right: 12, top: 12, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
               <XAxis
                 dataKey="month"
                 stroke="var(--color-muted-foreground)"
                 tickLine={false}
                 axisLine={false}
+                tick={{ fontSize: 12 }}
               />
               <YAxis
                 stroke="var(--color-muted-foreground)"
                 tickFormatter={(v) => formatCompactCurrency(v as number)}
                 tickLine={false}
                 axisLine={false}
+                tick={{ fontSize: 12 }}
+                width={72}
               />
               <Tooltip
+                cursor={{ fill: "color-mix(in oklab, var(--color-primary) 8%, transparent)" }}
                 formatter={(v) => formatCurrency(Number(v))}
                 contentStyle={{
                   background: "var(--color-card)",
+                  color: "var(--color-card-foreground)",
                   borderRadius: 12,
                   border: "1px solid var(--color-border)",
+                  boxShadow: "var(--shadow-elevated)",
                 }}
               />
-              <Bar dataKey="entradas" radius={[8, 8, 0, 0]} fill="var(--color-primary)" />
-              <Bar dataKey="saidas" radius={[8, 8, 0, 0]} fill="var(--color-chart-2)" />
+              <Legend
+                iconType="circle"
+                wrapperStyle={{ fontSize: 12, color: "var(--color-muted-foreground)", paddingTop: 8 }}
+              />
+              <Bar
+                dataKey="entradas"
+                name="Entradas"
+                radius={[8, 8, 0, 0]}
+                fill="var(--color-primary)"
+                animationDuration={800}
+              />
+              <Bar
+                dataKey="saidas"
+                name="Saídas"
+                radius={[8, 8, 0, 0]}
+                fill="var(--color-chart-2)"
+                animationDuration={800}
+              />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
