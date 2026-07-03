@@ -9,6 +9,7 @@ export const products: Product[] = [
     defaultUnitsPerBox: 20,
     costUnit: 58.2,
     saleUnit: 78.9,
+    active: true,
   },
   {
     id: "prd-2",
@@ -18,6 +19,7 @@ export const products: Product[] = [
     defaultUnitsPerBox: 15,
     costUnit: 78.4,
     saleUnit: 105.9,
+    active: true,
   },
   {
     id: "prd-3",
@@ -27,6 +29,7 @@ export const products: Product[] = [
     defaultUnitsPerBox: 10,
     costUnit: 112.5,
     saleUnit: 149.9,
+    active: true,
   },
   {
     id: "prd-4",
@@ -36,6 +39,7 @@ export const products: Product[] = [
     defaultUnitsPerBox: 25,
     costUnit: 16.8,
     saleUnit: 23.9,
+    active: true,
   },
   {
     id: "prd-5",
@@ -45,6 +49,7 @@ export const products: Product[] = [
     defaultUnitsPerBox: 5,
     costUnit: 23.5,
     saleUnit: 31.9,
+    active: true,
   },
   {
     id: "prd-6",
@@ -54,5 +59,6 @@ export const products: Product[] = [
     defaultUnitsPerBox: 20,
     costUnit: 8.1,
     saleUnit: 10.9,
+    active: true,
   },
 ];

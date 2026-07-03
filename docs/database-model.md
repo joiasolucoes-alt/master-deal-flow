@@ -21,6 +21,15 @@ A primeira onda do banco cobre o fluxo principal do Master Flow: simulacao, apro
 - `audit_events`: historico de eventos.
 - `notifications`: notificacoes basicas.
 
+## Onda 1.1
+
+A Onda 1.1 reforca:
+
+- `approvals`: checklist, comentario, status, aprovador e data da decisao.
+- `clients`: CRUD basico com inativacao logica.
+- `suppliers`: CRUD basico com inativacao logica.
+- `products`: CRUD basico com codigo, descricao, unidades por caixa, custo e preco padrao.
+
 ## IDs externos
 
 As tabelas principais possuem `external_id`. Esse campo guarda o ID que o frontend ja usa hoje, como `sim-...` ou `ord-...`.

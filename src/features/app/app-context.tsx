@@ -19,11 +19,22 @@ import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
 import { users as seedUsers } from "@/data/users";
 import { useAppStore } from "@/store/useAppStore";
-import type { Order, Simulation, ThemeMode, User, UserRole, UserStatus } from "@/data/types";
+import type {
+  Client,
+  Order,
+  Product,
+  Simulation,
+  Supplier,
+  ThemeMode,
+  User,
+  UserRole,
+  UserStatus,
+} from "@/data/types";
 import { getDataProvider, isSupabaseProvider } from "@/lib/dataProvider";
 import { getSupabaseClient, getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import { createSupabaseOrderRepository } from "@/features/orders/repositories/supabaseOrderRepository";
+import { createSupabaseCatalogRepository } from "@/features/catalogs/repositories/catalogRepository";
 import { toast } from "sonner";
 
 type AuthProfile = {
@@ -89,9 +100,16 @@ interface AppContextValue {
   setThemeMode: (mode: ThemeMode) => void;
   simulations: Simulation[];
   orders: Order[];
+  clients: Client[];
+  suppliers: Supplier[];
+  products: Product[];
+  lastDataError: string | null;
   setSimulations: (value: Simulation[]) => void;
   upsertSimulation: (simulation: Simulation) => void;
   upsertOrder: (order: Order) => void;
+  upsertClient: (client: Client) => void;
+  upsertSupplier: (supplier: Supplier) => void;
+  upsertProduct: (product: Product) => void;
   selectedApprovalId: string | null;
   setSelectedApprovalId: (id: string | null) => void;
   selectedOrderId: string | null;
@@ -341,12 +359,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     accessError: null,
   });
   const [users, setUsers] = useState<User[]>(seedUsers);
+  const [lastDataError, setLastDataError] = useState<string | null>(null);
   const simulations = useAppStore((store) => store.simulations);
   const orders = useAppStore((store) => store.orders);
+  const clients = useAppStore((store) => store.clients);
+  const suppliers = useAppStore((store) => store.suppliers);
+  const products = useAppStore((store) => store.products);
   const setSimulationsStore = useAppStore((store) => store.setSimulations);
   const setOrdersStore = useAppStore((store) => store.setOrders);
+  const setClientsStore = useAppStore((store) => store.setClients);
+  const setSuppliersStore = useAppStore((store) => store.setSuppliers);
+  const setProductsStore = useAppStore((store) => store.setProducts);
   const upsertSimulationStore = useAppStore((store) => store.upsertSimulation);
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
+  const upsertClientStore = useAppStore((store) => store.upsertClient);
+  const upsertSupplierStore = useAppStore((store) => store.upsertSupplier);
+  const upsertProductStore = useAppStore((store) => store.upsertProduct);
   const selectedApprovalId = useAppStore((store) => store.selectedApprovalId);
   const setSelectedApprovalId = useAppStore((store) => store.setSelectedApprovalId);
   const selectedOrderId = useAppStore((store) => store.selectedOrderId);
@@ -616,19 +644,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const simulationRepository = createSupabaseSimulationRepository();
     const orderRepository = createSupabaseOrderRepository();
+    const catalogRepository = createSupabaseCatalogRepository();
 
     async function loadRemoteData() {
       try {
-        const [remoteSimulations, remoteOrders] = await Promise.all([
-          simulationRepository.list(),
-          orderRepository.list(),
-        ]);
+        const [remoteSimulations, remoteOrders, remoteClients, remoteSuppliers, remoteProducts] =
+          await Promise.all([
+            simulationRepository.list(),
+            orderRepository.list(),
+            catalogRepository.listClients(),
+            catalogRepository.listSuppliers(),
+            catalogRepository.listProducts(),
+          ]);
 
         if (cancelled) return;
         setSimulationsStore(remoteSimulations);
         setOrdersStore(remoteOrders);
+        setClientsStore(remoteClients);
+        setSuppliersStore(remoteSuppliers);
+        setProductsStore(remoteProducts);
+        setLastDataError(null);
       } catch (error) {
         console.error("Falha ao carregar dados do Supabase.", error);
+        setLastDataError(error instanceof Error ? error.message : "Falha ao carregar Supabase.");
         toast.error("Não foi possível carregar o Supabase. Mantive os dados locais.");
       }
     }
@@ -638,7 +676,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [auth.hasAccess, hydrated, setOrdersStore, setSimulationsStore]);
+  }, [
+    auth.hasAccess,
+    hydrated,
+    setClientsStore,
+    setOrdersStore,
+    setProductsStore,
+    setSimulationsStore,
+    setSuppliersStore,
+  ]);
 
   const setThemeMode = (mode: ThemeMode) => {
     setThemeModeState(mode);
@@ -816,6 +862,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const repository = createSupabaseSimulationRepository();
     void repository.save(simulation).catch((error) => {
       console.error("Falha ao salvar simulação no Supabase.", error);
+      setLastDataError(error instanceof Error ? error.message : "Falha ao salvar simulação.");
       toast.error("Falha ao salvar simulação no Supabase. Dados locais preservados.");
     });
   };
@@ -836,8 +883,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const repository = createSupabaseOrderRepository();
     void repository.save(order).catch((error) => {
       console.error("Falha ao salvar pedido no Supabase.", error);
+      setLastDataError(error instanceof Error ? error.message : "Falha ao salvar pedido.");
       toast.error("Falha ao salvar pedido no Supabase. Dados locais preservados.");
     });
+  };
+
+  const saveCatalogWithSupabase = <T,>(
+    label: string,
+    action: () => Promise<T>,
+    success?: (value: T) => void,
+  ) => {
+    if (!isSupabaseProvider()) return;
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      const message = `Supabase não configurado. ${label} ficou salvo apenas localmente.`;
+      setLastDataError(message);
+      toast.error(message);
+      return;
+    }
+
+    void action()
+      .then((value) => {
+        success?.(value);
+        setLastDataError(null);
+      })
+      .catch((error) => {
+        console.error(`Falha ao salvar ${label} no Supabase.`, error);
+        setLastDataError(error instanceof Error ? error.message : `Falha ao salvar ${label}.`);
+        toast.error(`Falha ao salvar ${label} no Supabase. Dados locais preservados.`);
+      });
+  };
+
+  const upsertClient = (client: Client) => {
+    upsertClientStore(client);
+    const repository = createSupabaseCatalogRepository();
+    saveCatalogWithSupabase("cliente", () => repository.saveClient(client), upsertClientStore);
+  };
+
+  const upsertSupplier = (supplier: Supplier) => {
+    upsertSupplierStore(supplier);
+    const repository = createSupabaseCatalogRepository();
+    saveCatalogWithSupabase(
+      "fornecedor",
+      () => repository.saveSupplier(supplier),
+      upsertSupplierStore,
+    );
+  };
+
+  const upsertProduct = (product: Product) => {
+    upsertProductStore(product);
+    const repository = createSupabaseCatalogRepository();
+    saveCatalogWithSupabase("produto", () => repository.saveProduct(product), upsertProductStore);
   };
 
   const value = useMemo<AppContextValue>(
@@ -855,9 +951,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setThemeMode,
       simulations,
       orders,
+      clients,
+      suppliers,
+      products,
+      lastDataError,
       setSimulations,
       upsertSimulation,
       upsertOrder,
+      upsertClient,
+      upsertSupplier,
+      upsertProduct,
       selectedApprovalId,
       setSelectedApprovalId,
       selectedOrderId,
@@ -870,9 +973,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       themeMode,
       simulations,
       orders,
+      clients,
+      suppliers,
+      products,
+      lastDataError,
       setSimulations,
       upsertSimulation,
       upsertOrder,
+      upsertClient,
+      upsertSupplier,
+      upsertProduct,
       selectedApprovalId,
       setSelectedApprovalId,
       selectedOrderId,

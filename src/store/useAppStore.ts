@@ -4,8 +4,19 @@ import { negotiations } from "@/data/negotiations";
 import { orders } from "@/data/orders";
 import { notifications } from "@/data/notifications";
 import { appUser } from "@/data/users";
+import { clients } from "@/data/clients";
+import { suppliers } from "@/data/suppliers";
+import { products } from "@/data/products";
 import type { AuditEvent, AppStoreState } from "@/store/types";
-import type { Negotiation, NotificationItem, Order, Simulation } from "@/data/types";
+import type {
+  Client,
+  Negotiation,
+  NotificationItem,
+  Order,
+  Product,
+  Simulation,
+  Supplier,
+} from "@/data/types";
 
 const STORE_KEY = "master-flow-zustand-app-store";
 const PENDING_APPROVAL_STATUSES = new Set(["Pendente de aprovação", "Em análise"]);
@@ -16,8 +27,14 @@ export type AppStore = AppStoreState & {
   selectedOrderId: string | null;
   setSimulations: (value: Simulation[]) => void;
   setOrders: (value: Order[]) => void;
+  setClients: (value: Client[]) => void;
+  setSuppliers: (value: Supplier[]) => void;
+  setProducts: (value: Product[]) => void;
   upsertSimulation: (simulation: Simulation, audit?: AuditEvent) => void;
   upsertOrder: (order: Order, audit?: AuditEvent) => void;
+  upsertClient: (client: Client) => void;
+  upsertSupplier: (supplier: Supplier) => void;
+  upsertProduct: (product: Product) => void;
   upsertNegotiation: (negotiation: Negotiation) => void;
   addNotification: (notification: NotificationItem) => void;
   markNotificationRead: (id: string) => void;
@@ -29,8 +46,14 @@ type PersistedState = Omit<
   AppStore,
   | "setSimulations"
   | "setOrders"
+  | "setClients"
+  | "setSuppliers"
+  | "setProducts"
   | "upsertSimulation"
   | "upsertOrder"
+  | "upsertClient"
+  | "upsertSupplier"
+  | "upsertProduct"
   | "upsertNegotiation"
   | "addNotification"
   | "markNotificationRead"
@@ -43,6 +66,9 @@ function baseState(): PersistedState {
     simulations: simulationsSeed,
     negotiations,
     orders,
+    clients,
+    suppliers,
+    products,
     auditEvents: [],
     notifications,
     currentUser: appUser,
@@ -123,6 +149,9 @@ const storeActions = {
   setSimulations: (value: Simulation[]) =>
     setState((current) => ({ ...current, simulations: value })),
   setOrders: (value: Order[]) => setState((current) => ({ ...current, orders: value })),
+  setClients: (value: Client[]) => setState((current) => ({ ...current, clients: value })),
+  setSuppliers: (value: Supplier[]) => setState((current) => ({ ...current, suppliers: value })),
+  setProducts: (value: Product[]) => setState((current) => ({ ...current, products: value })),
   upsertSimulation: (simulation: Simulation, audit?: AuditEvent) =>
     setState((current) => ({
       ...current,
@@ -138,6 +167,27 @@ const storeActions = {
         ? current.orders.map((item) => (item.id === order.id ? order : item))
         : [order, ...current.orders],
       auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
+    })),
+  upsertClient: (client: Client) =>
+    setState((current) => ({
+      ...current,
+      clients: current.clients.some((item) => item.id === client.id)
+        ? current.clients.map((item) => (item.id === client.id ? client : item))
+        : [client, ...current.clients],
+    })),
+  upsertSupplier: (supplier: Supplier) =>
+    setState((current) => ({
+      ...current,
+      suppliers: current.suppliers.some((item) => item.id === supplier.id)
+        ? current.suppliers.map((item) => (item.id === supplier.id ? supplier : item))
+        : [supplier, ...current.suppliers],
+    })),
+  upsertProduct: (product: Product) =>
+    setState((current) => ({
+      ...current,
+      products: current.products.some((item) => item.id === product.id)
+        ? current.products.map((item) => (item.id === product.id ? product : item))
+        : [product, ...current.products],
     })),
   upsertNegotiation: (negotiation: Negotiation) =>
     setState((current) => ({

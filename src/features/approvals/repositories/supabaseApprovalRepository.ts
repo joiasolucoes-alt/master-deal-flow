@@ -21,7 +21,7 @@ export function createSupabaseApprovalRepository(): ApprovalRepository {
       const client = requireClient();
       const { data, error } = await client
         .from("approvals")
-        .select("*")
+        .select("*, simulations(external_id)")
         .eq("status", "pending")
         .order("created_at", { ascending: false });
 
@@ -43,12 +43,23 @@ export function createSupabaseApprovalRepository(): ApprovalRepository {
         throw new Error("Simulação não encontrada para registrar aprovação.");
       }
 
+      const { data: authData } = await client.auth.getUser();
+      const { data: approverProfile } = authData.user
+        ? await client
+            .from("profiles")
+            .select("id")
+            .eq("auth_user_id", authData.user.id)
+            .maybeSingle()
+        : { data: null };
+
       const { data, error } = await client
         .from("approvals")
         .upsert(
           {
             ...approvalToRow(record),
             simulation_id: simulation.id,
+            approver_id: approverProfile?.id ?? null,
+            updated_at: new Date().toISOString(),
           },
           { onConflict: "external_id" },
         )
@@ -57,9 +68,29 @@ export function createSupabaseApprovalRepository(): ApprovalRepository {
 
       if (error) throw error;
       await insertAuditEvent(client, record);
+      await insertNotification(client, record);
       return rowToApproval(data as ApprovalRow);
     },
   };
+}
+
+async function insertNotification(client: SupabaseClient, record: ApprovalRecord) {
+  const statusLabel = {
+    pending: "enviada para aprovação",
+    approved: "aprovada",
+    adjustment_requested: "devolvida para ajuste",
+    rejected: "reprovada",
+  }[record.status];
+
+  const { error } = await client.from("notifications").insert({
+    title: "Atualização de aprovação",
+    message: `Simulação ${record.simulationId} ${statusLabel}.`,
+    type: record.status === "approved" ? "success" : "info",
+    entity_type: "simulation",
+    entity_external_id: record.simulationId,
+  });
+
+  if (error) throw error;
 }
 
 async function insertAuditEvent(client: SupabaseClient, record: ApprovalRecord) {

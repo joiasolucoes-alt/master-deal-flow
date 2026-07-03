@@ -25,6 +25,9 @@ import {
   canReviewApprovals,
   isPendingApprovalStatus,
 } from "@/lib/permissions";
+import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
+import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
+import { isSupabaseProvider } from "@/lib/dataProvider";
 
 export const Route = createFileRoute("/_app/aprovacoes")({
   component: ApprovalsPage,
@@ -36,6 +39,33 @@ const CHECKLIST: { key: keyof NonNullable<Simulation["approvalChecklist"]>; labe
   { key: "costsChecked", label: "Custos e impostos conferidos" },
   { key: "notesRegistered", label: "Notas e justificativas registradas" },
 ];
+
+function saveApprovalDecision(payload: {
+  simulationId: string;
+  approverId?: string;
+  status: "pending" | "approved" | "adjustment_requested" | "rejected";
+  checklist?: Record<string, unknown>;
+  comment?: string;
+}) {
+  if (!isSupabaseProvider()) return;
+  if (!getSupabaseConfigStatus().configured) {
+    toast.error("Supabase não configurado. Decisão ficou registrada apenas localmente.");
+    return;
+  }
+
+  const repository = createSupabaseApprovalRepository();
+  void repository
+    .save({
+      id: `apr-${payload.simulationId}`,
+      ...payload,
+      decidedAt: new Date().toISOString(),
+    })
+    .catch((error) => {
+      console.error("Falha ao salvar decisão de aprovação no Supabase.", error);
+      toast.error("Falha ao salvar decisão no Supabase. Fluxo local preservado.");
+    });
+}
+
 function ApprovalsPage() {
   const {
     auth,
@@ -77,6 +107,13 @@ function ApprovalsPage() {
       ...(selected.approvalChecklist ?? {}),
     };
     upsertSimulation({ ...selected, approvalChecklist: { ...checklist, [key]: value } });
+    saveApprovalDecision({
+      simulationId: selected.id,
+      approverId: currentUser?.id,
+      status: "pending",
+      checklist: { ...checklist, [key]: value },
+      comment: selected.approvalNotes,
+    });
   }
 
   function decide(decision: "approve" | "reject" | "adjust") {
@@ -103,11 +140,23 @@ function ApprovalsPage() {
       return;
     }
     const map = { approve: "Aprovada", reject: "Reprovada", adjust: "Ajuste solicitado" } as const;
+    const repositoryStatus = {
+      approve: "approved",
+      reject: "rejected",
+      adjust: "adjustment_requested",
+    } as const;
     const nextSimulation = {
       ...selected,
       status: map[decision],
       approvalNotes: comment || selected.approvalNotes,
     };
+    saveApprovalDecision({
+      simulationId: selected.id,
+      approverId: currentUser?.id,
+      status: repositoryStatus[decision],
+      checklist: selected.approvalChecklist,
+      comment: comment || selected.approvalNotes,
+    });
 
     if (decision === "approve") {
       const existingOrder = orders.find((order) => order.simulationId === selected.id);

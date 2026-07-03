@@ -77,6 +77,31 @@ function createOrderRepository({ orders }) {
   };
 }
 
+function createCatalogRepository(seed = []) {
+  const records = [...seed];
+  return {
+    list() {
+      return records;
+    },
+    save(record) {
+      const index = records.findIndex((item) => item.id === record.id);
+      if (index >= 0) records[index] = record;
+      else records.unshift(record);
+      return record;
+    },
+    deactivate(id) {
+      const record = records.find((item) => item.id === id);
+      if (!record) return null;
+      record.active = false;
+      return record;
+    },
+  };
+}
+
+function transitionSimulation(simulation, status, extra = {}) {
+  return { ...simulation, status, ...extra };
+}
+
 const smoke = getTotals({
   products: [{ quantityTotal: 20, costUnit: 70, saleUnit: 100 }],
   expenseItems: [{ calculationType: "fixed", value: 200 }],
@@ -125,6 +150,26 @@ assert.equal(Math.round(op374.markupPercent * 100), 1967);
 assert.equal(Math.round(op374.marginPercent * 100), 585);
 assert.equal(op374.viability, "Viável");
 
+const draftSimulation = {
+  id: "sim-test",
+  products: [{ quantityTotal: 20, costUnit: 70, saleUnit: 100 }],
+  expenseItems: [{ calculationType: "fixed", value: 200 }],
+  status: "Rascunho",
+};
+const submittedSimulation = transitionSimulation(draftSimulation, "Pendente de aprovação");
+assert.equal(submittedSimulation.status, "Pendente de aprovação");
+const approvedSimulation = transitionSimulation(submittedSimulation, "Aprovada", {
+  approvalChecklist: { assumptionsReviewed: true, marginValidated: true, costsChecked: true },
+  approvalNotes: "Aprovado em teste.",
+});
+assert.equal(approvedSimulation.status, "Aprovada");
+assert.equal(approvedSimulation.approvalChecklist.costsChecked, true);
+assert.equal(
+  transitionSimulation(submittedSimulation, "Ajuste solicitado").status,
+  "Ajuste solicitado",
+);
+assert.equal(transitionSimulation(submittedSimulation, "Reprovada").status, "Reprovada");
+
 assert.equal(getDataProvider("supabase"), "supabase");
 assert.equal(getDataProvider("local"), "local");
 assert.equal(getDataProvider("qualquer-coisa"), "local");
@@ -145,5 +190,37 @@ const savedOrder = await orderRepository.save({
   simulationId: "sim-1",
 });
 assert.equal(savedOrder.id, "ord-1");
+
+const clientRepository = createCatalogRepository([
+  { id: "cli-1", name: "Cliente A", active: true },
+]);
+clientRepository.save({ id: "cli-2", name: "Cliente B", active: true });
+assert.equal(clientRepository.list().length, 2);
+clientRepository.save({ id: "cli-2", name: "Cliente B editado", active: true });
+assert.equal(clientRepository.list().find((item) => item.id === "cli-2").name, "Cliente B editado");
+assert.equal(clientRepository.deactivate("cli-2").active, false);
+
+const supplierRepository = createCatalogRepository();
+supplierRepository.save({ id: "sup-1", name: "Fornecedor A", active: true });
+assert.equal(supplierRepository.list()[0].name, "Fornecedor A");
+
+const productRepository = createCatalogRepository();
+productRepository.save({
+  id: "prod-1",
+  code: "PRD-001",
+  name: "Produto A",
+  defaultUnitsPerBox: 9,
+  costUnit: 10,
+  saleUnit: 12,
+  active: true,
+});
+assert.equal(productRepository.list()[0].defaultUnitsPerBox, 9);
+
+function requireSupabaseConfig(configured) {
+  if (!configured) throw new Error("Supabase não está configurado.");
+  return true;
+}
+assert.throws(() => requireSupabaseConfig(false), /Supabase não está configurado/);
+assert.equal(requireSupabaseConfig(true), true);
 
 console.log("Calculation and data provider smoke tests passed.");

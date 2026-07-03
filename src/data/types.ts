@@ -35,27 +35,36 @@ export interface User {
 
 export interface Client {
   id: string;
+  code?: string;
   name: string;
+  document?: string;
   city: string;
   state: string;
   unit: string;
+  active?: boolean;
 }
 
 export interface Supplier {
   id: string;
+  code?: string;
   name: string;
+  document?: string;
   city: string;
   state: string;
+  active?: boolean;
 }
 
 export interface Product {
   id: string;
   code: string;
   name: string;
+  brand?: string;
+  category?: string;
   unitLabel: string;
   defaultUnitsPerBox: number;
   costUnit: number;
   saleUnit: number;
+  active?: boolean;
 }
 
 export interface NotificationItem {
