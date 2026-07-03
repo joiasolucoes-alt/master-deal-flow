@@ -83,7 +83,10 @@ interface AppContextValue {
     message: string;
   };
   updateCurrentProfile: (payload: { name: string }) => Promise<{ ok: boolean; message?: string }>;
-  updateUserAccess: (id: string, payload: { role?: UserRole; status?: UserStatus }) => void;
+  updateUserAccess: (
+    id: string,
+    payload: { role?: UserRole; status?: UserStatus },
+  ) => Promise<{ ok: boolean; message?: string }>;
   logout: () => void;
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
@@ -103,6 +106,140 @@ const AppContext = createContext<AppContextValue | null>(null);
 const BOOTSTRAP_ADMIN_EMAILS = new Set(["djalmajr1994@gmail.com", "gabriellageti@gmail.com"]);
 const AUTH_REQUEST_TIMEOUT_MS = 12_000;
 const AUTH_LOADING_GUARD_MS = AUTH_REQUEST_TIMEOUT_MS + 3_000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const DATABASE_ROLE_BY_APP_ROLE: Record<UserRole, string> = {
+  Comercial: "comercial",
+  Negociações: "gestor",
+  Aprovador: "aprovador",
+  Financeiro: "financeiro",
+  Admin: "admin",
+};
+
+function getInitials(name: string, email: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+
+  if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return email.slice(0, 2).toUpperCase();
+}
+
+function getAvatarHue(seed: string) {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) % 360;
+  }
+  return String(hash);
+}
+
+function chooseHighestRole(roles: Array<string | null | undefined>) {
+  const priority = ["admin", "gestor", "aprovador", "financeiro", "comercial"];
+  const normalizedRoles = roles.map(normalizeDatabaseRole).filter(Boolean);
+
+  return priority.find((role) => normalizedRoles.includes(role)) ?? normalizedRoles[0] ?? null;
+}
+
+function isDatabaseUuid(value?: string | null) {
+  return Boolean(value && UUID_PATTERN.test(value));
+}
+
+type TeamProfileRow = AuthProfile & { active?: boolean | null; created_at?: string | null };
+
+async function loadTeamUsersFromSupabase(
+  client: SupabaseClient,
+  memberships: AuthMembership[],
+  mapRole: (role?: string | null) => UserRole,
+): Promise<User[]> {
+  const organizationIds = Array.from(
+    new Set(
+      memberships
+        .map((membership) => membership.organization_id)
+        .filter((organizationId): organizationId is string => isDatabaseUuid(organizationId)),
+    ),
+  );
+
+  const profilePromise = client
+    .from("profiles")
+    .select(
+      "id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id, active, created_at",
+    );
+
+  const membershipPromise = organizationIds.length
+    ? client
+        .from("organization_members")
+        .select(
+          "id, organization_id, unit_id, user_id, role, organizations(id, name), units(id, name)",
+        )
+        .in("organization_id", organizationIds)
+    : Promise.resolve({ data: [] as AuthMembership[], error: null });
+
+  const [
+    { data: membershipRows, error: membershipError },
+    { data: profileRows, error: profileError },
+  ] = await Promise.all([membershipPromise, profilePromise]);
+
+  if (membershipError) throw membershipError;
+  if (profileError) throw profileError;
+
+  const profilesByAuthId = new Map<string, TeamProfileRow>();
+  const profilesById = new Map<string, TeamProfileRow>();
+
+  for (const profile of (profileRows ?? []) as TeamProfileRow[]) {
+    if (profile.auth_user_id) profilesByAuthId.set(profile.auth_user_id, profile);
+    if (profile.id) profilesById.set(profile.id, profile);
+  }
+
+  const usersById = new Map<
+    string,
+    { profile: TeamProfileRow | null; memberships: AuthMembership[]; fallbackId: string }
+  >();
+
+  for (const membership of (membershipRows ?? []) as unknown as AuthMembership[]) {
+    const profile =
+      profilesByAuthId.get(membership.user_id) ?? profilesById.get(membership.user_id) ?? null;
+    const key = profile?.auth_user_id ?? profile?.id ?? membership.user_id;
+    const current = usersById.get(key) ?? {
+      profile,
+      memberships: [],
+      fallbackId: membership.user_id,
+    };
+    current.profile = current.profile ?? profile;
+    current.memberships.push(membership);
+    usersById.set(key, current);
+  }
+
+  for (const profile of (profileRows ?? []) as TeamProfileRow[]) {
+    const key = profile.auth_user_id ?? profile.id;
+    if (!key || usersById.has(key)) continue;
+    usersById.set(key, { profile, memberships: [], fallbackId: key });
+  }
+
+  return Array.from(usersById.entries())
+    .map(([id, item]) => {
+      const profile = item.profile;
+      const firstMembership = item.memberships[0];
+      const email = profile?.email ?? "";
+      const name = profile?.full_name ?? profile?.name ?? (email || "Usuário");
+      const databaseRole = chooseHighestRole([
+        ...item.memberships.map((membership) => membership.role),
+        profile?.role,
+      ]);
+
+      return {
+        id,
+        name,
+        role: mapRole(databaseRole),
+        email,
+        unit: firstMembership?.units?.name ?? "Todas as unidades",
+        initials: getInitials(name, email),
+        avatarHue: getAvatarHue(email || id),
+        status: profile?.active === false ? "Bloqueado" : "Ativo",
+        emailConfirmed: true,
+        createdAt: profile?.created_at ?? undefined,
+      } satisfies User;
+    })
+    .sort((first, second) => first.name.localeCompare(second.name));
+}
 
 function withTimeout<T>(
   promise: PromiseLike<T>,
@@ -497,6 +634,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
               loadUserMemberships(client, supabaseUser, profile as AuthProfile | null),
               "Não foi possível carregar suas permissões no tempo esperado.",
             );
+        if (
+          activeMemberships.some((membership) => normalizeDatabaseRole(membership.role) === "admin")
+        ) {
+          void loadTeamUsersFromSupabase(client, activeMemberships, mapRole)
+            .then((teamUsers) => {
+              if (teamUsers.length) setUsers(teamUsers);
+            })
+            .catch((error) => {
+              console.error("Falha ao carregar usuários do Supabase.", error);
+              toast.error("Não foi possível carregar a equipe do Supabase.");
+            });
+        }
         const currentMembership = activeMemberships[0] ?? null;
         const role = currentMembership?.role ?? null;
         const displayName = profile?.full_name ?? profile?.name ?? supabaseUser.email ?? "Usuário";
@@ -745,8 +894,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
       "Cadastro local desativado. Solicite a criação do usuário no Supabase Auth ao administrador.",
   });
 
-  const updateUserAccess = (id: string, payload: { role?: UserRole; status?: UserStatus }) => {
+  const updateUserAccess = async (
+    id: string,
+    payload: { role?: UserRole; status?: UserStatus },
+  ) => {
+    const targetUser = users.find((user) => user.id === id);
+    if (!targetUser) return { ok: false, message: "Usuário não encontrado." };
+
     const now = new Date().toISOString();
+    const client = getSupabaseClient();
+
+    if (
+      client &&
+      auth.memberships.some((membership) => normalizeDatabaseRole(membership.role) === "admin")
+    ) {
+      if (payload.role) {
+        const organizationIds = Array.from(
+          new Set(
+            auth.memberships
+              .map((membership) => membership.organization_id)
+              .filter((organizationId): organizationId is string => isDatabaseUuid(organizationId)),
+          ),
+        );
+
+        if (organizationIds.length) {
+          const { error: membershipError } = await client
+            .from("organization_members")
+            .update({ role: DATABASE_ROLE_BY_APP_ROLE[payload.role], updated_at: now })
+            .eq("user_id", id)
+            .in("organization_id", organizationIds);
+
+          if (membershipError) {
+            console.error("Falha ao atualizar perfil do usuário no Supabase.", membershipError);
+            return { ok: false, message: "Não foi possível atualizar o perfil no Supabase." };
+          }
+        }
+      }
+
+      const profileUpdate: Record<string, string | boolean> = { updated_at: now };
+      if (payload.role) profileUpdate.role = payload.role;
+      if (payload.status) profileUpdate.active = payload.status === "Ativo";
+
+      const { error: profileError } = await client
+        .from("profiles")
+        .update(profileUpdate)
+        .or(`auth_user_id.eq.${id},id.eq.${id}`);
+
+      if (profileError) {
+        console.error("Falha ao atualizar cadastro do usuário no Supabase.", profileError);
+        return { ok: false, message: "Não foi possível atualizar o cadastro no Supabase." };
+      }
+    }
+
     const nextUsers = users.map((user) => {
       if (user.id !== id) return user;
       const nextStatus = payload.status ?? user.status;
@@ -759,6 +958,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
     });
     persistUsers(nextUsers);
+
+    if (auth.user?.id === id) {
+      await refreshUserContext();
+    }
+
+    return { ok: true };
   };
 
   const updateCurrentProfile = async (payload: { name: string }) => {

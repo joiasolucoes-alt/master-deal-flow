@@ -31,9 +31,14 @@ function SettingsPage() {
   const roleOptions: UserRole[] = ["Comercial", "Negociações", "Aprovador", "Financeiro", "Admin"];
   const statusOptions: UserStatus[] = ["Ativo", "Bloqueado"];
 
-  function changeUserAccess(id: string, payload: { role?: UserRole; status?: UserStatus }) {
-    updateUserAccess(id, payload);
-    toast.success("Acesso do usuário atualizado.");
+  async function changeUserAccess(id: string, payload: { role?: UserRole; status?: UserStatus }) {
+    const result = await updateUserAccess(id, payload);
+    if (result.ok) {
+      toast.success("Acesso do usuário atualizado.");
+      return;
+    }
+
+    toast.error(result.message ?? "Não foi possível atualizar o acesso do usuário.");
   }
 
   return (
