@@ -15,7 +15,8 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
-import truckIllustration from "@/assets/master-flow-truck.png";
+import truckDarkAsset from "@/assets/master-truck-dark.png.asset.json";
+import truckLightAsset from "@/assets/master-truck-light.png.asset.json";
 import {
   Sidebar,
   SidebarContent,
