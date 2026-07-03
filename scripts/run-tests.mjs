@@ -231,6 +231,54 @@ function transitionSimulation(simulation, status, extra = {}) {
   return { ...simulation, status, ...extra };
 }
 
+function getApprovalFlow(simulation) {
+  const inferredApproved = simulation.status === "Aprovada";
+  return {
+    financial: {
+      status: inferredApproved ? "approved" : "pending",
+      ...(simulation.approvalFlow?.financial ?? {}),
+    },
+    principal: {
+      status: inferredApproved ? "approved" : "pending",
+      ...(simulation.approvalFlow?.principal ?? {}),
+    },
+  };
+}
+
+function getCurrentApprovalStage(simulation) {
+  if (!["Pendente de aprovação", "Em análise"].includes(simulation.status)) return null;
+  const flow = getApprovalFlow(simulation);
+  if (flow.financial.status === "pending") return "financial";
+  if (flow.financial.status === "approved" && flow.principal.status === "pending") {
+    return "principal";
+  }
+  return null;
+}
+
+function isSimulationFullyApproved(simulation) {
+  const flow = getApprovalFlow(simulation);
+  return flow.financial.status === "approved" && flow.principal.status === "approved";
+}
+
+function applyApprovalDecision(simulation, stage, status) {
+  const flow = getApprovalFlow(simulation);
+  const nextFlow = { ...flow, [stage]: { ...flow[stage], status } };
+  if (status === "adjustment_requested") {
+    return { ...simulation, status: "Ajuste solicitado", approvalFlow: nextFlow };
+  }
+  if (status === "rejected") {
+    return { ...simulation, status: "Reprovada", approvalFlow: nextFlow };
+  }
+  return {
+    ...simulation,
+    status:
+      nextFlow.financial.status === "approved" && nextFlow.principal.status === "approved"
+        ? "Aprovada"
+        : "Pendente de aprovação",
+    approvalFlow: nextFlow,
+  };
+}
+
 const smoke = getTotals({
   products: [{ quantityTotal: 20, costUnit: 70, saleUnit: 100 }],
   expenseItems: [{ calculationType: "fixed", value: 200 }],
@@ -298,6 +346,24 @@ assert.equal(
   "Ajuste solicitado",
 );
 assert.equal(transitionSimulation(submittedSimulation, "Reprovada").status, "Reprovada");
+
+const twoStepSubmitted = transitionSimulation(draftSimulation, "Pendente de aprovação", {
+  approvalFlow: {
+    financial: { status: "pending" },
+    principal: { status: "pending" },
+  },
+});
+assert.equal(getCurrentApprovalStage(twoStepSubmitted), "financial");
+assert.equal(isSimulationFullyApproved(twoStepSubmitted), false);
+
+const financialApproved = applyApprovalDecision(twoStepSubmitted, "financial", "approved");
+assert.equal(financialApproved.status, "Pendente de aprovação");
+assert.equal(getCurrentApprovalStage(financialApproved), "principal");
+assert.equal(isSimulationFullyApproved(financialApproved), false);
+
+const principalApproved = applyApprovalDecision(financialApproved, "principal", "approved");
+assert.equal(principalApproved.status, "Aprovada");
+assert.equal(isSimulationFullyApproved(principalApproved), true);
 
 assert.equal(getDataProvider("supabase"), "supabase");
 assert.equal(getDataProvider("local"), "local");

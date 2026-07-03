@@ -69,7 +69,14 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "orders:convert",
     "reports:view",
   ],
-  Financeiro: ["dashboard:view", "orders:view", "finance:view", "reports:view"],
+  Financeiro: [
+    "dashboard:view",
+    "approvals:view",
+    "approvals:decide",
+    "orders:view",
+    "finance:view",
+    "reports:view",
+  ],
   Admin: allPermissions,
 };
 

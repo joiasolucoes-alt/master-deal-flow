@@ -8,6 +8,7 @@ import { StatCard } from "@/components/app/stat-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -17,14 +18,18 @@ import { getSimulationTotals } from "@/lib/calculations";
 import { formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { ClipboardCheck, FileWarning, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
-import type { Simulation } from "@/data/types";
+import type { ApprovalStage, Simulation } from "@/data/types";
 import { convertSimulationToOrder } from "@/features/simulations/services/simulationService";
 import { useAppStore } from "@/store/useAppStore";
+import { canReviewApprovals, isPendingApprovalStatus } from "@/lib/permissions";
 import {
-  canApproveSimulation,
-  canReviewApprovals,
-  isPendingApprovalStatus,
-} from "@/lib/permissions";
+  APPROVAL_STAGE_LABELS,
+  applyApprovalDecision,
+  canUserDecideApprovalStage,
+  getApprovalFlow,
+  getCurrentApprovalStage,
+  isFinancialApprovalComplete,
+} from "@/features/approvals/approvalFlow";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
@@ -42,10 +47,12 @@ const CHECKLIST: { key: keyof NonNullable<Simulation["approvalChecklist"]>; labe
 
 function saveApprovalDecision(payload: {
   simulationId: string;
+  stage: ApprovalStage;
   approverId?: string;
   status: "pending" | "approved" | "adjustment_requested" | "rejected";
   checklist?: Record<string, unknown>;
   comment?: string;
+  bankAccount?: string;
 }) {
   if (!isSupabaseProvider()) return;
   if (!getSupabaseConfigStatus().configured) {
@@ -56,7 +63,7 @@ function saveApprovalDecision(payload: {
   const repository = createSupabaseApprovalRepository();
   void repository
     .save({
-      id: `apr-${payload.simulationId}`,
+      id: `apr-${payload.simulationId}-${payload.stage}`,
       ...payload,
       decidedAt: new Date().toISOString(),
     })
@@ -80,11 +87,17 @@ function ApprovalsPage() {
   const currentUser = auth.user;
   const canReview = canReviewApprovals(currentUser);
   const pending = useMemo(
-    () => simulations.filter((s) => isPendingApprovalStatus(s.status)),
-    [simulations],
+    () =>
+      simulations.filter((simulation) => {
+        if (!isPendingApprovalStatus(simulation.status)) return false;
+        const stage = getCurrentApprovalStage(simulation);
+        return canUserDecideApprovalStage(currentUser, simulation, stage);
+      }),
+    [currentUser, simulations],
   );
   const selected = pending.find((s) => s.id === selectedApprovalId) ?? pending[0] ?? null;
   const [comment, setComment] = useState("");
+  const [bankAccount, setBankAccount] = useState("");
 
   const summary = useMemo(() => {
     const totalValue = pending.reduce((sum, s) => sum + getSimulationTotals(s).revenue, 0);
@@ -99,6 +112,8 @@ function ApprovalsPage() {
     value: boolean,
   ) {
     if (!selected) return;
+    const stage = getCurrentApprovalStage(selected);
+    if (!stage) return;
     const checklist = {
       assumptionsReviewed: false,
       marginValidated: false,
@@ -109,71 +124,85 @@ function ApprovalsPage() {
     upsertSimulation({ ...selected, approvalChecklist: { ...checklist, [key]: value } });
     saveApprovalDecision({
       simulationId: selected.id,
+      stage,
       approverId: currentUser?.id,
       status: "pending",
       checklist: { ...checklist, [key]: value },
       comment: selected.approvalNotes,
+      bankAccount,
     });
   }
 
   function decide(decision: "approve" | "reject" | "adjust") {
     if (!selected) return;
-    if (!canReviewApprovals(currentUser)) {
+    const stage = getCurrentApprovalStage(selected);
+
+    if (!stage || !canReviewApprovals(currentUser)) {
       toast.error("Seu perfil não pode decidir aprovações.");
       return;
     }
-    if (!canApproveSimulation(currentUser, selected)) {
-      toast.error("Você não pode decidir uma simulação criada por você.");
+    if (!canUserDecideApprovalStage(currentUser, selected, stage)) {
+      toast.error("Seu perfil não pode decidir esta etapa.");
       return;
     }
 
     const checklist = selected.approvalChecklist;
-    if (
-      decision === "approve" &&
-      (!checklist?.assumptionsReviewed || !checklist.marginValidated || !checklist.costsChecked)
-    ) {
-      toast.error("Conclua o checklist obrigatório antes de aprovar.");
-      return;
+    if (decision === "approve" && stage === "financial") {
+      if (!checklist?.marginValidated || !checklist.costsChecked) {
+        toast.error("Financeiro precisa validar margem e custos antes de aprovar.");
+        return;
+      }
+      if (!bankAccount.trim()) {
+        toast.error("Informe a conta bancária de saída antes de aprovar.");
+        return;
+      }
+    }
+    if (decision === "approve" && stage === "principal") {
+      if (!isFinancialApprovalComplete(selected)) {
+        toast.error("A aprovação financeira precisa ser concluída primeiro.");
+        return;
+      }
+      if (
+        !checklist?.assumptionsReviewed ||
+        !checklist.marginValidated ||
+        !checklist.costsChecked
+      ) {
+        toast.error("Conclua o checklist obrigatório antes de aprovar.");
+        return;
+      }
     }
     if (decision === "adjust" && !comment.trim()) {
       toast.error("Informe o motivo e comentário para solicitar ajuste.");
       return;
     }
-    const map = { approve: "Aprovada", reject: "Reprovada", adjust: "Ajuste solicitado" } as const;
+
     const repositoryStatus = {
       approve: "approved",
       reject: "rejected",
       adjust: "adjustment_requested",
     } as const;
-    const nextSimulation = {
-      ...selected,
-      status: map[decision],
-      approvalNotes: comment || selected.approvalNotes,
-    };
+    const nextSimulation = applyApprovalDecision(selected, stage, repositoryStatus[decision], {
+      approverId: currentUser?.id,
+      approverName: currentUser?.name,
+      notes: comment || selected.approvalNotes,
+      bankAccount: stage === "financial" ? bankAccount : undefined,
+    });
+
     saveApprovalDecision({
       simulationId: selected.id,
+      stage,
       approverId: currentUser?.id,
       status: repositoryStatus[decision],
       checklist: selected.approvalChecklist,
       comment: comment || selected.approvalNotes,
+      bankAccount: stage === "financial" ? bankAccount : undefined,
     });
 
-    if (decision === "approve") {
+    if (decision === "approve" && nextSimulation.status === "Aprovada") {
       const existingOrder = orders.find((order) => order.simulationId === selected.id);
       if (existingOrder || selected.orderId) {
         upsertSimulation(nextSimulation);
-        addNotification({
-          id: `not-${Date.now()}`,
-          title: "Simulação aprovada",
-          description: `${selected.number} foi aprovada.`,
-          type: "success",
-          createdAt: new Date().toISOString(),
-          unread: true,
-          entityType: "simulation",
-          entityId: selected.id,
-          targetUserName: selected.owner,
-        });
-        toast.success("Simulação aprovada");
+        toast.success("Aprovação final registrada.");
       } else {
         const conversion = convertSimulationToOrder(
           nextSimulation,
@@ -193,14 +222,19 @@ function ApprovalsPage() {
           entityId: conversion.order.id,
           targetUserName: selected.owner,
         });
-        toast.success(`Simulação aprovada e pedido ${conversion.order.number} criado.`);
+        toast.success(`Aprovação final concluída e pedido ${conversion.order.number} criado.`);
       }
     } else {
       upsertSimulation(nextSimulation);
       addNotification({
         id: `not-${Date.now()}`,
-        title: decision === "adjust" ? "Ajuste solicitado na simulação" : "Simulação reprovada",
-        description: `${selected.number}: ${map[decision].toLowerCase()}.`,
+        title:
+          decision === "approve"
+            ? "Etapa financeira aprovada"
+            : decision === "adjust"
+              ? "Ajuste solicitado na simulação"
+              : "Simulação reprovada",
+        description: `${selected.number}: ${APPROVAL_STAGE_LABELS[stage]}.`,
         type: decision === "adjust" ? "warning" : "info",
         createdAt: new Date().toISOString(),
         unread: true,
@@ -208,9 +242,14 @@ function ApprovalsPage() {
         entityId: selected.id,
         targetUserName: selected.owner,
       });
-      toast.success(`Simulação ${map[decision].toLowerCase()}`);
+      toast.success(
+        decision === "approve"
+          ? "Etapa financeira aprovada. A simulação segue para aprovação final."
+          : "Decisão registrada.",
+      );
     }
     setComment("");
+    setBankAccount("");
   }
 
   if (!canReview) {
@@ -236,12 +275,12 @@ function ApprovalsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Central de aprovações"
-        description="Analise simulações em fila e tome decisões com base em margem e viabilidade."
+        description="Analise simulações em fila e aprove primeiro no financeiro, depois na etapa final."
       />
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard
-          label="Aguardando aprovação"
+          label="Aguardando sua ação"
           value={String(pending.length)}
           icon={ClipboardCheck}
           tone="info"
@@ -269,11 +308,14 @@ function ApprovalsPage() {
             <ScrollArea className="h-[520px]">
               <div className="space-y-1 p-3">
                 {pending.length === 0 && (
-                  <p className="p-4 text-sm text-muted-foreground">Sem simulações pendentes.</p>
+                  <p className="p-4 text-sm text-muted-foreground">
+                    Sem simulações pendentes para o seu perfil.
+                  </p>
                 )}
                 {pending.map((sim) => {
                   const totals = getSimulationTotals(sim);
                   const active = sim.id === selected?.id;
+                  const stage = getCurrentApprovalStage(sim);
                   return (
                     <button
                       key={sim.id}
@@ -285,6 +327,9 @@ function ApprovalsPage() {
                         <ViabilityBadge viability={totals.viability} compact />
                       </div>
                       <p className="mt-1 truncate text-sm text-muted-foreground">{sim.client}</p>
+                      <p className="mt-1 text-xs font-medium text-primary">
+                        {stage ? APPROVAL_STAGE_LABELS[stage] : "Sem etapa pendente"}
+                      </p>
                       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                         <StatusBadge status={sim.status} />
                         <span>{formatCurrency(totals.revenue)}</span>
@@ -302,6 +347,8 @@ function ApprovalsPage() {
             simulation={selected}
             comment={comment}
             setComment={setComment}
+            bankAccount={bankAccount}
+            setBankAccount={setBankAccount}
             onUpdate={updateChecklist}
             onDecide={decide}
           />
@@ -321,12 +368,16 @@ function ApprovalDetails({
   simulation,
   comment,
   setComment,
+  bankAccount,
+  setBankAccount,
   onUpdate,
   onDecide,
 }: {
   simulation: Simulation;
   comment: string;
   setComment: (v: string) => void;
+  bankAccount: string;
+  setBankAccount: (v: string) => void;
   onUpdate: (key: keyof NonNullable<Simulation["approvalChecklist"]>, value: boolean) => void;
   onDecide: (decision: "approve" | "reject" | "adjust") => void;
 }) {
@@ -338,6 +389,8 @@ function ApprovalDetails({
     notesRegistered: false,
     ...(simulation.approvalChecklist ?? {}),
   };
+  const flow = getApprovalFlow(simulation);
+  const currentStage = getCurrentApprovalStage(simulation);
 
   return (
     <Card className="shadow-card">
@@ -371,8 +424,32 @@ function ApprovalDetails({
 
         <Separator />
 
+        <div className="grid gap-3 md:grid-cols-2">
+          <ApprovalStepCard
+            label="Financeiro"
+            step={flow.financial}
+            active={currentStage === "financial"}
+          />
+          <ApprovalStepCard
+            label="Aprovação final"
+            step={flow.principal}
+            active={currentStage === "principal"}
+          />
+        </div>
+
+        {currentStage === "financial" ? (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-foreground">Conta bancária de saída</h3>
+            <Input
+              value={bankAccount}
+              onChange={(event) => setBankAccount(event.target.value)}
+              placeholder="Informe a conta usada para o pagamento"
+            />
+          </div>
+        ) : null}
+
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Checklist do aprovador</h3>
+          <h3 className="text-sm font-semibold text-foreground">Checklist da etapa</h3>
           <div className="grid gap-2 md:grid-cols-2">
             {CHECKLIST.map((item) => (
               <label
@@ -428,11 +505,17 @@ function ApprovalDetails({
           <ConfirmDialog
             trigger={
               <Button>
-                <Check /> Aprovar
+                <Check /> {currentStage === "financial" ? "Aprovar financeiro" : "Aprovar final"}
               </Button>
             }
-            title="Aprovar simulação"
-            description="A simulação ficará disponível para conversão em pedido."
+            title={
+              currentStage === "financial" ? "Aprovar etapa financeira" : "Aprovar etapa final"
+            }
+            description={
+              currentStage === "financial"
+                ? "A simulação seguirá para a aprovação final."
+                : "A simulação será aprovada e convertida em pedido."
+            }
             actionLabel="Aprovar"
             onConfirm={() => onDecide("approve")}
           />
@@ -449,6 +532,41 @@ function ApprovalDetails({
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+function ApprovalStepCard({
+  label,
+  step,
+  active,
+}: {
+  label: string;
+  step: ReturnType<typeof getApprovalFlow>["financial"];
+  active: boolean;
+}) {
+  const statusLabel = {
+    pending: "Pendente",
+    approved: "Aprovada",
+    adjustment_requested: "Ajuste solicitado",
+    rejected: "Reprovada",
+  }[step.status];
+
+  return (
+    <div
+      className={`rounded-xl border p-3 ${active ? "border-primary bg-primary-soft" : "border-border"}`}
+    >
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 font-semibold text-foreground">{statusLabel}</p>
+      {step.approverName ? (
+        <p className="mt-1 text-xs text-muted-foreground">Por {step.approverName}</p>
+      ) : null}
+      {step.decidedAt ? (
+        <p className="text-xs text-muted-foreground">{formatDateTime(step.decidedAt)}</p>
+      ) : null}
+      {step.bankAccount ? (
+        <p className="mt-1 text-xs text-muted-foreground">Conta: {step.bankAccount}</p>
+      ) : null}
+    </div>
   );
 }
 

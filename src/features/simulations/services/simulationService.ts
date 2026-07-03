@@ -1,6 +1,7 @@
 import type { Order, Simulation } from "@/data/types";
 import type { AuditEvent } from "@/store/types";
 import { getSimulationTotals } from "@/lib/calculations";
+import { isSimulationFullyApproved } from "@/features/approvals/approvalFlow";
 
 export function nowIso() {
   return new Date().toISOString();
@@ -40,6 +41,7 @@ export function duplicateSimulation(
     createdAt: nowIso(),
     validUntil: new Date(Date.now() + 15 * 86400000).toISOString(),
     approvalChecklist: undefined,
+    approvalFlow: undefined,
     approvalNotes: undefined,
     orderId: undefined,
     convertedAt: undefined,
@@ -61,6 +63,9 @@ export function convertSimulationToOrder(
   existingOrders: Order[],
   userId: string,
 ): { order: Order; simulation: Simulation; audit: AuditEvent } {
+  if (!isSimulationFullyApproved(simulation)) {
+    throw new Error("Simulação precisa das aprovações financeira e final antes de virar pedido.");
+  }
   const existing = existingOrders.find((o) => o.simulationId === simulation.id);
   if (existing) throw new Error(`Simulação já convertida no pedido ${existing.number}.`);
   const totals = getSimulationTotals(simulation);

@@ -40,6 +40,7 @@ export type SimulationRow = {
   financial_notes?: string | null;
   financial?: Partial<FinancialData> | null;
   approval_checklist?: Simulation["approvalChecklist"] | null;
+  approval_flow?: Simulation["approvalFlow"] | null;
   approval_notes?: string | null;
   converted_order_external_id?: string | null;
   converted_at?: string | null;
@@ -137,6 +138,7 @@ export function simulationToRow(simulation: Simulation): Record<string, unknown>
     financial_notes: simulation.financialNotes ?? null,
     financial: simulation.financial,
     approval_checklist: simulation.approvalChecklist ?? null,
+    approval_flow: simulation.approvalFlow ?? null,
     approval_notes: simulation.approvalNotes ?? null,
     converted_order_external_id: simulation.orderId ?? null,
     converted_at: simulation.convertedAt ?? null,
@@ -253,6 +255,7 @@ export function rowToSimulation(row: SimulationRow): Simulation {
     expenseItems: (row.simulation_costs ?? []).map(rowToExpense),
     financial,
     approvalChecklist: row.approval_checklist ?? undefined,
+    approvalFlow: row.approval_flow ?? undefined,
     approvalNotes: row.approval_notes ?? undefined,
     orderId: row.converted_order_external_id ?? undefined,
     convertedAt: row.converted_at ?? undefined,

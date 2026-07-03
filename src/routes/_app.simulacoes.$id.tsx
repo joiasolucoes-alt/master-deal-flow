@@ -79,6 +79,10 @@ import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { useAppStore } from "@/store/useAppStore";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
 import {
+  canConvertApprovedSimulation,
+  initializeApprovalFlow,
+} from "@/features/approvals/approvalFlow";
+import {
   canConvertSimulationToOrder,
   canCreateSimulation,
   canEditSimulation,
@@ -308,6 +312,7 @@ function normalizeExpenseItems(items: ExpenseItem[]) {
 function saveApprovalRecordWhenEnabled(payload: {
   id: string;
   simulationId: string;
+  stage?: "financial" | "principal";
   approverId?: string;
   status: "pending" | "approved" | "adjustment_requested" | "rejected";
   checklist?: Record<string, unknown>;
@@ -454,6 +459,7 @@ function SimulationDetailPage() {
       createdAt: new Date().toISOString(),
       validUntil: new Date(Date.now() + 1000 * 60 * 60 * 24 * 15).toISOString(),
       approvalChecklist: undefined,
+      approvalFlow: undefined,
       approvalNotes: undefined,
       orderId: undefined,
       convertedAt: undefined,
@@ -467,6 +473,10 @@ function SimulationDetailPage() {
   function convertToOrder() {
     if (!canConvertSimulationToOrder(currentUser)) {
       toast.error("Seu perfil não pode converter simulações em pedido.");
+      return;
+    }
+    if (!canConvertApprovedSimulation(draft)) {
+      toast.error("A simulação precisa das aprovações financeira e final antes de virar pedido.");
       return;
     }
 
@@ -545,12 +555,13 @@ function SimulationDetailPage() {
       return;
     }
 
-    const next = { ...draft, status: "Pendente de aprovação" as const };
+    const next = initializeApprovalFlow({ ...draft, status: "Pendente de aprovação" as const });
     if (!window.confirm("Enviar esta simulação para aprovação?")) return;
     upsertSimulation(next);
     saveApprovalRecordWhenEnabled({
-      id: `apr-${next.id}`,
+      id: `apr-${next.id}-financial`,
       simulationId: next.id,
+      stage: "financial",
       approverId: currentUser?.id,
       status: "pending",
       checklist: next.approvalChecklist,
@@ -610,7 +621,7 @@ function SimulationDetailPage() {
                 <Pencil /> Salvar rascunho
               </Button>
             ) : null}
-            {draft.status === "Aprovada" && !draft.orderId && userCanConvert ? (
+            {canConvertApprovedSimulation(draft) && !draft.orderId && userCanConvert ? (
               <Button onClick={convertToOrder}>
                 <CheckCircle2 /> Converter em pedido
               </Button>
@@ -2062,7 +2073,7 @@ function ResultStep({
                       : "Seu perfil pode consultar esta simulação, mas não enviá-la para aprovação."}
             </p>
           </div>
-          {draft.status === "Aprovada" && !hasOrder && canConvert ? (
+          {canConvertApprovedSimulation(draft) && !hasOrder && canConvert ? (
             <Button onClick={onConvertToOrder}>
               <CheckCircle2 /> Converter em pedido
             </Button>

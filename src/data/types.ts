@@ -134,6 +134,23 @@ export interface FinancialData {
   notes: string;
 }
 
+export type ApprovalStage = "financial" | "principal";
+export type ApprovalStageStatus = "pending" | "approved" | "adjustment_requested" | "rejected";
+
+export interface ApprovalStepState {
+  status: ApprovalStageStatus;
+  approverId?: string;
+  approverName?: string;
+  decidedAt?: string;
+  notes?: string;
+  bankAccount?: string;
+}
+
+export interface SimulationApprovalFlow {
+  financial: ApprovalStepState;
+  principal: ApprovalStepState;
+}
+
 export interface Simulation {
   id: string;
   number: string;
@@ -161,6 +178,7 @@ export interface Simulation {
     costsChecked: boolean;
     notesRegistered: boolean;
   };
+  approvalFlow?: SimulationApprovalFlow;
   approvalNotes?: string;
   orderId?: string;
   convertedAt?: string;
