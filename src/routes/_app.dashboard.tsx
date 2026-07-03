@@ -224,10 +224,13 @@ function DashboardPage() {
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={simulationEvolution} margin={{ left: 0, right: 8, top: 8 }}>
+              <AreaChart
+                data={simulationEvolution}
+                margin={{ left: 8, right: 12, top: 12, bottom: 4 }}
+              >
                 <defs>
                   <linearGradient id="dashArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.5} />
+                    <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.55} />
                     <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -241,19 +244,24 @@ function DashboardPage() {
                   stroke="var(--color-muted-foreground)"
                   tickLine={false}
                   axisLine={false}
+                  tick={{ fontSize: 12 }}
                 />
                 <YAxis
                   stroke="var(--color-muted-foreground)"
                   tickLine={false}
                   axisLine={false}
+                  tick={{ fontSize: 12 }}
+                  width={64}
                   tickFormatter={(v) => formatCompactCurrency(v as number)}
                 />
                 <Tooltip
+                  cursor={{ stroke: "var(--color-primary)", strokeOpacity: 0.25, strokeWidth: 2 }}
                   contentStyle={{
                     background: "var(--color-card)",
                     color: "var(--color-card-foreground)",
                     borderRadius: 12,
                     border: "1px solid var(--color-border)",
+                    boxShadow: "var(--shadow-elevated)",
                   }}
                   labelStyle={{ color: "var(--color-card-foreground)" }}
                   itemStyle={{ color: "var(--color-card-foreground)" }}
@@ -265,6 +273,8 @@ function DashboardPage() {
                   stroke="var(--color-primary)"
                   fill="url(#dashArea)"
                   strokeWidth={2.5}
+                  animationDuration={900}
+                  activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-card)" }}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -286,21 +296,33 @@ function DashboardPage() {
                   innerRadius={55}
                   outerRadius={90}
                   paddingAngle={4}
+                  animationDuration={900}
                 >
                   {statusData.map((_, idx) => (
-                    <Cell key={idx} fill={pieColors[idx % pieColors.length]} />
+                    <Cell
+                      key={idx}
+                      fill={pieColors[idx % pieColors.length]}
+                      stroke="var(--color-card)"
+                      strokeWidth={2}
+                    />
                   ))}
                 </Pie>
-                <Legend verticalAlign="bottom" iconType="circle" />
+                <Legend
+                  verticalAlign="bottom"
+                  iconType="circle"
+                  wrapperStyle={{ fontSize: 12, color: "var(--color-muted-foreground)" }}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "var(--color-card)",
                     color: "var(--color-card-foreground)",
                     borderRadius: 12,
                     border: "1px solid var(--color-border)",
+                    boxShadow: "var(--shadow-elevated)",
                   }}
                   labelStyle={{ color: "var(--color-card-foreground)" }}
                   itemStyle={{ color: "var(--color-card-foreground)" }}
+                  formatter={(v: number, name: string) => [`${v} negociações`, name]}
                 />
               </PieChart>
             </ResponsiveContainer>

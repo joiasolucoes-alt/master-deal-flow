@@ -418,3 +418,28 @@ assert.throws(() => requireSupabaseConfig(false), /Supabase não está configura
 assert.equal(requireSupabaseConfig(true), true);
 
 console.log("Calculation and data provider smoke tests passed.");
+
+const DRIVER_EVENT_FLOW = ["arrived_pickup", "loaded", "in_transit", "delivered", "proof_uploaded"];
+function getNextDriverEventForTest(events, requiresProof = true, linkState = "active") {
+  if (linkState !== "active") return null;
+  const completed = new Set(events);
+  return (
+    DRIVER_EVENT_FLOW.find(
+      (event) => (event !== "proof_uploaded" || requiresProof) && !completed.has(event),
+    ) ?? null
+  );
+}
+function isDriverEventInOrder(events, eventType) {
+  return getNextDriverEventForTest(events) === eventType;
+}
+assert.equal(getNextDriverEventForTest([]), "arrived_pickup");
+assert.equal(isDriverEventInOrder([], "loaded"), false);
+assert.equal(isDriverEventInOrder(["arrived_pickup"], "loaded"), true);
+assert.equal(isDriverEventInOrder(["arrived_pickup", "loaded"], "delivered"), false);
+assert.equal(
+  getNextDriverEventForTest(["arrived_pickup", "loaded", "in_transit", "delivered"], false),
+  null,
+);
+assert.equal(getNextDriverEventForTest(["arrived_pickup"], true, "revoked"), null);
+
+console.log("Todos os testes passaram.");

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, MapPin, Plus, Truck } from "lucide-react";
+import { ArrowRight, Copy, Link2, MapPin, Plus, RotateCw, Truck, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
 import { DataTable, type DataColumn } from "@/components/app/data-table";
@@ -16,14 +16,13 @@ import {
   getNextFreightStatus,
   updateOrderFromFreight,
 } from "@/features/freights/freightHelpers";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/fretes")({
   component: FreightsPage,
 });
-
 function FreightsPage() {
   const { auth, orders, freights, upsertFreight, upsertOrder } = useAppContext();
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
@@ -162,6 +161,76 @@ function FreightsPage() {
             emptyTitle="Sem fretes"
             emptyDescription="Nenhum frete contratado no momento."
           />
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-card">
+        <CardHeader>
+          <CardTitle>Detalhe do rastreamento do motorista</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+          <div className="space-y-3 rounded-2xl border p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Link público</span>
+              <Badge variant="outline">Ativo</Badge>
+            </div>
+            <p className="break-all rounded-xl bg-muted p-3 text-sm">
+              {window.location.origin}/motorista/demo
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  navigator.clipboard?.writeText(`${window.location.origin}/motorista/demo`)
+                }
+              >
+                <Copy />
+                Copiar
+              </Button>
+              <Button variant="outline" size="sm">
+                <XCircle />
+                Revogar
+              </Button>
+              <Button variant="outline" size="sm">
+                <RotateCw />
+                Novo
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Ao contratar um frete, o backend deve gravar token com hash e expiração em
+              driver_tracking_links; o token puro aparece apenas nesta URL.
+            </p>
+          </div>
+          <div className="space-y-3 rounded-2xl border p-4">
+            <h3 className="font-semibold">Timeline operacional</h3>
+            {[
+              "Chegou para coleta",
+              "Carregado",
+              "Em trânsito",
+              "Entregue",
+              "Comprovante anexado",
+            ].map((label, index) => (
+              <div key={label} className="flex items-start gap-3 text-sm">
+                <div
+                  className={`mt-1 h-3 w-3 rounded-full ${index < 3 ? "bg-primary" : "bg-muted"}`}
+                />
+                <div>
+                  <p className="font-medium">{label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {index < 3
+                      ? formatDateTime(new Date(Date.now() - (3 - index) * 3600000).toISOString())
+                      : "Pendente"}
+                    {index === 2 ? " • localização registrada" : ""}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <Button variant="soft" size="sm">
+              <Link2 />
+              Abrir comprovante quando disponível
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
