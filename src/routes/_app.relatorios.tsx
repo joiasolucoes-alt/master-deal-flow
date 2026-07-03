@@ -136,7 +136,10 @@ function ReportsPage() {
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={simulationEvolution} margin={{ left: 8, right: 12, top: 12, bottom: 4 }}>
+              <LineChart
+                data={simulationEvolution}
+                margin={{ left: 8, right: 12, top: 12, bottom: 4 }}
+              >
                 <CartesianGrid
                   strokeDasharray="3 3"
                   stroke="var(--color-border)"
@@ -218,8 +221,16 @@ function ReportsPage() {
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topClients} layout="vertical" margin={{ left: 8, right: 16, top: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
+              <BarChart
+                data={topClients}
+                layout="vertical"
+                margin={{ left: 8, right: 16, top: 8, bottom: 4 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="var(--color-border)"
+                  horizontal={false}
+                />
                 <XAxis
                   type="number"
                   stroke="var(--color-muted-foreground)"
@@ -248,7 +259,12 @@ function ReportsPage() {
                     boxShadow: "var(--shadow-elevated)",
                   }}
                 />
-                <Bar dataKey="value" radius={[0, 8, 8, 0]} fill="var(--color-primary)" animationDuration={900} />
+                <Bar
+                  dataKey="value"
+                  radius={[0, 8, 8, 0]}
+                  fill="var(--color-primary)"
+                  animationDuration={900}
+                />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
