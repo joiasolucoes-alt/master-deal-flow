@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAppContext } from "@/features/app/app-context";
-import truckIllustration from "@/assets/master-flow-truck.png";
+import truckDarkAsset from "@/assets/master-truck-dark.png.asset.json";
+import truckLightAsset from "@/assets/master-truck-light.png.asset.json";
 import { notifyActionUnavailable } from "@/lib/actions";
 import { toast } from "sonner";
 
