@@ -15,6 +15,8 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
+import truckDarkAsset from "@/assets/master-truck-dark.png.asset.json";
+import truckLightAsset from "@/assets/master-truck-light.png.asset.json";
 import {
   Sidebar,
   SidebarContent,
@@ -143,13 +145,13 @@ export function AppSidebar() {
 
         <div className="relative overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-elevated/70 group-data-[collapsible=icon]:rounded-2xl">
           <img
-            src="/master-truck-light.svg"
+            src={truckLightAsset.url}
             alt="Caminhão Master"
             className="block h-28 w-full object-cover object-center transition-transform duration-500 ease-out hover:scale-[1.03] dark:hidden group-data-[collapsible=icon]:h-16"
             loading="lazy"
           />
           <img
-            src="/master-truck-dark.svg"
+            src={truckDarkAsset.url}
             alt="Caminhão Master"
             className="hidden h-28 w-full object-cover object-center transition-transform duration-500 ease-out hover:scale-[1.03] dark:block group-data-[collapsible=icon]:h-16"
             loading="lazy"
