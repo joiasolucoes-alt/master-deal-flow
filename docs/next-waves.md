@@ -8,11 +8,12 @@
 - Contas a receber geradas a partir dos pedidos.
 - Baixa simples de recebimentos.
 - Atualização do progresso de faturamento do pedido.
+- Fretes gerados a partir de pedidos liberados.
+- Avanço operacional do frete refletindo no pedido.
 
 ### Próximos blocos
 
 - Contas a pagar.
-- Frete real.
 - Entrega real.
 - Ocorrências de entrega.
 

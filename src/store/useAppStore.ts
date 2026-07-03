@@ -3,6 +3,7 @@ import { simulationsSeed } from "@/data/simulations";
 import { negotiations } from "@/data/negotiations";
 import { orders } from "@/data/orders";
 import { financialTitles } from "@/data/financialTitles";
+import { freights } from "@/data/freights";
 import { notifications } from "@/data/notifications";
 import { appUser } from "@/data/users";
 import { clients } from "@/data/clients";
@@ -12,6 +13,7 @@ import type { AuditEvent, AppStoreState } from "@/store/types";
 import type {
   Client,
   FinancialTitle,
+  FreightRecord,
   Negotiation,
   NotificationItem,
   Order,
@@ -30,12 +32,14 @@ export type AppStore = AppStoreState & {
   setSimulations: (value: Simulation[]) => void;
   setOrders: (value: Order[]) => void;
   setFinancialTitles: (value: FinancialTitle[]) => void;
+  setFreights: (value: FreightRecord[]) => void;
   setClients: (value: Client[]) => void;
   setSuppliers: (value: Supplier[]) => void;
   setProducts: (value: Product[]) => void;
   upsertSimulation: (simulation: Simulation, audit?: AuditEvent) => void;
   upsertOrder: (order: Order, audit?: AuditEvent) => void;
   upsertFinancialTitle: (title: FinancialTitle, audit?: AuditEvent) => void;
+  upsertFreight: (freight: FreightRecord, audit?: AuditEvent) => void;
   upsertClient: (client: Client) => void;
   upsertSupplier: (supplier: Supplier) => void;
   upsertProduct: (product: Product) => void;
@@ -51,12 +55,14 @@ type PersistedState = Omit<
   | "setSimulations"
   | "setOrders"
   | "setFinancialTitles"
+  | "setFreights"
   | "setClients"
   | "setSuppliers"
   | "setProducts"
   | "upsertSimulation"
   | "upsertOrder"
   | "upsertFinancialTitle"
+  | "upsertFreight"
   | "upsertClient"
   | "upsertSupplier"
   | "upsertProduct"
@@ -73,6 +79,7 @@ function baseState(): PersistedState {
     negotiations,
     orders,
     financialTitles,
+    freights,
     clients,
     suppliers,
     products,
@@ -158,6 +165,7 @@ const storeActions = {
   setOrders: (value: Order[]) => setState((current) => ({ ...current, orders: value })),
   setFinancialTitles: (value: FinancialTitle[]) =>
     setState((current) => ({ ...current, financialTitles: value })),
+  setFreights: (value: FreightRecord[]) => setState((current) => ({ ...current, freights: value })),
   setClients: (value: Client[]) => setState((current) => ({ ...current, clients: value })),
   setSuppliers: (value: Supplier[]) => setState((current) => ({ ...current, suppliers: value })),
   setProducts: (value: Product[]) => setState((current) => ({ ...current, products: value })),
@@ -183,6 +191,14 @@ const storeActions = {
       financialTitles: current.financialTitles.some((item) => item.id === title.id)
         ? current.financialTitles.map((item) => (item.id === title.id ? title : item))
         : [title, ...current.financialTitles],
+      auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
+    })),
+  upsertFreight: (freight: FreightRecord, audit?: AuditEvent) =>
+    setState((current) => ({
+      ...current,
+      freights: current.freights.some((item) => item.id === freight.id)
+        ? current.freights.map((item) => (item.id === freight.id ? freight : item))
+        : [freight, ...current.freights],
       auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
     })),
   upsertClient: (client: Client) =>

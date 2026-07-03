@@ -22,6 +22,7 @@ import { useAppStore } from "@/store/useAppStore";
 import type {
   Client,
   FinancialTitle,
+  FreightRecord,
   Order,
   Product,
   Simulation,
@@ -37,6 +38,7 @@ import { createSupabaseSimulationRepository } from "@/features/simulations/repos
 import { createSupabaseOrderRepository } from "@/features/orders/repositories/supabaseOrderRepository";
 import { createSupabaseCatalogRepository } from "@/features/catalogs/repositories/catalogRepository";
 import { createSupabaseFinancialRepository } from "@/features/finance/repositories/supabaseFinancialRepository";
+import { createSupabaseFreightRepository } from "@/features/freights/repositories/supabaseFreightRepository";
 import { toast } from "sonner";
 
 type AuthProfile = {
@@ -106,6 +108,7 @@ interface AppContextValue {
   simulations: Simulation[];
   orders: Order[];
   financialTitles: FinancialTitle[];
+  freights: FreightRecord[];
   clients: Client[];
   suppliers: Supplier[];
   products: Product[];
@@ -114,6 +117,7 @@ interface AppContextValue {
   upsertSimulation: (simulation: Simulation) => void;
   upsertOrder: (order: Order) => void;
   upsertFinancialTitle: (title: FinancialTitle) => void;
+  upsertFreight: (freight: FreightRecord) => void;
   upsertClient: (client: Client) => void;
   upsertSupplier: (supplier: Supplier) => void;
   upsertProduct: (product: Product) => void;
@@ -504,18 +508,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const simulations = useAppStore((store) => store.simulations);
   const orders = useAppStore((store) => store.orders);
   const financialTitles = useAppStore((store) => store.financialTitles);
+  const freights = useAppStore((store) => store.freights);
   const clients = useAppStore((store) => store.clients);
   const suppliers = useAppStore((store) => store.suppliers);
   const products = useAppStore((store) => store.products);
   const setSimulationsStore = useAppStore((store) => store.setSimulations);
   const setOrdersStore = useAppStore((store) => store.setOrders);
   const setFinancialTitlesStore = useAppStore((store) => store.setFinancialTitles);
+  const setFreightsStore = useAppStore((store) => store.setFreights);
   const setClientsStore = useAppStore((store) => store.setClients);
   const setSuppliersStore = useAppStore((store) => store.setSuppliers);
   const setProductsStore = useAppStore((store) => store.setProducts);
   const upsertSimulationStore = useAppStore((store) => store.upsertSimulation);
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
   const upsertFinancialTitleStore = useAppStore((store) => store.upsertFinancialTitle);
+  const upsertFreightStore = useAppStore((store) => store.upsertFreight);
   const upsertClientStore = useAppStore((store) => store.upsertClient);
   const upsertSupplierStore = useAppStore((store) => store.upsertSupplier);
   const upsertProductStore = useAppStore((store) => store.upsertProduct);
@@ -802,6 +809,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const orderRepository = createSupabaseOrderRepository();
     const catalogRepository = createSupabaseCatalogRepository();
     const financialRepository = createSupabaseFinancialRepository();
+    const freightRepository = createSupabaseFreightRepository();
 
     async function loadRemoteData() {
       try {
@@ -809,6 +817,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remoteSimulations,
           remoteOrders,
           remoteFinancialTitles,
+          remoteFreights,
           remoteClients,
           remoteSuppliers,
           remoteProducts,
@@ -816,6 +825,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           simulationRepository.list(),
           orderRepository.list(),
           financialRepository.listTitles(),
+          freightRepository.list(),
           catalogRepository.listClients(),
           catalogRepository.listSuppliers(),
           catalogRepository.listProducts(),
@@ -825,6 +835,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSimulationsStore(remoteSimulations);
         setOrdersStore(remoteOrders);
         setFinancialTitlesStore(remoteFinancialTitles);
+        setFreightsStore(remoteFreights);
         setClientsStore(remoteClients);
         setSuppliersStore(remoteSuppliers);
         setProductsStore(remoteProducts);
@@ -846,6 +857,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     hydrated,
     setClientsStore,
     setFinancialTitlesStore,
+    setFreightsStore,
     setOrdersStore,
     setProductsStore,
     setSimulationsStore,
@@ -1131,6 +1143,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const upsertFreight = (freight: FreightRecord) => {
+    upsertFreightStore(freight);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. O frete ficou salvo apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseFreightRepository();
+    void repository.save(freight).catch((error) => {
+      console.error("Falha ao salvar frete no Supabase.", error);
+      setLastDataError(error instanceof Error ? error.message : "Falha ao salvar frete.");
+      toast.error("Falha ao salvar frete no Supabase. Dados locais preservados.");
+    });
+  };
+
   const saveCatalogWithSupabase = <T,>(
     label: string,
     action: () => Promise<T>,
@@ -1195,6 +1228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       simulations,
       orders,
       financialTitles,
+      freights,
       clients,
       suppliers,
       products,
@@ -1203,6 +1237,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertSimulation,
       upsertOrder,
       upsertFinancialTitle,
+      upsertFreight,
       upsertClient,
       upsertSupplier,
       upsertProduct,
@@ -1219,6 +1254,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       simulations,
       orders,
       financialTitles,
+      freights,
       clients,
       suppliers,
       products,
@@ -1227,6 +1263,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertSimulation,
       upsertOrder,
       upsertFinancialTitle,
+      upsertFreight,
       upsertClient,
       upsertSupplier,
       upsertProduct,

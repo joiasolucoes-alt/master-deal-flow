@@ -224,6 +224,31 @@ export interface FinancialTitle {
   paidAt?: string;
 }
 
+export type FreightStatus = "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled";
+
+export interface FreightRecord {
+  id: string;
+  code: string;
+  orderId?: string;
+  orderNumber?: string;
+  client: string;
+  carrierName: string;
+  driverName: string;
+  vehicleDescription: string;
+  vehiclePlate: string;
+  route: string;
+  freightValue: number;
+  weight: string;
+  status: FreightStatus;
+  pickupDate: string;
+  expectedDeliveryDate: string;
+  owner: string;
+  unit: string;
+  notes: string;
+  createdAt: string;
+  deliveredAt?: string;
+}
+
 export interface Negotiation {
   id: string;
   number: string;
