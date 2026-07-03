@@ -4,6 +4,7 @@ import type {
   PurchaseItem,
   Simulation,
   SimulationProduct,
+  SimulationApprovalFlow,
 } from "@/data/types";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { getSimulationTotals } from "@/lib/calculations";
@@ -49,6 +50,19 @@ export type SimulationRow = {
   simulation_costs?: SimulationCostRow[];
   simulation_purchase_costs?: SimulationPurchaseCostRow[];
   simulation_installments?: SimulationInstallmentRow[];
+  approvals?: SimulationApprovalRow[];
+};
+
+type SimulationApprovalRow = {
+  stage?: "financial" | "principal" | null;
+  status?: "pending" | "approved" | "adjustment_requested" | "rejected" | null;
+  approver_id?: string | null;
+  bank_account?: string | null;
+  comment?: string | null;
+  decided_at?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+  requested_changes?: Record<string, unknown> | null;
 };
 
 export type SimulationItemRow = {
@@ -107,6 +121,48 @@ function toNumber(value: number | null | undefined, fallback = 0) {
 
 function toDateTime(value: string | null | undefined) {
   return value || new Date().toISOString();
+}
+
+function getApprovalRowTime(row: SimulationApprovalRow) {
+  return row.decided_at || row.updated_at || row.created_at || "";
+}
+
+function getApprovalFlowFromRows(
+  approvals: SimulationApprovalRow[] | undefined,
+): SimulationApprovalFlow | undefined {
+  if (!approvals?.length) return undefined;
+
+  const flow: SimulationApprovalFlow = {
+    financial: { status: "pending" },
+    principal: { status: "pending" },
+  };
+
+  for (const stage of ["financial", "principal"] as const) {
+    const latest = approvals
+      .filter((approval) => approval.stage === stage)
+      .sort((a, b) => getApprovalRowTime(b).localeCompare(getApprovalRowTime(a)))[0];
+
+    if (!latest?.status) continue;
+
+    flow[stage] = {
+      status: latest.status,
+      approverId:
+        latest.approver_id ||
+        (latest.requested_changes?.approverExternalId as string | undefined) ||
+        undefined,
+      decidedAt:
+        latest.decided_at ||
+        (latest.requested_changes?.decidedAt as string | undefined) ||
+        undefined,
+      notes: latest.comment ?? undefined,
+      bankAccount:
+        latest.bank_account ||
+        (latest.requested_changes?.bankAccount as string | undefined) ||
+        undefined,
+    };
+  }
+
+  return flow;
 }
 
 export function simulationToRow(simulation: Simulation): Record<string, unknown> {
@@ -255,7 +311,7 @@ export function rowToSimulation(row: SimulationRow): Simulation {
     expenseItems: (row.simulation_costs ?? []).map(rowToExpense),
     financial,
     approvalChecklist: row.approval_checklist ?? undefined,
-    approvalFlow: row.approval_flow ?? undefined,
+    approvalFlow: row.approval_flow ?? getApprovalFlowFromRows(row.approvals),
     approvalNotes: row.approval_notes ?? undefined,
     orderId: row.converted_order_external_id ?? undefined,
     convertedAt: row.converted_at ?? undefined,
