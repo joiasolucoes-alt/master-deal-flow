@@ -13,9 +13,9 @@ export function FilterBar({
   rightSlot?: ReactNode;
 }) {
   return (
-    <Card className="shadow-card">
+    <Card>
       <CardContent className="space-y-4 p-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
           <Filter className="h-4 w-4 text-primary" />
           <span>Filtros</span>
         </div>

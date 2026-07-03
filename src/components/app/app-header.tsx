@@ -155,11 +155,11 @@ export function AppHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur-xl">
-      <div className="grid gap-3 px-4 py-4 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center md:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur-xl">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 px-4 py-3 md:grid-cols-[auto_minmax(280px,680px)_auto] md:gap-3 md:px-6 lg:px-8">
         <div className="flex items-center gap-2">
           <SidebarTrigger
-            className="h-10 w-10 rounded-full border border-border md:hidden"
+            className="h-10 w-10 border border-border md:hidden"
             aria-label="Abrir menu"
           />
         </div>
@@ -177,10 +177,10 @@ export function AppHeader() {
                 selectSearchResult(searchResults[0]);
               }
             }}
-            className="h-12 rounded-2xl border-border bg-card pl-11 pr-24 shadow-card"
+            className="h-10 rounded-md border-border bg-card pl-10 pr-20 shadow-none"
           />
           <span className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 text-xs text-muted-foreground sm:inline">
-            ⌘ K
+            Ctrl K
           </span>
           {trimmedQuery.length >= 2 ? (
             <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden rounded-2xl border border-border bg-popover p-2 text-popover-foreground shadow-card">
@@ -214,14 +214,14 @@ export function AppHeader() {
           ) : null}
         </label>
 
-        <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 md:flex">
+        <div className="col-span-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-2 md:col-span-1 md:flex">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 size="icon"
                 aria-label="Notificações"
-                className="relative h-12 w-12 rounded-2xl bg-card shadow-card"
+                className="relative h-10 w-10 bg-card shadow-none"
               >
                 <Bell className="h-5 w-5" />
                 {unread ? (
@@ -267,12 +267,12 @@ export function AppHeader() {
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                className="grid h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl bg-card px-3 shadow-card"
+                className="grid h-10 min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 bg-card px-2.5 shadow-none"
               >
                 <UserAvatar
                   name={user?.name ?? "Usuário"}
                   initials={user?.initials ?? "MF"}
-                  className="h-9 w-9"
+                  className="h-7 w-7"
                 />
                 <span className="min-w-0 text-left">
                   <span className="block truncate text-sm font-semibold text-foreground">

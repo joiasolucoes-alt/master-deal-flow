@@ -34,7 +34,7 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+    <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
       <Table>
         <TableHeader>
           <TableRow>

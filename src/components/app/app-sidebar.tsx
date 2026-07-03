@@ -1,6 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  BarChart3,
   Boxes,
   BriefcaseBusiness,
   ChevronLeft,
@@ -15,8 +14,6 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
-import truckDarkAsset from "@/assets/master-truck-dark.png.asset.json";
-import truckLightAsset from "@/assets/master-truck-light.png.asset.json";
 import {
   Sidebar,
   SidebarContent,
@@ -74,9 +71,9 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="px-4 py-5 group-data-[collapsible=icon]:px-2">
-        <div className="flex items-center gap-3 overflow-hidden rounded-2xl px-1 py-1">
-          <div className="h-11 w-9 shrink-0 overflow-hidden rounded-md">
+      <SidebarHeader className="border-b border-sidebar-border px-4 py-4 group-data-[collapsible=icon]:px-2">
+        <div className="flex items-center gap-3 overflow-hidden px-1">
+          <div className="h-10 w-8 shrink-0 overflow-hidden rounded-sm">
             <img
               src="/logo-master.svg"
               alt="Logo Master Flow"
@@ -86,11 +83,11 @@ export function AppSidebar() {
           </div>
           {!collapsed ? (
             <div className="min-w-0">
-              <p className="truncate text-[1.85rem] font-semibold leading-none text-sidebar-foreground">
-                master
+              <p className="font-display truncate text-lg font-bold leading-tight text-sidebar-foreground">
+                Master Flow
               </p>
-              <p className="truncate text-[1.85rem] font-semibold leading-none text-primary">
-                Flow
+              <p className="truncate text-[11px] font-medium uppercase tracking-[0.16em] text-sidebar-foreground/55">
+                Operações
               </p>
             </div>
           ) : null}
@@ -107,7 +104,7 @@ export function AppSidebar() {
                   asChild
                   isActive={active}
                   tooltip={item.title}
-                  className="h-12 rounded-2xl px-3 text-[0.95rem]"
+                  className="h-10 rounded-md px-3 text-sm"
                 >
                   <Link to={item.to} className="flex items-center gap-3">
                     <item.icon
@@ -125,43 +122,27 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
 
-      <SidebarFooter className="gap-3 px-3 pb-4">
-        <div className="overflow-hidden rounded-2xl border border-sidebar-border bg-sidebar-elevated p-3 text-sidebar-foreground shadow-card group-data-[collapsible=icon]:p-2">
+      <SidebarFooter className="gap-3 border-t border-sidebar-border px-3 py-3">
+        <div className="overflow-hidden rounded-md border border-sidebar-border bg-sidebar-elevated p-3 text-sidebar-foreground group-data-[collapsible=icon]:p-2">
           <div className="flex items-start gap-3 group-data-[collapsible=icon]:justify-center">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary ring-1 ring-primary/15">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/12 text-primary ring-1 ring-primary/20">
               <ShieldCheck className="h-5 w-5" />
             </div>
             {!collapsed ? (
               <div className="min-w-0">
-                <p className="text-xs font-medium text-sidebar-foreground/75">
-                  Sistema operacional
+                <p className="truncate text-sm font-semibold text-sidebar-foreground">
+                  Master Distribuidora
                 </p>
-                <p className="text-sm font-semibold text-sidebar-foreground">Todos os serviços</p>
-                <p className="text-sm text-primary">operando normalmente</p>
+                <p className="text-xs text-sidebar-foreground/55">Ambiente corporativo</p>
               </div>
             ) : null}
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-elevated/70 group-data-[collapsible=icon]:rounded-2xl">
-          <img
-            src={truckLightAsset.url}
-            alt="Caminhão Master"
-            className="block h-28 w-full object-cover object-center transition-transform duration-500 ease-out hover:scale-[1.03] dark:hidden group-data-[collapsible=icon]:h-16"
-            loading="lazy"
-          />
-          <img
-            src={truckDarkAsset.url}
-            alt="Caminhão Master"
-            className="hidden h-28 w-full object-cover object-center transition-transform duration-500 ease-out hover:scale-[1.03] dark:block group-data-[collapsible=icon]:h-16"
-            loading="lazy"
-          />
-        </div>
-
         <Button
           variant="ghost"
           onClick={toggleSidebar}
-          className="h-11 w-full justify-center rounded-full border border-sidebar-border bg-sidebar-elevated text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="h-9 w-full justify-center border border-sidebar-border bg-transparent text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <ChevronLeft className="h-4 w-4 group-data-[collapsible=icon]:rotate-180" />
           {!collapsed ? <span>Recolher menu</span> : null}
