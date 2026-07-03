@@ -143,14 +143,18 @@ export function AppSidebar() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-elevated/70 group-data-[collapsible=icon]:rounded-2xl">
+        <div className="relative overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-elevated/70 group-data-[collapsible=icon]:rounded-2xl">
           <img
-            src={truckIllustration}
-            alt="Ilustração de caminhão"
-            className="h-28 w-full object-contain object-bottom px-3 pt-3 opacity-85 group-data-[collapsible=icon]:h-20 group-data-[collapsible=icon]:px-1"
+            src={truckLightAsset.url}
+            alt="Caminhão Master"
+            className="block h-28 w-full object-cover object-center transition-transform duration-500 ease-out hover:scale-[1.03] dark:hidden group-data-[collapsible=icon]:h-16"
             loading="lazy"
-            width={1024}
-            height={1024}
+          />
+          <img
+            src={truckDarkAsset.url}
+            alt="Caminhão Master"
+            className="hidden h-28 w-full object-cover object-center transition-transform duration-500 ease-out hover:scale-[1.03] dark:block group-data-[collapsible=icon]:h-16"
+            loading="lazy"
           />
         </div>
 
