@@ -1,4 +1,13 @@
-import type { Negotiation, NotificationItem, Order, Simulation, User } from "@/data/types";
+import type {
+  Client,
+  Negotiation,
+  NotificationItem,
+  Order,
+  Product,
+  Simulation,
+  Supplier,
+  User,
+} from "@/data/types";
 
 export type AuditEvent = {
   id: string;
@@ -15,6 +24,9 @@ export interface AppStoreState {
   simulations: Simulation[];
   negotiations: Negotiation[];
   orders: Order[];
+  clients: Client[];
+  suppliers: Supplier[];
+  products: Product[];
   auditEvents: AuditEvent[];
   notifications: NotificationItem[];
   currentUser: User;

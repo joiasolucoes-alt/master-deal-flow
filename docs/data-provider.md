@@ -54,7 +54,16 @@ Se o Supabase nao estiver configurado ou falhar, o app mantem a experiencia atua
 
 ## Pontos provisorios
 
-- Login real com Supabase Auth ainda nao substituiu o login simulado.
-- Permissoes por perfil ainda nao foram levadas para RLS.
-- Regras por unidade/responsavel ainda nao foram aplicadas no banco.
-- A tela de notificacoes ainda usa a estrutura atual; o Supabase ja recebe registros basicos.
+- Login real com Supabase Auth ja foi iniciado, mas o modo local segue como fallback.
+- Permissoes por perfil existem no frontend; o reforco por RLS deve ser aplicado manualmente.
+- Regras definitivas por unidade/responsavel ainda nao foram aplicadas no banco.
+- A tela de notificacoes ainda usa a estrutura atual; o Supabase recebe registros basicos.
+- Clientes, fornecedores e produtos possuem CRUD basico e usam Supabase quando `VITE_DATA_PROVIDER=supabase`.
+
+## SQL manual da Onda 1.1
+
+Rode manualmente no SQL Editor, se necessário:
+
+1. `supabase/manual-sql/001_approval_workflow_hardening.sql`
+2. `supabase/manual-sql/002_catalog_crud_support.sql`
+3. `supabase/manual-sql/003_basic_rls_for_homologation.sql`

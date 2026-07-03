@@ -7,6 +7,7 @@ export const clients: Client[] = [
     city: "Cataguases",
     state: "MG",
     unit: "Matriz Cataguases",
+    active: true,
   },
   {
     id: "cli-2",
@@ -14,6 +15,7 @@ export const clients: Client[] = [
     city: "Vitória",
     state: "ES",
     unit: "Filial Espírito Santo",
+    active: true,
   },
   {
     id: "cli-3",
@@ -21,6 +23,7 @@ export const clients: Client[] = [
     city: "Juiz de Fora",
     state: "MG",
     unit: "Matriz Cataguases",
+    active: true,
   },
   {
     id: "cli-4",
@@ -28,6 +31,7 @@ export const clients: Client[] = [
     city: "Campos dos Goytacazes",
     state: "RJ",
     unit: "Filial Rio de Janeiro",
+    active: true,
   },
   {
     id: "cli-5",
@@ -35,6 +39,7 @@ export const clients: Client[] = [
     city: "Belo Horizonte",
     state: "MG",
     unit: "Matriz Cataguases",
+    active: true,
   },
   {
     id: "cli-6",
@@ -42,6 +47,7 @@ export const clients: Client[] = [
     city: "Governador Valadares",
     state: "MG",
     unit: "Matriz Cataguases",
+    active: true,
   },
   {
     id: "cli-7",
@@ -49,6 +55,7 @@ export const clients: Client[] = [
     city: "Muriaé",
     state: "MG",
     unit: "Matriz Cataguases",
+    active: true,
   },
   {
     id: "cli-8",
@@ -56,5 +63,6 @@ export const clients: Client[] = [
     city: "Serra",
     state: "ES",
     unit: "Filial Espírito Santo",
+    active: true,
   },
 ];

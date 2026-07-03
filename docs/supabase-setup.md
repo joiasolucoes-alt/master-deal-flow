@@ -60,7 +60,19 @@ Nesta primeira onda, as politicas permitem leitura, criacao e edicao para usuari
 
 As regras por perfil, unidade e responsavel serao refinadas depois.
 
-## 6. Falhas esperadas
+## 6. Scripts manuais da Onda 1.1
+
+Nao aplique migrations automaticamente no banco real durante a homologacao. Use o SQL Editor do Supabase e rode, nesta ordem:
+
+```text
+1. supabase/manual-sql/001_approval_workflow_hardening.sql
+2. supabase/manual-sql/002_catalog_crud_support.sql
+3. supabase/manual-sql/003_basic_rls_for_homologation.sql
+```
+
+Cada arquivo possui cabecalho com objetivo, risco, validacao e reversao sugerida.
+
+## 7. Falhas esperadas
 
 Se `VITE_DATA_PROVIDER=supabase` estiver ativo sem URL ou anon key, o app mostra aviso no console/toast e preserva o funcionamento local.
 

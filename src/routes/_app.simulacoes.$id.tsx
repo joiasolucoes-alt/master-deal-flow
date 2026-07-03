@@ -52,10 +52,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/app/empty-state";
 import { useAppContext } from "@/features/app/app-context";
-import { clients } from "@/data/clients";
-import { suppliers } from "@/data/suppliers";
 import { businessUnits, users } from "@/data/users";
-import type { ExpenseItem, PurchaseItem, Simulation, SimulationProduct, User } from "@/data/types";
+import type {
+  Client,
+  ExpenseItem,
+  Product,
+  PurchaseItem,
+  Simulation,
+  SimulationProduct,
+  Supplier,
+  User,
+} from "@/data/types";
 import {
   getExpenseTotal,
   getProductCostTotal,
@@ -70,6 +77,7 @@ import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { useAppStore } from "@/store/useAppStore";
+import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
 import {
   canConvertSimulationToOrder,
   canCreateSimulation,
@@ -78,6 +86,8 @@ import {
   isPendingApprovalStatus,
 } from "@/lib/permissions";
 import { filterSimulationsForUser } from "@/lib/visibility";
+import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
+import { isSupabaseProvider } from "@/lib/dataProvider";
 
 export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
@@ -150,21 +160,25 @@ interface SavedSimulationFormDraft {
 
 type SavedSimulationFormDrafts = Record<string, SavedSimulationFormDraft>;
 
-function createInitialOrderCatalogs(): OrderCatalogs {
+function createInitialOrderCatalogs(clients: Client[], suppliers: Supplier[]): OrderCatalogs {
   return {
-    clients: clients.map((client) => ({
-      id: client.id,
-      name: client.name,
-      city: client.city,
-      state: client.state,
-      unit: client.unit,
-    })),
-    suppliers: suppliers.map((supplier) => ({
-      id: supplier.id,
-      name: supplier.name,
-      city: supplier.city,
-      state: supplier.state,
-    })),
+    clients: clients
+      .filter((client) => client.active ?? true)
+      .map((client) => ({
+        id: client.id,
+        name: client.name,
+        city: client.city,
+        state: client.state,
+        unit: client.unit,
+      })),
+    suppliers: suppliers
+      .filter((supplier) => supplier.active ?? true)
+      .map((supplier) => ({
+        id: supplier.id,
+        name: supplier.name,
+        city: supplier.city,
+        state: supplier.state,
+      })),
     owners: users.map((user) => ({
       id: user.id,
       name: user.name,
@@ -203,17 +217,23 @@ function validateSimulation(simulation: Simulation) {
   return missingFields;
 }
 
-function createEmptySimulation(user?: User | null): Simulation {
+function createEmptySimulation(
+  user?: User | null,
+  clients: Client[] = [],
+  suppliers: Supplier[] = [],
+): Simulation {
   const id = `sim-${Date.now()}`;
   const owner = user?.name ?? users[0].name;
   const unit = user?.unit ?? businessUnits[0];
+  const firstClient = clients.find((client) => client.active ?? true);
+  const firstSupplier = suppliers.find((supplier) => supplier.active ?? true);
   return {
     id,
     number: `SIM-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 999)).padStart(4, "0")}`,
-    client: clients[0].name,
-    supplier: suppliers[0].name,
-    deliveryCity: clients[0].city,
-    deliveryState: clients[0].state,
+    client: firstClient?.name ?? "",
+    supplier: firstSupplier?.name ?? "",
+    deliveryCity: firstClient?.city ?? "",
+    deliveryState: firstClient?.state ?? "",
     owner,
     unit,
     paymentCondition: "28 dias",
@@ -285,10 +305,37 @@ function normalizeExpenseItems(items: ExpenseItem[]) {
   });
 }
 
+function saveApprovalRecordWhenEnabled(payload: {
+  id: string;
+  simulationId: string;
+  approverId?: string;
+  status: "pending" | "approved" | "adjustment_requested" | "rejected";
+  checklist?: Record<string, unknown>;
+  comment?: string;
+}) {
+  if (!isSupabaseProvider()) return;
+  if (!getSupabaseConfigStatus().configured) {
+    toast.error("Supabase não configurado. Aprovação registrada apenas localmente.");
+    return;
+  }
+
+  const repository = createSupabaseApprovalRepository();
+  void repository
+    .save({
+      ...payload,
+      decidedAt: new Date().toISOString(),
+    })
+    .catch((error) => {
+      console.error("Falha ao registrar aprovação no Supabase.", error);
+      toast.error("Falha ao registrar aprovação no Supabase. Fluxo local preservado.");
+    });
+}
+
 function SimulationDetailPage() {
   const { id } = useParams({ from: "/_app/simulacoes/$id" });
   const navigate = useNavigate();
-  const { auth, simulations, orders, upsertSimulation, upsertOrder } = useAppContext();
+  const { auth, simulations, orders, clients, suppliers, products, upsertSimulation, upsertOrder } =
+    useAppContext();
   const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
   const visibleSimulations = useMemo(
@@ -312,8 +359,8 @@ function SimulationDetailPage() {
     () =>
       canUseSavedFormDraft
         ? savedFormDraft!.draft
-        : (existingSimulation ?? createEmptySimulation(currentUser)),
-    [canUseSavedFormDraft, currentUser, existingSimulation, savedFormDraft],
+        : (existingSimulation ?? createEmptySimulation(currentUser, clients, suppliers)),
+    [canUseSavedFormDraft, clients, currentUser, existingSimulation, savedFormDraft, suppliers],
   );
   const [draft, setDraft] = useState<Simulation>(initial);
   const [step, setStep] = useState(canUseSavedFormDraft ? clampStep(savedFormDraft?.step) : 0);
@@ -501,6 +548,14 @@ function SimulationDetailPage() {
     const next = { ...draft, status: "Pendente de aprovação" as const };
     if (!window.confirm("Enviar esta simulação para aprovação?")) return;
     upsertSimulation(next);
+    saveApprovalRecordWhenEnabled({
+      id: `apr-${next.id}`,
+      simulationId: next.id,
+      approverId: currentUser?.id,
+      status: "pending",
+      checklist: next.approvalChecklist,
+      comment: "Simulação enviada para aprovação.",
+    });
     clearSavedSimulationFormDraft(draftStorageKey);
     addNotification({
       id: `not-${Date.now()}`,
@@ -577,8 +632,10 @@ function SimulationDetailPage() {
       <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
         <Card className="shadow-card">
           <CardContent className="space-y-6 p-6">
-            {step === 0 && <ClientStep draft={draft} update={update} />}
-            {step === 1 && <ProductsStep draft={draft} setDraft={setDraft} />}
+            {step === 0 && (
+              <ClientStep draft={draft} clients={clients} suppliers={suppliers} update={update} />
+            )}
+            {step === 1 && <ProductsStep draft={draft} products={products} setDraft={setDraft} />}
             {step === 2 && <PurchaseStep draft={draft} setDraft={setDraft} />}
             {step === 3 && <ExpensesStep draft={draft} setDraft={setDraft} />}
             {step === 4 && <FinancialStep draft={draft} setDraft={setDraft} />}
@@ -621,13 +678,17 @@ function SimulationDetailPage() {
 
 function ClientStep({
   draft,
+  clients,
+  suppliers,
   update,
 }: {
   draft: Simulation;
+  clients: Client[];
+  suppliers: Supplier[];
   update: <K extends keyof Simulation>(key: K, value: Simulation[K]) => void;
 }) {
   const [catalogs, setCatalogs] = useState<OrderCatalogs>(() =>
-    readLocalStorage(ORDER_CATALOG_STORAGE_KEY, createInitialOrderCatalogs()),
+    readLocalStorage(ORDER_CATALOG_STORAGE_KEY, createInitialOrderCatalogs(clients, suppliers)),
   );
   const clientOptions = useMemo(
     () => getOptionsWithCurrent(catalogs.clients, draft.client),
@@ -649,6 +710,15 @@ function ClientStep({
   useEffect(() => {
     writeLocalStorage(ORDER_CATALOG_STORAGE_KEY, catalogs);
   }, [catalogs]);
+
+  useEffect(() => {
+    const officialCatalogs = createInitialOrderCatalogs(clients, suppliers);
+    setCatalogs((current) => ({
+      ...current,
+      clients: officialCatalogs.clients,
+      suppliers: officialCatalogs.suppliers,
+    }));
+  }, [clients, suppliers]);
 
   function updateCatalog(key: OrderCatalogKey, items: OrderCatalogItem[]) {
     setCatalogs((current) => ({ ...current, [key]: items }));
@@ -1073,11 +1143,17 @@ function CatalogEditor({
 
 function ProductsStep({
   draft,
+  products,
   setDraft,
 }: {
   draft: Simulation;
+  products: Product[];
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
+  const productOptions = useMemo(
+    () => products.filter((product) => product.active ?? true),
+    [products],
+  );
   const merchandiseCost = draft.products.reduce((sum, item) => sum + getProductCostTotal(item), 0);
   const purchaseTotal = draft.purchaseItems.length
     ? draft.purchaseItems.reduce((sum, item) => sum + item.value, 0)
@@ -1131,6 +1207,18 @@ function ProductsStep({
         return merged;
       }),
     }));
+  }
+
+  function applyCatalogProduct(id: string, productId: string) {
+    const catalogProduct = productOptions.find((item) => item.id === productId);
+    if (!catalogProduct) return;
+    updateProduct(id, {
+      code: catalogProduct.code,
+      product: catalogProduct.name,
+      unitsPerBox: catalogProduct.defaultUnitsPerBox,
+      costUnit: catalogProduct.costUnit,
+      saleUnit: catalogProduct.saleUnit,
+    });
   }
 
   function updateProductCostTotal(id: string, value: number) {
@@ -1270,6 +1358,23 @@ function ProductsStep({
                       />
                     </TableCell>
                     <TableCell>
+                      {productOptions.length ? (
+                        <Select
+                          value={productOptions.find((item) => item.code === p.code)?.id}
+                          onValueChange={(value) => applyCatalogProduct(p.id, value)}
+                        >
+                          <SelectTrigger className="mb-2 min-w-64">
+                            <SelectValue placeholder="Selecionar produto cadastrado" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {productOptions.map((product) => (
+                              <SelectItem key={product.id} value={product.id}>
+                                {product.code} • {product.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : null}
                       <Input
                         value={p.product}
                         onChange={(e) => updateProduct(p.id, { product: e.target.value })}
