@@ -201,6 +201,29 @@ export interface Order {
   timeline: OrderTimelineEvent[];
 }
 
+export type FinancialTitleType = "receivable" | "payable";
+export type FinancialTitleStatus = "open" | "partial" | "paid" | "overdue" | "cancelled";
+
+export interface FinancialTitle {
+  id: string;
+  orderId?: string;
+  orderNumber?: string;
+  client: string;
+  titleNumber: string;
+  type: FinancialTitleType;
+  status: FinancialTitleStatus;
+  dueDate: string;
+  amount: number;
+  paidAmount: number;
+  paymentMethod: string;
+  bankName: string;
+  notes: string;
+  owner: string;
+  unit: string;
+  createdAt: string;
+  paidAt?: string;
+}
+
 export interface Negotiation {
   id: string;
   number: string;

@@ -98,6 +98,35 @@ function createCatalogRepository(seed = []) {
   };
 }
 
+function parseInstallmentDays(paymentTerms) {
+  const days = paymentTerms
+    .match(/\d+/g)
+    ?.map(Number)
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  return days?.length ? days : [28];
+}
+
+function createFinancialTitlesFromOrder(order) {
+  const days = parseInstallmentDays(order.paymentTerms);
+  const amount = Math.round((order.totalValue / days.length) * 100) / 100;
+  return days.map((day, index) => ({
+    id: `fin-${order.id}-${index + 1}`,
+    orderId: order.id,
+    titleNumber: `${order.number}-PARC-${index + 1}`,
+    type: "receivable",
+    status: "open",
+    dueDate: day,
+    amount: index === days.length - 1 ? order.totalValue - amount * index : amount,
+    paidAmount: 0,
+  }));
+}
+
+function calculateBillingProgress(titles) {
+  const total = titles.reduce((sum, title) => sum + title.amount, 0);
+  const paid = titles.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0);
+  return total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+}
+
 function transitionSimulation(simulation, status, extra = {}) {
   return { ...simulation, status, ...extra };
 }
@@ -215,6 +244,34 @@ productRepository.save({
   active: true,
 });
 assert.equal(productRepository.list()[0].defaultUnitsPerBox, 9);
+
+assert.deepEqual(parseInstallmentDays("7 e 14 dias"), [7, 14]);
+assert.deepEqual(parseInstallmentDays("à vista"), [28]);
+
+const financialTitles = createFinancialTitlesFromOrder({
+  id: "ord-fin-1",
+  number: "PED FIN 1",
+  totalValue: 1000,
+  paymentTerms: "7 e 14 dias",
+});
+assert.equal(financialTitles.length, 2);
+assert.equal(financialTitles[0].amount, 500);
+assert.equal(financialTitles[1].titleNumber, "PED FIN 1-PARC-2");
+assert.equal(calculateBillingProgress(financialTitles), 0);
+assert.equal(
+  calculateBillingProgress([
+    { amount: 500, paidAmount: 500 },
+    { amount: 500, paidAmount: 0 },
+  ]),
+  50,
+);
+assert.equal(
+  calculateBillingProgress([
+    { amount: 500, paidAmount: 500 },
+    { amount: 500, paidAmount: 500 },
+  ]),
+  100,
+);
 
 function requireSupabaseConfig(configured) {
   if (!configured) throw new Error("Supabase não está configurado.");

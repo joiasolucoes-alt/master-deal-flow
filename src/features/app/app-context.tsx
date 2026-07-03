@@ -21,6 +21,7 @@ import { users as seedUsers } from "@/data/users";
 import { useAppStore } from "@/store/useAppStore";
 import type {
   Client,
+  FinancialTitle,
   Order,
   Product,
   Simulation,
@@ -35,6 +36,7 @@ import { getSupabaseClient, getSupabaseConfigStatus } from "@/lib/supabaseClient
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import { createSupabaseOrderRepository } from "@/features/orders/repositories/supabaseOrderRepository";
 import { createSupabaseCatalogRepository } from "@/features/catalogs/repositories/catalogRepository";
+import { createSupabaseFinancialRepository } from "@/features/finance/repositories/supabaseFinancialRepository";
 import { toast } from "sonner";
 
 type AuthProfile = {
@@ -103,6 +105,7 @@ interface AppContextValue {
   setThemeMode: (mode: ThemeMode) => void;
   simulations: Simulation[];
   orders: Order[];
+  financialTitles: FinancialTitle[];
   clients: Client[];
   suppliers: Supplier[];
   products: Product[];
@@ -110,6 +113,7 @@ interface AppContextValue {
   setSimulations: (value: Simulation[]) => void;
   upsertSimulation: (simulation: Simulation) => void;
   upsertOrder: (order: Order) => void;
+  upsertFinancialTitle: (title: FinancialTitle) => void;
   upsertClient: (client: Client) => void;
   upsertSupplier: (supplier: Supplier) => void;
   upsertProduct: (product: Product) => void;
@@ -499,16 +503,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lastDataError, setLastDataError] = useState<string | null>(null);
   const simulations = useAppStore((store) => store.simulations);
   const orders = useAppStore((store) => store.orders);
+  const financialTitles = useAppStore((store) => store.financialTitles);
   const clients = useAppStore((store) => store.clients);
   const suppliers = useAppStore((store) => store.suppliers);
   const products = useAppStore((store) => store.products);
   const setSimulationsStore = useAppStore((store) => store.setSimulations);
   const setOrdersStore = useAppStore((store) => store.setOrders);
+  const setFinancialTitlesStore = useAppStore((store) => store.setFinancialTitles);
   const setClientsStore = useAppStore((store) => store.setClients);
   const setSuppliersStore = useAppStore((store) => store.setSuppliers);
   const setProductsStore = useAppStore((store) => store.setProducts);
   const upsertSimulationStore = useAppStore((store) => store.upsertSimulation);
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
+  const upsertFinancialTitleStore = useAppStore((store) => store.upsertFinancialTitle);
   const upsertClientStore = useAppStore((store) => store.upsertClient);
   const upsertSupplierStore = useAppStore((store) => store.upsertSupplier);
   const upsertProductStore = useAppStore((store) => store.upsertProduct);
@@ -794,21 +801,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const simulationRepository = createSupabaseSimulationRepository();
     const orderRepository = createSupabaseOrderRepository();
     const catalogRepository = createSupabaseCatalogRepository();
+    const financialRepository = createSupabaseFinancialRepository();
 
     async function loadRemoteData() {
       try {
-        const [remoteSimulations, remoteOrders, remoteClients, remoteSuppliers, remoteProducts] =
-          await Promise.all([
-            simulationRepository.list(),
-            orderRepository.list(),
-            catalogRepository.listClients(),
-            catalogRepository.listSuppliers(),
-            catalogRepository.listProducts(),
-          ]);
+        const [
+          remoteSimulations,
+          remoteOrders,
+          remoteFinancialTitles,
+          remoteClients,
+          remoteSuppliers,
+          remoteProducts,
+        ] = await Promise.all([
+          simulationRepository.list(),
+          orderRepository.list(),
+          financialRepository.listTitles(),
+          catalogRepository.listClients(),
+          catalogRepository.listSuppliers(),
+          catalogRepository.listProducts(),
+        ]);
 
         if (cancelled) return;
         setSimulationsStore(remoteSimulations);
         setOrdersStore(remoteOrders);
+        setFinancialTitlesStore(remoteFinancialTitles);
         setClientsStore(remoteClients);
         setSuppliersStore(remoteSuppliers);
         setProductsStore(remoteProducts);
@@ -829,6 +845,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     auth.hasAccess,
     hydrated,
     setClientsStore,
+    setFinancialTitlesStore,
     setOrdersStore,
     setProductsStore,
     setSimulationsStore,
@@ -1093,6 +1110,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const upsertFinancialTitle = (title: FinancialTitle) => {
+    upsertFinancialTitleStore(title);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. O financeiro ficou salvo apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseFinancialRepository();
+    void repository.saveTitle(title).catch((error) => {
+      console.error("Falha ao salvar título financeiro no Supabase.", error);
+      setLastDataError(error instanceof Error ? error.message : "Falha ao salvar financeiro.");
+      toast.error("Falha ao salvar financeiro no Supabase. Dados locais preservados.");
+    });
+  };
+
   const saveCatalogWithSupabase = <T,>(
     label: string,
     action: () => Promise<T>,
@@ -1156,6 +1194,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setThemeMode,
       simulations,
       orders,
+      financialTitles,
       clients,
       suppliers,
       products,
@@ -1163,6 +1202,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSimulations,
       upsertSimulation,
       upsertOrder,
+      upsertFinancialTitle,
       upsertClient,
       upsertSupplier,
       upsertProduct,
@@ -1178,6 +1218,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       themeMode,
       simulations,
       orders,
+      financialTitles,
       clients,
       suppliers,
       products,
@@ -1185,6 +1226,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSimulations,
       upsertSimulation,
       upsertOrder,
+      upsertFinancialTitle,
       upsertClient,
       upsertSupplier,
       upsertProduct,
