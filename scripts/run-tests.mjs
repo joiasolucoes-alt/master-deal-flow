@@ -121,6 +121,42 @@ function createFinancialTitlesFromOrder(order) {
   }));
 }
 
+function createPayableTitlesFromOrder(order, freights = []) {
+  const goodsTotal = order.products.reduce((sum, product) => {
+    const costTotal = product.costTotal ?? product.quantityTotal * product.costUnit;
+    return sum + costTotal;
+  }, 0);
+  const titles = [];
+
+  if (goodsTotal > 0) {
+    titles.push({
+      id: `pay-${order.id}-goods`,
+      orderId: order.id,
+      titleNumber: `${order.number}-PAG-MERC`,
+      type: "payable",
+      status: "open",
+      amount: Math.round(goodsTotal * 100) / 100,
+      paidAmount: 0,
+    });
+  }
+
+  freights
+    .filter((freight) => freight.orderId === order.id && freight.freightValue > 0)
+    .forEach((freight) => {
+      titles.push({
+        id: `pay-${order.id}-freight-${freight.id}`,
+        orderId: order.id,
+        titleNumber: `${order.number}-PAG-FRETE`,
+        type: "payable",
+        status: "open",
+        amount: Math.round(freight.freightValue * 100) / 100,
+        paidAmount: 0,
+      });
+    });
+
+  return titles;
+}
+
 function calculateBillingProgress(titles) {
   const total = titles.reduce((sum, title) => sum + title.amount, 0);
   const paid = titles.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0);
@@ -424,6 +460,20 @@ assert.equal(financialTitles.length, 2);
 assert.equal(financialTitles[0].amount, 500);
 assert.equal(financialTitles[1].titleNumber, "PED FIN 1-PARC-2");
 assert.equal(calculateBillingProgress(financialTitles), 0);
+
+const payableTitles = createPayableTitlesFromOrder(
+  {
+    id: "ord-pay-1",
+    number: "PED PAY 1",
+    products: [{ quantityTotal: 10, costUnit: 25, saleUnit: 30 }],
+  },
+  [{ id: "fr-pay-1", orderId: "ord-pay-1", freightValue: 120 }],
+);
+assert.equal(payableTitles.length, 2);
+assert.equal(payableTitles[0].type, "payable");
+assert.equal(payableTitles[0].amount, 250);
+assert.equal(payableTitles[1].titleNumber, "PED PAY 1-PAG-FRETE");
+assert.equal(payableTitles[1].amount, 120);
 assert.equal(
   calculateBillingProgress([
     { amount: 500, paidAmount: 500 },

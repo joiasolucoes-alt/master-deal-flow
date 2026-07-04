@@ -23,6 +23,7 @@ import type { FinancialTitle, Order } from "@/data/types";
 import {
   calculateBillingProgress,
   createFinancialTitlesFromOrder,
+  createPayableTitlesFromOrder,
   getFinancialTitleStatus,
   getStatusLabel,
 } from "@/features/finance/financialTitleHelpers";
@@ -35,49 +36,89 @@ export const Route = createFileRoute("/_app/financeiro")({
 });
 
 function FinancialPage() {
-  const { auth, orders, financialTitles, upsertFinancialTitle, upsertOrder } = useAppContext();
+  const { auth, orders, financialTitles, freights, upsertFinancialTitle, upsertOrder } =
+    useAppContext();
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
   const visibleOrderIds = useMemo(
     () => new Set(visibleOrders.map((order) => order.id)),
     [visibleOrders],
   );
-  const visibleReceivables = useMemo(() => {
+  const visibleTitles = useMemo(() => {
     return financialTitles
-      .filter((title) => title.type === "receivable")
       .map((title) => ({ ...title, status: getFinancialTitleStatus(title) }))
       .filter((title) => {
         if (canViewAllFlows(auth.user)) return true;
         return visibleOrderIds.has(title.orderId ?? "") || belongsToUser(title.owner, auth.user);
       });
   }, [auth.user, financialTitles, visibleOrderIds]);
+  const visibleReceivables = useMemo(
+    () => visibleTitles.filter((title) => title.type === "receivable"),
+    [visibleTitles],
+  );
+  const visiblePayables = useMemo(
+    () => visibleTitles.filter((title) => title.type === "payable"),
+    [visibleTitles],
+  );
   const totalReceive = visibleReceivables
     .filter((r) => r.status !== "paid" && r.status !== "cancelled")
     .reduce((sum, r) => sum + Math.max(r.amount - r.paidAmount, 0), 0);
-  const overdue = visibleReceivables
-    .filter((r) => r.status === "overdue")
+  const totalPayable = visiblePayables
+    .filter((r) => r.status !== "paid" && r.status !== "cancelled")
     .reduce((sum, r) => sum + Math.max(r.amount - r.paidAmount, 0), 0);
-  const paid = visibleReceivables
-    .filter((r) => r.status === "paid")
-    .reduce((sum, r) => sum + r.paidAmount, 0);
-  const ordersValue = visibleOrders.reduce((sum, o) => sum + o.totalValue, 0);
-  const cashflow = useMemo(() => buildCashflow(visibleReceivables), [visibleReceivables]);
-  const ordersWithoutTitles = visibleOrders.filter(
-    (order) => !financialTitles.some((title) => title.orderId === order.id),
+  const overdue =
+    visibleReceivables
+      .filter((r) => r.status === "overdue")
+      .reduce((sum, r) => sum + Math.max(r.amount - r.paidAmount, 0), 0) +
+    visiblePayables
+      .filter((r) => r.status === "overdue")
+      .reduce((sum, r) => sum + Math.max(r.amount - r.paidAmount, 0), 0);
+  const projectedBalance = totalReceive - totalPayable;
+  const cashflow = useMemo(() => buildCashflow(visibleTitles), [visibleTitles]);
+  const ordersWithoutReceivables = visibleOrders.filter(
+    (order) =>
+      !financialTitles.some((title) => title.orderId === order.id && title.type === "receivable"),
+  );
+  const ordersWithoutPayables = visibleOrders.filter(
+    (order) =>
+      !financialTitles.some((title) => title.orderId === order.id && title.type === "payable"),
   );
 
   const handleGenerateReceivables = () => {
-    if (ordersWithoutTitles.length === 0) {
-      toast.info("Todos os pedidos visíveis já possuem contas financeiras.");
+    if (ordersWithoutReceivables.length === 0) {
+      toast.info("Todos os pedidos visíveis já possuem contas a receber.");
       return;
     }
 
-    ordersWithoutTitles.forEach((order) => {
+    ordersWithoutReceivables.forEach((order) => {
       createFinancialTitlesFromOrder(order).forEach(upsertFinancialTitle);
       if (order.status === "Aguardando faturamento") {
         upsertOrder({ ...order, status: "Em faturamento" });
       }
     });
-    toast.success("Contas financeiras geradas a partir dos pedidos.");
+    toast.success("Contas a receber geradas a partir dos pedidos.");
+  };
+
+  const handleGeneratePayables = () => {
+    if (ordersWithoutPayables.length === 0) {
+      toast.info("Todos os pedidos visíveis já possuem contas a pagar.");
+      return;
+    }
+
+    let created = 0;
+    ordersWithoutPayables.forEach((order) => {
+      const titles = createPayableTitlesFromOrder(order, freights);
+      titles.forEach((title) => {
+        upsertFinancialTitle(title);
+        created += 1;
+      });
+    });
+
+    if (created === 0) {
+      toast.info("Nenhuma conta a pagar foi encontrada nos pedidos visíveis.");
+      return;
+    }
+
+    toast.success("Contas a pagar geradas a partir dos pedidos.");
   };
 
   const handleMarkAsPaid = (title: FinancialTitle) => {
@@ -89,69 +130,29 @@ function FinancialPage() {
     };
     upsertFinancialTitle(paidTitle);
 
-    const relatedTitles = financialTitles
-      .filter((item) => item.orderId === title.orderId)
-      .map((item) => (item.id === title.id ? paidTitle : item));
-    const order = orders.find((item) => item.id === title.orderId);
-    if (order && relatedTitles.length) {
-      upsertOrder(updateOrderBilling(order, relatedTitles));
+    if (title.type === "receivable") {
+      const relatedTitles = financialTitles
+        .filter((item) => item.orderId === title.orderId && item.type === "receivable")
+        .map((item) => (item.id === title.id ? paidTitle : item));
+      const order = orders.find((item) => item.id === title.orderId);
+      if (order && relatedTitles.length) {
+        upsertOrder(updateOrderBilling(order, relatedTitles));
+      }
     }
 
-    toast.success("Conta marcada como recebida.");
+    toast.success(
+      title.type === "payable" ? "Conta marcada como paga." : "Conta marcada como recebida.",
+    );
   };
 
-  const columns: DataColumn<FinancialTitle>[] = [
-    {
-      key: "doc",
-      header: "Documento",
-      cell: (r) => <span className="font-medium">{r.titleNumber}</span>,
-    },
-    { key: "client", header: "Cliente", cell: (r) => r.client },
-    { key: "order", header: "Pedido", cell: (r) => r.orderNumber ?? "-" },
-    { key: "due", header: "Vencimento", cell: (r) => formatDate(r.dueDate) },
-    {
-      key: "value",
-      header: "Valor",
-      className: "text-right",
-      cell: (r) => <span className="font-medium">{formatCurrency(r.amount)}</span>,
-    },
-    {
-      key: "paid",
-      header: "Recebido",
-      className: "text-right",
-      cell: (r) => formatCurrency(r.paidAmount),
-    },
-    {
-      key: "status",
-      header: "Status",
-      cell: (r) => <StatusBadge status={getStatusLabel(r.status)} />,
-    },
-    {
-      key: "actions",
-      header: "",
-      className: "text-right",
-      cell: (r) => (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={r.status === "paid" || r.status === "cancelled"}
-          onClick={(event) => {
-            event.stopPropagation();
-            handleMarkAsPaid(r);
-          }}
-        >
-          <CheckCircle2 />
-          Dar baixa
-        </Button>
-      ),
-    },
-  ];
+  const receivableColumns = buildFinancialColumns("Cliente", "Recebido", handleMarkAsPaid);
+  const payableColumns = buildFinancialColumns("Favorecido", "Pago", handleMarkAsPaid);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Financeiro"
-        description="Fluxo de caixa, contas a receber e impactos financeiros das negociações."
+        description="Fluxo de caixa, contas a receber, contas a pagar e impactos financeiros das negociações."
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -162,22 +163,22 @@ function FinancialPage() {
           tone="info"
         />
         <StatCard
+          label="Contas a pagar"
+          value={formatCurrency(totalPayable)}
+          icon={CreditCard}
+          tone="warning"
+        />
+        <StatCard
           label="Vencido"
           value={formatCurrency(overdue)}
           icon={ArrowDownCircle}
           tone="danger"
         />
         <StatCard
-          label="Recebido no mês"
-          value={formatCurrency(paid)}
+          label="Saldo projetado"
+          value={formatCurrency(projectedBalance)}
           icon={Banknote}
-          tone="success"
-        />
-        <StatCard
-          label="Pedidos faturados"
-          value={formatCurrency(ordersValue)}
-          icon={CreditCard}
-          tone="success"
+          tone={projectedBalance >= 0 ? "success" : "danger"}
         />
       </div>
 
@@ -242,60 +243,158 @@ function FinancialPage() {
         </CardContent>
       </Card>
 
-      <Card className="shadow-card">
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Contas a receber</CardTitle>
-          <Button size="sm" variant="soft" onClick={handleGenerateReceivables}>
-            <Plus />
-            Gerar contas dos pedidos
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="all">
-            <TabsList>
-              <TabsTrigger value="all">Todos</TabsTrigger>
-              <TabsTrigger value="pending">A vencer</TabsTrigger>
-              <TabsTrigger value="overdue">Vencidos</TabsTrigger>
-              <TabsTrigger value="paid">Pagos</TabsTrigger>
-            </TabsList>
-            <TabsContent value="all" className="pt-4">
-              <DataTable
-                columns={columns}
-                data={visibleReceivables}
-                emptyTitle="Sem registros"
-                emptyDescription="Não há contas para exibir."
-              />
-            </TabsContent>
-            <TabsContent value="pending" className="pt-4">
-              <DataTable
-                columns={columns}
-                data={visibleReceivables.filter(
-                  (r) => r.status === "open" || r.status === "partial",
-                )}
-                emptyTitle="Sem registros"
-                emptyDescription="Não há contas a vencer."
-              />
-            </TabsContent>
-            <TabsContent value="overdue" className="pt-4">
-              <DataTable
-                columns={columns}
-                data={visibleReceivables.filter((r) => r.status === "overdue")}
-                emptyTitle="Sem vencidos"
-                emptyDescription="Sem contas vencidas."
-              />
-            </TabsContent>
-            <TabsContent value="paid" className="pt-4">
-              <DataTable
-                columns={columns}
-                data={visibleReceivables.filter((r) => r.status === "paid")}
-                emptyTitle="Sem pagamentos"
-                emptyDescription="Sem contas pagas."
-              />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="receivable" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="receivable">Contas a receber</TabsTrigger>
+          <TabsTrigger value="payable">Contas a pagar</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="receivable">
+          <FinancialTitleCard
+            title="Contas a receber"
+            actionLabel="Gerar contas dos pedidos"
+            onGenerate={handleGenerateReceivables}
+            columns={receivableColumns}
+            titles={visibleReceivables}
+            emptyDescription="Não há contas a receber para exibir."
+          />
+        </TabsContent>
+
+        <TabsContent value="payable">
+          <FinancialTitleCard
+            title="Contas a pagar"
+            actionLabel="Gerar contas a pagar"
+            onGenerate={handleGeneratePayables}
+            columns={payableColumns}
+            titles={visiblePayables}
+            emptyDescription="Não há contas a pagar para exibir."
+          />
+        </TabsContent>
+      </Tabs>
     </div>
+  );
+}
+
+function buildFinancialColumns(
+  partyLabel: string,
+  paidLabel: string,
+  onMarkAsPaid: (title: FinancialTitle) => void,
+): DataColumn<FinancialTitle>[] {
+  return [
+    {
+      key: "doc",
+      header: "Documento",
+      cell: (r) => <span className="font-medium">{r.titleNumber}</span>,
+    },
+    { key: "client", header: partyLabel, cell: (r) => r.client },
+    { key: "order", header: "Pedido", cell: (r) => r.orderNumber ?? "-" },
+    { key: "due", header: "Vencimento", cell: (r) => formatDate(r.dueDate) },
+    {
+      key: "value",
+      header: "Valor",
+      className: "text-right",
+      cell: (r) => <span className="font-medium">{formatCurrency(r.amount)}</span>,
+    },
+    {
+      key: "paid",
+      header: paidLabel,
+      className: "text-right",
+      cell: (r) => formatCurrency(r.paidAmount),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (r) => <StatusBadge status={getStatusLabel(r.status)} />,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      cell: (r) => (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={r.status === "paid" || r.status === "cancelled"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onMarkAsPaid(r);
+          }}
+        >
+          <CheckCircle2 />
+          Dar baixa
+        </Button>
+      ),
+    },
+  ];
+}
+
+function FinancialTitleCard({
+  title,
+  actionLabel,
+  onGenerate,
+  columns,
+  titles,
+  emptyDescription,
+}: {
+  title: string;
+  actionLabel: string;
+  onGenerate: () => void;
+  columns: DataColumn<FinancialTitle>[];
+  titles: FinancialTitle[];
+  emptyDescription: string;
+}) {
+  return (
+    <Card className="shadow-card">
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle>{title}</CardTitle>
+        <Button size="sm" variant="soft" onClick={onGenerate}>
+          <Plus />
+          {actionLabel}
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue="all">
+          <TabsList>
+            <TabsTrigger value="all">Todos</TabsTrigger>
+            <TabsTrigger value="pending">A vencer</TabsTrigger>
+            <TabsTrigger value="overdue">Vencidos</TabsTrigger>
+            <TabsTrigger value="paid">Pagos</TabsTrigger>
+          </TabsList>
+          <TabsContent value="all" className="pt-4">
+            <DataTable
+              columns={columns}
+              data={titles}
+              emptyTitle="Sem registros"
+              emptyDescription={emptyDescription}
+            />
+          </TabsContent>
+          <TabsContent value="pending" className="pt-4">
+            <DataTable
+              columns={columns}
+              data={titles.filter((r) => r.status === "open" || r.status === "partial")}
+              emptyTitle="Sem registros"
+              emptyDescription="Não há contas a vencer."
+            />
+          </TabsContent>
+          <TabsContent value="overdue" className="pt-4">
+            <DataTable
+              columns={columns}
+              data={titles.filter((r) => r.status === "overdue")}
+              emptyTitle="Sem vencidos"
+              emptyDescription="Sem contas vencidas."
+            />
+          </TabsContent>
+          <TabsContent value="paid" className="pt-4">
+            <DataTable
+              columns={columns}
+              data={titles.filter((r) => r.status === "paid")}
+              emptyTitle="Sem pagamentos"
+              emptyDescription="Sem contas pagas."
+            />
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -324,7 +423,11 @@ function buildCashflow(titles: FinancialTitle[]) {
       ? "Sem data"
       : new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(date).replace(".", "");
     const current = byMonth.get(month) ?? { month, entradas: 0, saidas: 0 };
-    current.entradas += title.status === "paid" ? title.paidAmount : title.amount;
+    if (title.type === "payable") {
+      current.saidas += title.status === "paid" ? title.paidAmount : title.amount;
+    } else {
+      current.entradas += title.status === "paid" ? title.paidAmount : title.amount;
+    }
     byMonth.set(month, current);
   });
 

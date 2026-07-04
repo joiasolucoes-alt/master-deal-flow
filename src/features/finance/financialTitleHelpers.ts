@@ -1,4 +1,4 @@
-import type { FinancialTitle, FinancialTitleStatus, Order } from "@/data/types";
+import type { FinancialTitle, FinancialTitleStatus, FreightRecord, Order } from "@/data/types";
 
 const DEFAULT_DUE_DAYS = 28;
 
@@ -90,11 +90,91 @@ export function createFinancialTitlesFromOrder(order: Order, now = new Date()) {
   });
 }
 
+export function createPayableTitlesFromOrder(
+  order: Order,
+  freights: FreightRecord[] = [],
+  now = new Date(),
+) {
+  const titles: FinancialTitle[] = [];
+  const goodsTotal = roundCurrency(
+    order.products.reduce((sum, product) => {
+      const costTotal = product.costTotal ?? product.quantityTotal * product.costUnit;
+      return sum + costTotal;
+    }, 0),
+  );
+
+  if (goodsTotal > 0) {
+    titles.push(
+      createPayableTitle({
+        id: `pay-${order.id}-goods`,
+        order,
+        titleNumber: `${order.number}-PAG-MERC`,
+        payee: "Fornecedor do pedido",
+        amount: goodsTotal,
+        dueDate: addDays(order.date, 7),
+        notes: "Conta a pagar de mercadoria gerada a partir do pedido.",
+        now,
+      }),
+    );
+  }
+
+  freights
+    .filter((freight) => freight.orderId === order.id && freight.freightValue > 0)
+    .forEach((freight) => {
+      titles.push(
+        createPayableTitle({
+          id: `pay-${order.id}-freight-${freight.id}`,
+          order,
+          titleNumber: `${order.number}-PAG-FRETE`,
+          payee: freight.carrierName || "Transportadora",
+          amount: roundCurrency(freight.freightValue),
+          dueDate: freight.pickupDate || order.date,
+          notes: `Conta a pagar de frete ${freight.code}.`,
+          now,
+        }),
+      );
+    });
+
+  return titles;
+}
+
 export function calculateBillingProgress(titles: FinancialTitle[]) {
   const total = titles.reduce((sum, title) => sum + title.amount, 0);
   if (total <= 0) return 0;
   const paid = titles.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0);
   return Math.min(100, Math.round((paid / total) * 100));
+}
+
+function createPayableTitle(payload: {
+  id: string;
+  order: Order;
+  titleNumber: string;
+  payee: string;
+  amount: number;
+  dueDate: string;
+  notes: string;
+  now: Date;
+}): FinancialTitle {
+  const title: FinancialTitle = {
+    id: payload.id,
+    orderId: payload.order.id,
+    orderNumber: payload.order.number,
+    client: payload.payee,
+    titleNumber: payload.titleNumber,
+    type: "payable",
+    status: "open",
+    dueDate: payload.dueDate,
+    amount: payload.amount,
+    paidAmount: 0,
+    paymentMethod: "Transferência",
+    bankName: "",
+    notes: payload.notes,
+    owner: payload.order.owner,
+    unit: payload.order.unit,
+    createdAt: payload.now.toISOString(),
+  };
+
+  return { ...title, status: getFinancialTitleStatus(title, payload.now) };
 }
 
 function addDays(baseDate: string, days: number) {

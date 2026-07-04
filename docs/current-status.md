@@ -15,6 +15,8 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 - Central e detalhe de pedidos.
 - Financeiro com contas a receber geradas a partir de pedidos.
 - Baixa simples de recebimento, atualizando o avanço de faturamento do pedido.
+- Financeiro com contas a pagar geradas a partir dos custos do pedido e fretes com valor contratado.
+- Baixa simples de pagamento.
 - Fretes com geração a partir de pedidos liberados.
 - Avanço de status do frete refletindo no progresso de entrega do pedido.
 - Entregas com geração a partir de fretes liberados.
@@ -29,7 +31,7 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 - O modo local continua como fallback e para testes offline.
 - RLS por perfil/unidade/responsável ainda deve ser refinado no banco.
 - Comprovantes de entrega, comissão e lucro realizado ficam para próximas ondas.
-- Financeiro ainda está na primeira versão: não há conciliação bancária, contas a pagar ou integração com banco.
+- Financeiro ainda está na primeira versão: não há conciliação bancária, baixa parcial manual ou integração com banco.
 - Frete ainda está na primeira versão: não há cotação real com transportadoras, cálculo de tabela ou comprovantes.
 - Entrega ainda está na primeira versão: não há upload de canhoto, assinatura digital ou rastreamento externo.
 - Notificações são básicas e ainda não têm uma central dedicada.

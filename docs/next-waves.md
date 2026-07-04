@@ -6,7 +6,9 @@
 
 - Financeiro real v1.
 - Contas a receber geradas a partir dos pedidos.
+- Contas a pagar geradas a partir de pedidos e fretes contratados.
 - Baixa simples de recebimentos.
+- Baixa simples de pagamentos.
 - Atualização do progresso de faturamento do pedido.
 - Fretes gerados a partir de pedidos liberados.
 - Avanço operacional do frete refletindo no pedido.
@@ -15,7 +17,6 @@
 
 ### Próximos blocos
 
-- Contas a pagar.
 - Comprovantes/canhotos de entrega.
 - Histórico detalhado de ocorrências de entrega.
 
