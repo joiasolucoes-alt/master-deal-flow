@@ -28,6 +28,13 @@ function requireClient(): SupabaseClient {
   return client;
 }
 
+function isMissingSchemaColumnError(error: unknown, column: string) {
+  if (!error || typeof error !== "object") return false;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+  return code === "PGRST204" && message.includes(column);
+}
+
 async function fetchSimulationInternal(client: SupabaseClient, id: string) {
   const { data, error } = await client
     .from("simulations")
@@ -64,13 +71,26 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
       await ensureSupabaseSession();
       const client = requireClient();
       const row = simulationToRow(simulation);
-      const { data, error } = await client
+      let { data, error } = await client
         .from("simulations")
         .upsert(row, { onConflict: "external_id" })
         .select("id")
         .single();
 
+      if (error && isMissingSchemaColumnError(error, "approval_flow")) {
+        const compatibleRow = { ...row };
+        delete compatibleRow.approval_flow;
+        const retry = await client
+          .from("simulations")
+          .upsert(compatibleRow, { onConflict: "external_id" })
+          .select("id")
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
+
       if (error) throw error;
+      if (!data?.id) throw new Error("Simulação não retornou identificador no Supabase.");
       const simulationUuid = data.id as string;
       const totals = getSimulationTotals(simulation);
       const installmentAmount =
