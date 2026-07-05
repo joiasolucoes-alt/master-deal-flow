@@ -52,11 +52,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/app/empty-state";
 import { useAppContext } from "@/features/app/app-context";
-import { businessUnits, users } from "@/data/users";
+import { businessUnits } from "@/data/users";
 import type {
   Client,
   ExpenseItem,
-  Product,
   PurchaseItem,
   Simulation,
   SimulationProduct,
@@ -67,6 +66,7 @@ import {
   getExpenseTotal,
   getProductCostTotal,
   getProductSaleTotal,
+  getPurchaseShare,
   getSimulationCostImpact,
   getSimulationSensitivity,
   getSimulationTotals,
@@ -88,6 +88,7 @@ import {
   canEditSimulation,
   canSubmitSimulationForApproval,
   isPendingApprovalStatus,
+  normalizeRole,
 } from "@/lib/permissions";
 import { filterSimulationsForUser } from "@/lib/visibility";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
@@ -100,7 +101,12 @@ export const Route = createFileRoute("/_app/simulacoes/$id")({
 const STEPS = ["Pedido", "Produtos", "NF/Custos", "Despesas", "Pagamento", "Resumo"];
 const ORDER_CATALOG_STORAGE_KEY = "master-flow-order-catalogs";
 const SIMULATION_FORM_DRAFT_STORAGE_KEY = "master-flow-simulation-form-drafts";
-const STANDARD_EXPENSE_TYPES: ExpenseItem["type"][] = [
+type StandardExpenseType = Extract<
+  ExpenseItem["type"],
+  "Frete" | "Comissão" | "Custo NF" | "STRINT" | "PIS E COFINS" | "Financeiro" | "Outros"
+>;
+
+const STANDARD_EXPENSE_TYPES: StandardExpenseType[] = [
   "Frete",
   "Comissão",
   "Custo NF",
@@ -143,7 +149,7 @@ interface OrderCatalogItem {
   email?: string;
 }
 
-type OrderCatalogKey = "clients" | "suppliers" | "owners" | "units";
+type OrderCatalogKey = "clients" | "suppliers";
 type OrderCatalogField = keyof Pick<
   OrderCatalogItem,
   "name" | "city" | "state" | "unit" | "role" | "email"
@@ -152,8 +158,6 @@ type OrderCatalogField = keyof Pick<
 interface OrderCatalogs {
   clients: OrderCatalogItem[];
   suppliers: OrderCatalogItem[];
-  owners: OrderCatalogItem[];
-  units: OrderCatalogItem[];
 }
 
 interface SavedSimulationFormDraft {
@@ -183,14 +187,6 @@ function createInitialOrderCatalogs(clients: Client[], suppliers: Supplier[]): O
         city: supplier.city,
         state: supplier.state,
       })),
-    owners: users.map((user) => ({
-      id: user.id,
-      name: user.name,
-      role: user.role,
-      email: user.email,
-      unit: user.unit,
-    })),
-    units: businessUnits.map((unit) => ({ id: `unit-${unit}`, name: unit })),
   };
 }
 
@@ -227,7 +223,7 @@ function createEmptySimulation(
   suppliers: Supplier[] = [],
 ): Simulation {
   const id = `sim-${Date.now()}`;
-  const owner = user?.name ?? users[0].name;
+  const owner = user?.name ?? "";
   const unit = user?.unit ?? businessUnits[0];
   const firstClient = clients.find((client) => client.active ?? true);
   const firstSupplier = suppliers.find((supplier) => supplier.active ?? true);
@@ -249,7 +245,7 @@ function createEmptySimulation(
     priority: "Média",
     products: [],
     purchaseItems: [],
-    expenseItems: [],
+    expenseItems: normalizeExpenseItems([]),
     financial: {
       installmentDays: [14, 28],
       bank: "",
@@ -293,20 +289,54 @@ function clearSavedSimulationFormDraft(key: string) {
   writeLocalStorage<SavedSimulationFormDrafts>(SIMULATION_FORM_DRAFT_STORAGE_KEY, nextDrafts);
 }
 
+function createDefaultExpenseItem(type: StandardExpenseType): ExpenseItem {
+  const defaults: Record<
+    StandardExpenseType,
+    Pick<ExpenseItem, "calculationType" | "calculationBase" | "value">
+  > = {
+    Frete: { calculationType: "fixed", value: 0 },
+    Comissão: { calculationType: "percentage", calculationBase: "revenue", value: 2.5 },
+    "Custo NF": { calculationType: "percentage", calculationBase: "purchaseTotal", value: 2 },
+    STRINT: { calculationType: "percentage", calculationBase: "purchaseTotal", value: 0.4 },
+    "PIS E COFINS": { calculationType: "percentage", calculationBase: "revenue", value: 1.25 },
+    Financeiro: { calculationType: "percentage", calculationBase: "revenue", value: 1.4 },
+    Outros: { calculationType: "fixed", value: 0 },
+  };
+
+  return {
+    id: `ex-default-${type.toLowerCase().replace(/\s+/g, "-")}`,
+    type,
+    ...defaults[type],
+  };
+}
+
+function isStandardExpenseType(type: ExpenseItem["type"]): type is StandardExpenseType {
+  return STANDARD_EXPENSE_TYPES.includes(type as StandardExpenseType);
+}
+
 function normalizeExpenseItems(items: ExpenseItem[]) {
-  const seenZeroTypes = new Set<ExpenseItem["type"]>();
+  const standardByType = new Map<StandardExpenseType, ExpenseItem>();
+  const extraItems: ExpenseItem[] = [];
 
-  return items.filter((item) => {
-    const value = Number(item.value) || 0;
-    const isZero = value === 0;
-    const isStandard = STANDARD_EXPENSE_TYPES.includes(item.type);
+  items.forEach((item) => {
+    const normalizedItem = { ...item, value: Number(item.value) || 0 };
+    if (!isStandardExpenseType(normalizedItem.type)) {
+      if (normalizedItem.value !== 0) extraItems.push(normalizedItem);
+      return;
+    }
 
-    if (!isStandard && isZero) return false;
-    if (isZero && seenZeroTypes.has(item.type)) return false;
-    if (isZero) seenZeroTypes.add(item.type);
-
-    return true;
+    const current = standardByType.get(normalizedItem.type);
+    if (!current || (current.value === 0 && normalizedItem.value !== 0)) {
+      standardByType.set(normalizedItem.type, normalizedItem);
+    }
   });
+
+  return [
+    ...STANDARD_EXPENSE_TYPES.map(
+      (type) => standardByType.get(type) ?? createDefaultExpenseItem(type),
+    ),
+    ...extraItems,
+  ];
 }
 
 function saveApprovalRecordWhenEnabled(payload: {
@@ -339,7 +369,7 @@ function saveApprovalRecordWhenEnabled(payload: {
 function SimulationDetailPage() {
   const { id } = useParams({ from: "/_app/simulacoes/$id" });
   const navigate = useNavigate();
-  const { auth, simulations, orders, clients, suppliers, products, upsertSimulation, upsertOrder } =
+  const { auth, simulations, orders, clients, suppliers, upsertSimulation, upsertOrder } =
     useAppContext();
   const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
@@ -378,6 +408,7 @@ function SimulationDetailPage() {
   const userCanEdit = canEditSimulation(currentUser, draft);
   const userCanSubmit = canSubmitSimulationForApproval(currentUser, draft);
   const userCanConvert = canConvertSimulationToOrder(currentUser);
+  const isAdminUser = currentUser ? normalizeRole(currentUser.role) === "Admin" : false;
 
   useEffect(() => {
     if (activeDraftStorageKeyRef.current === draftStorageKey) return;
@@ -394,10 +425,28 @@ function SimulationDetailPage() {
   useEffect(() => {
     setDraft((current) => {
       const normalizedExpenseItems = normalizeExpenseItems(current.expenseItems);
-      if (normalizedExpenseItems.length === current.expenseItems.length) return current;
+      const sameExpenseItems =
+        normalizedExpenseItems.length === current.expenseItems.length &&
+        normalizedExpenseItems.every(
+          (item, index) =>
+            item.id === current.expenseItems[index]?.id &&
+            item.type === current.expenseItems[index]?.type &&
+            item.value === current.expenseItems[index]?.value,
+        );
+      if (sameExpenseItems) return current;
       return { ...current, expenseItems: normalizedExpenseItems };
     });
   }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!currentUser || isAdminUser) return;
+    setDraft((current) => {
+      const nextOwner = currentUser.name;
+      const nextUnit = current.unit || currentUser.unit || businessUnits[0];
+      if (current.owner === nextOwner && current.unit === nextUnit) return current;
+      return { ...current, owner: nextOwner, unit: nextUnit };
+    });
+  }, [currentUser, isAdminUser]);
 
   if (!canOpenSimulation) {
     return (
@@ -644,9 +693,16 @@ function SimulationDetailPage() {
         <Card className="shadow-card">
           <CardContent className="space-y-6 p-6">
             {step === 0 && (
-              <ClientStep draft={draft} clients={clients} suppliers={suppliers} update={update} />
+              <ClientStep
+                draft={draft}
+                clients={clients}
+                suppliers={suppliers}
+                currentUser={currentUser}
+                isAdminUser={isAdminUser}
+                update={update}
+              />
             )}
-            {step === 1 && <ProductsStep draft={draft} products={products} setDraft={setDraft} />}
+            {step === 1 && <ProductsStep draft={draft} setDraft={setDraft} />}
             {step === 2 && <PurchaseStep draft={draft} setDraft={setDraft} />}
             {step === 3 && <ExpensesStep draft={draft} setDraft={setDraft} />}
             {step === 4 && <FinancialStep draft={draft} setDraft={setDraft} />}
@@ -691,11 +747,15 @@ function ClientStep({
   draft,
   clients,
   suppliers,
+  currentUser,
+  isAdminUser,
   update,
 }: {
   draft: Simulation;
   clients: Client[];
   suppliers: Supplier[];
+  currentUser: User | null;
+  isAdminUser: boolean;
   update: <K extends keyof Simulation>(key: K, value: Simulation[K]) => void;
 }) {
   const [catalogs, setCatalogs] = useState<OrderCatalogs>(() =>
@@ -708,14 +768,6 @@ function ClientStep({
   const supplierOptions = useMemo(
     () => getOptionsWithCurrent(catalogs.suppliers, draft.supplier),
     [catalogs.suppliers, draft.supplier],
-  );
-  const ownerOptions = useMemo(
-    () => getOptionsWithCurrent(catalogs.owners, draft.owner),
-    [catalogs.owners, draft.owner],
-  );
-  const unitOptions = useMemo(
-    () => getOptionsWithCurrent(catalogs.units, draft.unit),
-    [catalogs.units, draft.unit],
   );
 
   useEffect(() => {
@@ -740,13 +792,7 @@ function ClientStep({
     update("client", name);
     if (client?.city) update("deliveryCity", client.city);
     if (client?.state) update("deliveryState", client.state);
-    if (client?.unit) update("unit", client.unit);
-  }
-
-  function selectOwner(name: string) {
-    const owner = catalogs.owners.find((item) => item.name === name);
-    update("owner", name);
-    if (owner?.unit) update("unit", owner.unit);
+    update("unit", client?.unit || currentUser?.unit || draft.unit || businessUnits[0]);
   }
 
   function handleCatalogUse(key: OrderCatalogKey, item: OrderCatalogItem) {
@@ -758,11 +804,6 @@ function ClientStep({
       update("supplier", item.name);
       return;
     }
-    if (key === "owners") {
-      selectOwner(item.name);
-      return;
-    }
-    update("unit", item.name);
   }
 
   function handleCatalogDelete(key: OrderCatalogKey, item: OrderCatalogItem) {
@@ -772,8 +813,6 @@ function ClientStep({
       update("deliveryState", "");
     }
     if (key === "suppliers" && draft.supplier === item.name) update("supplier", "");
-    if (key === "owners" && draft.owner === item.name) update("owner", "");
-    if (key === "units" && draft.unit === item.name) update("unit", "");
   }
 
   return (
@@ -824,32 +863,7 @@ function ClientStep({
           />
         </Field>
         <Field label="Responsável">
-          <Select value={draft.owner} onValueChange={selectOwner}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione ou cadastre um responsável" />
-            </SelectTrigger>
-            <SelectContent>
-              {ownerOptions.map((u) => (
-                <SelectItem key={u.id} value={u.name}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Unidade">
-          <Select value={draft.unit} onValueChange={(v) => update("unit", v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione ou cadastre uma unidade" />
-            </SelectTrigger>
-            <SelectContent>
-              {unitOptions.map((u) => (
-                <SelectItem key={u.id} value={u.name}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Input value={isAdminUser ? draft.owner : currentUser?.name || draft.owner} disabled />
         </Field>
         <Field label="Prazo">
           <Input
@@ -902,6 +916,7 @@ function ClientStep({
         updateCatalog={updateCatalog}
         onUse={handleCatalogUse}
         onDelete={handleCatalogDelete}
+        canDelete={isAdminUser}
       />
     </div>
   );
@@ -912,11 +927,13 @@ function OrderCatalogCrud({
   updateCatalog,
   onUse,
   onDelete,
+  canDelete,
 }: {
   catalogs: OrderCatalogs;
   updateCatalog: (key: OrderCatalogKey, items: OrderCatalogItem[]) => void;
   onUse: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
   onDelete: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
+  canDelete: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -929,14 +946,12 @@ function OrderCatalogCrud({
         <div className="space-y-3 rounded-lg border border-border p-3">
           <SectionTitle
             title="Cadastros do pedido"
-            description="Crie, edite, selecione ou remova opções usadas nos campos acima."
+            description="Crie, edite ou selecione opções usadas nos campos acima."
           />
           <Tabs defaultValue="clients">
             <TabsList className="flex w-full flex-wrap justify-start">
               <TabsTrigger value="clients">Clientes</TabsTrigger>
               <TabsTrigger value="suppliers">Fornecedores</TabsTrigger>
-              <TabsTrigger value="owners">Responsáveis</TabsTrigger>
-              <TabsTrigger value="units">Unidades</TabsTrigger>
             </TabsList>
             <TabsContent value="clients">
               <CatalogEditor
@@ -952,6 +967,7 @@ function OrderCatalogCrud({
                 updateCatalog={updateCatalog}
                 onUse={onUse}
                 onDelete={onDelete}
+                canDelete={canDelete}
               />
             </TabsContent>
             <TabsContent value="suppliers">
@@ -967,33 +983,7 @@ function OrderCatalogCrud({
                 updateCatalog={updateCatalog}
                 onUse={onUse}
                 onDelete={onDelete}
-              />
-            </TabsContent>
-            <TabsContent value="owners">
-              <CatalogEditor
-                catalogKey="owners"
-                title="Responsáveis"
-                items={catalogs.owners}
-                fields={[
-                  { key: "name", label: "Nome" },
-                  { key: "role", label: "Função" },
-                  { key: "email", label: "E-mail" },
-                  { key: "unit", label: "Unidade" },
-                ]}
-                updateCatalog={updateCatalog}
-                onUse={onUse}
-                onDelete={onDelete}
-              />
-            </TabsContent>
-            <TabsContent value="units">
-              <CatalogEditor
-                catalogKey="units"
-                title="Unidades"
-                items={catalogs.units}
-                fields={[{ key: "name", label: "Unidade" }]}
-                updateCatalog={updateCatalog}
-                onUse={onUse}
-                onDelete={onDelete}
+                canDelete={canDelete}
               />
             </TabsContent>
           </Tabs>
@@ -1011,6 +1001,7 @@ function CatalogEditor({
   updateCatalog,
   onUse,
   onDelete,
+  canDelete,
 }: {
   catalogKey: OrderCatalogKey;
   title: string;
@@ -1019,6 +1010,7 @@ function CatalogEditor({
   updateCatalog: (key: OrderCatalogKey, items: OrderCatalogItem[]) => void;
   onUse: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
   onDelete: (key: OrderCatalogKey, item: OrderCatalogItem) => void;
+  canDelete: boolean;
 }) {
   const [form, setForm] = useState<OrderCatalogItem>({ id: "", name: "" });
   const isEditing = Boolean(form.id);
@@ -1089,7 +1081,7 @@ function CatalogEditor({
             Usar neste pedido
           </Button>
         )}
-        {isEditing && (
+        {isEditing && canDelete && (
           <Button type="button" variant="ghost" onClick={() => deleteItem(form)}>
             <Trash2 /> Excluir
           </Button>
@@ -1132,14 +1124,16 @@ function CatalogEditor({
                       >
                         Usar
                       </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteItem(item)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {canDelete && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteItem(item)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -1154,17 +1148,11 @@ function CatalogEditor({
 
 function ProductsStep({
   draft,
-  products,
   setDraft,
 }: {
   draft: Simulation;
-  products: Product[];
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
-  const productOptions = useMemo(
-    () => products.filter((product) => product.active ?? true),
-    [products],
-  );
   const merchandiseCost = draft.products.reduce((sum, item) => sum + getProductCostTotal(item), 0);
   const purchaseTotal = draft.purchaseItems.length
     ? draft.purchaseItems.reduce((sum, item) => sum + item.value, 0)
@@ -1218,18 +1206,6 @@ function ProductsStep({
         return merged;
       }),
     }));
-  }
-
-  function applyCatalogProduct(id: string, productId: string) {
-    const catalogProduct = productOptions.find((item) => item.id === productId);
-    if (!catalogProduct) return;
-    updateProduct(id, {
-      code: catalogProduct.code,
-      product: catalogProduct.name,
-      unitsPerBox: catalogProduct.defaultUnitsPerBox,
-      costUnit: catalogProduct.costUnit,
-      saleUnit: catalogProduct.saleUnit,
-    });
   }
 
   function updateProductCostTotal(id: string, value: number) {
@@ -1369,23 +1345,6 @@ function ProductsStep({
                       />
                     </TableCell>
                     <TableCell>
-                      {productOptions.length ? (
-                        <Select
-                          value={productOptions.find((item) => item.code === p.code)?.id}
-                          onValueChange={(value) => applyCatalogProduct(p.id, value)}
-                        >
-                          <SelectTrigger className="mb-2 min-w-64">
-                            <SelectValue placeholder="Selecionar produto cadastrado" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {productOptions.map((product) => (
-                              <SelectItem key={product.id} value={product.id}>
-                                {product.code} • {product.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : null}
                       <Input
                         value={p.product}
                         onChange={(e) => updateProduct(p.id, { product: e.target.value })}
@@ -1526,6 +1485,16 @@ function PurchaseStep({
   draft: Simulation;
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
+  const purchaseTotal = draft.purchaseItems.reduce((sum, item) => sum + item.value, 0);
+
+  function withComputedAllocation(items: PurchaseItem[]) {
+    const total = items.reduce((sum, item) => sum + item.value, 0);
+    return items.map((item) => ({
+      ...item,
+      allocationPercent: getPurchaseShare(item, total),
+    }));
+  }
+
   function addItem() {
     const item: PurchaseItem = {
       id: `pi-${Date.now()}`,
@@ -1535,16 +1504,21 @@ function PurchaseStep({
       value: 0,
       allocationPercent: 0,
     };
-    setDraft((d) => ({ ...d, purchaseItems: [...d.purchaseItems, item] }));
+    setDraft((d) => ({ ...d, purchaseItems: withComputedAllocation([...d.purchaseItems, item]) }));
   }
   function updateItem(id: string, patch: Partial<PurchaseItem>) {
     setDraft((d) => ({
       ...d,
-      purchaseItems: d.purchaseItems.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+      purchaseItems: withComputedAllocation(
+        d.purchaseItems.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+      ),
     }));
   }
   function remove(id: string) {
-    setDraft((d) => ({ ...d, purchaseItems: d.purchaseItems.filter((i) => i.id !== id) }));
+    setDraft((d) => ({
+      ...d,
+      purchaseItems: withComputedAllocation(d.purchaseItems.filter((i) => i.id !== id)),
+    }));
   }
 
   return (
@@ -1553,6 +1527,14 @@ function PurchaseStep({
         title="NF e custos"
         description="Registre NF, custo da mercadoria e complementos que fecham o custo da operação."
       />
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="VALOR TOTAL (R$)">
+          <Input value={formatCurrency(purchaseTotal)} disabled />
+        </Field>
+        <Field label="DIVISÃO">
+          <Input value="Calculada automaticamente pelo valor de cada NF/custo" disabled />
+        </Field>
+      </div>
       {draft.purchaseItems.length === 0 ? (
         <EmptyState
           title="Sem NF/custos"
@@ -1615,15 +1597,7 @@ function PurchaseStep({
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={item.allocationPercent}
-                      onChange={(e) =>
-                        updateItem(item.id, { allocationPercent: Number(e.target.value) })
-                      }
-                      className="ml-auto w-24 text-right"
-                    />
+                    {formatPercent(getPurchaseShare(item, purchaseTotal), 2)}
                   </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="icon" onClick={() => remove(item.id)}>
@@ -1650,20 +1624,6 @@ function ExpensesStep({
   draft: Simulation;
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
-  function addItem() {
-    const usedTypes = new Set(draft.expenseItems.map((item) => item.type));
-    const nextType = STANDARD_EXPENSE_TYPES.find((type) => !usedTypes.has(type)) ?? "Outros";
-    const item: ExpenseItem = {
-      id: `ex-${Date.now()}`,
-      type: nextType,
-      calculationType: "fixed",
-      value: 0,
-    };
-    setDraft((d) => ({
-      ...d,
-      expenseItems: normalizeExpenseItems([...d.expenseItems, item]),
-    }));
-  }
   function updateItem(id: string, patch: Partial<ExpenseItem>) {
     setDraft((d) => ({
       ...d,
@@ -1671,9 +1631,6 @@ function ExpensesStep({
         d.expenseItems.map((i) => (i.id === id ? { ...i, ...patch } : i)),
       ),
     }));
-  }
-  function remove(id: string) {
-    setDraft((d) => ({ ...d, expenseItems: d.expenseItems.filter((i) => i.id !== id) }));
   }
 
   return (
@@ -1696,29 +1653,12 @@ function ExpensesStep({
                 <TableHead>TIPO</TableHead>
                 <TableHead>BASE</TableHead>
                 <TableHead className="text-right">VALOR</TableHead>
-                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {draft.expenseItems.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell>
-                    <Select
-                      value={item.type}
-                      onValueChange={(v) => updateItem(item.id, { type: v as ExpenseItem["type"] })}
-                    >
-                      <SelectTrigger className="w-44">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STANDARD_EXPENSE_TYPES.map((t) => (
-                          <SelectItem key={t} value={t}>
-                            {t}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
+                  <TableCell className="font-medium">{item.type}</TableCell>
                   <TableCell>
                     <Select
                       value={item.calculationType}
@@ -1768,20 +1708,12 @@ function ExpensesStep({
                       className="ml-auto w-32 text-right"
                     />
                   </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => remove(item.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
       )}
-      <Button variant="outline" onClick={addItem}>
-        <Plus /> Adicionar despesa
-      </Button>
     </div>
   );
 }
