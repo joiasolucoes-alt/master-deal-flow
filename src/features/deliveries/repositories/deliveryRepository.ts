@@ -19,6 +19,10 @@ export type DeliveryRow = {
   expected_delivery_date?: string | null;
   delivered_at?: string | null;
   proof_notes?: string | null;
+  proof_document_number?: string | null;
+  proof_file_name?: string | null;
+  proof_received_by?: string | null;
+  proof_registered_at?: string | null;
   occurrence_notes?: string | null;
   owner_name?: string | null;
   unit_name?: string | null;
@@ -54,11 +58,24 @@ export function deliveryToRow(delivery: DeliveryRecord): Record<string, unknown>
     expected_delivery_date: delivery.expectedDeliveryDate,
     delivered_at: delivery.deliveredAt ?? null,
     proof_notes: delivery.proofNotes || null,
+    proof_document_number: delivery.proofDocumentNumber || null,
+    proof_file_name: delivery.proofFileName || null,
+    proof_received_by: delivery.proofReceivedBy || null,
+    proof_registered_at: delivery.proofRegisteredAt ?? null,
     occurrence_notes: delivery.occurrenceNotes || null,
     owner_name: delivery.owner,
     unit_name: delivery.unit,
     created_at: delivery.createdAt,
   };
+}
+
+export function deliveryToLegacyRow(delivery: DeliveryRecord): Record<string, unknown> {
+  const row = deliveryToRow(delivery);
+  delete row.proof_document_number;
+  delete row.proof_file_name;
+  delete row.proof_received_by;
+  delete row.proof_registered_at;
+  return row;
 }
 
 export function rowToDelivery(row: DeliveryRow): DeliveryRecord {
@@ -75,6 +92,10 @@ export function rowToDelivery(row: DeliveryRow): DeliveryRecord {
     expectedDeliveryDate: row.expected_delivery_date || new Date().toISOString(),
     deliveredAt: row.delivered_at ?? undefined,
     proofNotes: row.proof_notes || "",
+    proofDocumentNumber: row.proof_document_number || "",
+    proofFileName: row.proof_file_name || "",
+    proofReceivedBy: row.proof_received_by || "",
+    proofRegisteredAt: row.proof_registered_at ?? undefined,
     occurrenceNotes: row.occurrence_notes || "",
     owner: row.owner_name || "",
     unit: row.unit_name || "",

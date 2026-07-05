@@ -223,6 +223,11 @@ function createDeliveryFromFreight(freight) {
           ? "delivered"
           : "pending",
     currentLocation: freight.status === "in_route" ? "Em trânsito" : "Aguardando expedição",
+    proofNotes: "",
+    proofDocumentNumber: "",
+    proofFileName: "",
+    proofReceivedBy: "",
+    proofRegisteredAt: undefined,
     occurrenceNotes: "",
   };
 }
@@ -260,6 +265,17 @@ function updateOrderFromDelivery(order, delivery) {
           ? "Em rota"
           : order.status,
     deliveryProgress: Math.max(order.deliveryProgress, progressByStatus[delivery.status]),
+  };
+}
+
+function registerDeliveryProof(delivery, proof) {
+  return {
+    ...delivery,
+    ...proof,
+    status: "delivered",
+    currentLocation: "Entrega concluída",
+    deliveredAt: delivery.deliveredAt ?? "2026-07-04T12:00:00-03:00",
+    proofRegisteredAt: delivery.proofRegisteredAt ?? "2026-07-04T12:00:00-03:00",
   };
 }
 
@@ -525,6 +541,18 @@ const issueOrder = updateOrderFromDelivery(freightOrder, {
 });
 assert.equal(issueOrder.status, "Em rota");
 assert.equal(issueOrder.deliveryProgress, 70);
+const proofDelivery = registerDeliveryProof(
+  { ...delivery, status: "delivered" },
+  {
+    proofReceivedBy: "Maria Cliente",
+    proofDocumentNumber: "NF 587102",
+    proofFileName: "canhoto-ped-frete-1.pdf",
+    proofNotes: "Entrega conferida sem ressalva.",
+  },
+);
+assert.equal(proofDelivery.status, "delivered");
+assert.equal(proofDelivery.proofReceivedBy, "Maria Cliente");
+assert.equal(proofDelivery.proofRegisteredAt, "2026-07-04T12:00:00-03:00");
 
 function requireSupabaseConfig(configured) {
   if (!configured) throw new Error("Supabase não está configurado.");

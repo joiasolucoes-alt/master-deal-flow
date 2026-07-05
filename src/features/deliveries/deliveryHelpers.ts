@@ -28,6 +28,10 @@ export function createDeliveryFromFreight(freight: FreightRecord): DeliveryRecor
     deliveredAt:
       status === "delivered" ? (freight.deliveredAt ?? new Date().toISOString()) : undefined,
     proofNotes: "",
+    proofDocumentNumber: "",
+    proofFileName: "",
+    proofReceivedBy: "",
+    proofRegisteredAt: undefined,
     occurrenceNotes: "",
     owner: freight.owner,
     unit: freight.unit,
@@ -102,7 +106,11 @@ function getCurrentLocationFromFreight(freight: FreightRecord) {
 }
 
 function getOrderLogisticsStatus(delivery: DeliveryRecord) {
-  if (delivery.status === "delivered") return "Entrega concluída.";
+  if (delivery.status === "delivered") {
+    return delivery.proofRegisteredAt
+      ? "Entrega concluída com canhoto registrado."
+      : "Entrega concluída; comprovante pendente.";
+  }
   if (delivery.status === "arrived") return "Entrega chegou ao destino.";
   if (delivery.status === "in_route") return "Entrega em rota.";
   if (delivery.status === "loaded") return "Carga carregada e aguardando saída.";

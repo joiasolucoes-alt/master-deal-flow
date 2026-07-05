@@ -290,6 +290,10 @@ export interface DeliveryRecord {
   expectedDeliveryDate: string;
   deliveredAt?: string;
   proofNotes: string;
+  proofDocumentNumber?: string;
+  proofFileName?: string;
+  proofReceivedBy?: string;
+  proofRegisteredAt?: string;
   occurrenceNotes: string;
   owner: string;
   unit: string;

@@ -1,12 +1,24 @@
-import { useMemo } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowRight, CheckCircle2, MapPin, Plus, Truck } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  FileCheck2,
+  MapPin,
+  Plus,
+  Save,
+  Truck,
+} from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useAppContext } from "@/features/app/app-context";
 import type { DeliveryRecord } from "@/data/types";
 import {
@@ -60,7 +72,10 @@ function DeliveriesPage() {
   const inTransit = visibleDeliveries.filter((delivery) => delivery.status === "in_route");
   const delivered = visibleDeliveries.filter((delivery) => delivery.status === "delivered");
   const issues = visibleDeliveries.filter((delivery) => delivery.status === "issue");
-  const upcoming = visibleDeliveries.filter((delivery) => delivery.status !== "delivered");
+  const proofPending = delivered.filter((delivery) => !delivery.proofRegisteredAt);
+  const actionableDeliveries = visibleDeliveries.filter(
+    (delivery) => delivery.status !== "delivered" || !delivery.proofRegisteredAt,
+  );
 
   const handleGenerateDeliveries = () => {
     if (eligibleFreights.length === 0) {
@@ -110,6 +125,29 @@ function DeliveriesPage() {
     toast.warning("Ocorrência registrada na entrega.");
   };
 
+  const handleSaveProof = (
+    delivery: DeliveryRecord,
+    proof: Pick<
+      DeliveryRecord,
+      "proofDocumentNumber" | "proofFileName" | "proofReceivedBy" | "proofNotes"
+    >,
+  ) => {
+    const nextDelivery: DeliveryRecord = {
+      ...delivery,
+      ...proof,
+      status: "delivered",
+      currentLocation: "Entrega concluída",
+      deliveredAt: delivery.deliveredAt ?? new Date().toISOString(),
+      proofRegisteredAt: delivery.proofRegisteredAt ?? new Date().toISOString(),
+    };
+    upsertDelivery(nextDelivery);
+
+    const order = orders.find((item) => item.id === delivery.orderId);
+    if (order) upsertOrder(updateOrderFromDelivery(order, nextDelivery));
+
+    toast.success("Canhoto/comprovante registrado na entrega.");
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -117,7 +155,7 @@ function DeliveriesPage() {
         description="Monitore as entregas em andamento, atrasos e comprovações."
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Em trânsito" value={String(inTransit.length)} icon={Truck} tone="info" />
         <StatCard
           label="Entregues"
@@ -131,6 +169,12 @@ function DeliveriesPage() {
           icon={AlertTriangle}
           tone="danger"
         />
+        <StatCard
+          label="Canhotos pendentes"
+          value={String(proofPending.length)}
+          icon={FileCheck2}
+          tone={proofPending.length > 0 ? "warning" : "success"}
+        />
       </div>
 
       <Card className="shadow-card">
@@ -143,15 +187,16 @@ function DeliveriesPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 lg:grid-cols-2">
-            {upcoming.map((delivery) => (
+            {actionableDeliveries.map((delivery) => (
               <DeliveryCard
                 key={delivery.id}
                 delivery={delivery}
                 onAdvance={handleAdvanceDelivery}
                 onIssue={handleRegisterIssue}
+                onSaveProof={handleSaveProof}
               />
             ))}
-            {upcoming.length === 0 ? (
+            {actionableDeliveries.length === 0 ? (
               <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
                 Nenhuma entrega pendente no momento.
               </div>
@@ -167,12 +212,42 @@ function DeliveryCard({
   delivery,
   onAdvance,
   onIssue,
+  onSaveProof,
 }: {
   delivery: DeliveryRecord;
   onAdvance: (delivery: DeliveryRecord) => void;
   onIssue: (delivery: DeliveryRecord) => void;
+  onSaveProof: (
+    delivery: DeliveryRecord,
+    proof: Pick<
+      DeliveryRecord,
+      "proofDocumentNumber" | "proofFileName" | "proofReceivedBy" | "proofNotes"
+    >,
+  ) => void;
 }) {
   const progress = getDeliveryProgress(delivery.status);
+  const [proofOpen, setProofOpen] = useState(Boolean(delivery.proofRegisteredAt));
+  const [proofDocumentNumber, setProofDocumentNumber] = useState(
+    delivery.proofDocumentNumber ?? "",
+  );
+  const [proofFileName, setProofFileName] = useState(delivery.proofFileName ?? "");
+  const [proofReceivedBy, setProofReceivedBy] = useState(delivery.proofReceivedBy ?? "");
+  const [proofNotes, setProofNotes] = useState(delivery.proofNotes ?? "");
+  const proofReady = delivery.status === "delivered";
+
+  const handleSubmitProof = () => {
+    if (!proofReceivedBy.trim() && !proofDocumentNumber.trim() && !proofFileName.trim()) {
+      toast.info("Informe ao menos recebedor, número do canhoto ou referência do arquivo.");
+      return;
+    }
+
+    onSaveProof(delivery, {
+      proofDocumentNumber: proofDocumentNumber.trim(),
+      proofFileName: proofFileName.trim(),
+      proofReceivedBy: proofReceivedBy.trim(),
+      proofNotes: proofNotes.trim(),
+    });
+  };
 
   return (
     <Card className="shadow-card">
@@ -210,6 +285,18 @@ function DeliveryCard({
             {delivery.occurrenceNotes}
           </p>
         ) : null}
+        {delivery.proofRegisteredAt ? (
+          <div className="rounded-lg border border-success/30 bg-success-soft p-3 text-xs text-success">
+            <p className="font-semibold">Canhoto registrado</p>
+            <p>
+              {delivery.proofReceivedBy
+                ? `Recebido por ${delivery.proofReceivedBy}`
+                : "Recebedor não informado"}
+              {delivery.proofDocumentNumber ? ` • Doc. ${delivery.proofDocumentNumber}` : ""}
+            </p>
+            {delivery.proofFileName ? <p>Referência: {delivery.proofFileName}</p> : null}
+          </div>
+        ) : null}
         <div className="grid gap-2 sm:grid-cols-3">
           <Button
             variant="outline"
@@ -235,8 +322,82 @@ function DeliveryCard({
             </Link>
           </Button>
         </div>
+        <div className="space-y-3 rounded-lg border border-border bg-background/50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold">Canhoto/comprovante</p>
+              <p className="text-xs text-muted-foreground">
+                Registre a confirmação de entrega recebida do cliente.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!proofReady}
+              onClick={() => setProofOpen((current) => !current)}
+            >
+              <FileCheck2 />
+              {proofOpen ? "Fechar" : "Registrar"}
+            </Button>
+          </div>
+          {!proofReady ? (
+            <p className="text-xs text-muted-foreground">
+              O canhoto fica disponível depois que a entrega estiver concluída.
+            </p>
+          ) : null}
+          {proofOpen && proofReady ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <ProofField label="Recebido por">
+                <Input
+                  value={proofReceivedBy}
+                  onChange={(event) => setProofReceivedBy(event.target.value)}
+                  placeholder="Nome de quem recebeu"
+                />
+              </ProofField>
+              <ProofField label="Nº canhoto/NF">
+                <Input
+                  value={proofDocumentNumber}
+                  onChange={(event) => setProofDocumentNumber(event.target.value)}
+                  placeholder="Ex.: NF 587102"
+                />
+              </ProofField>
+              <ProofField label="Referência do arquivo">
+                <Input
+                  value={proofFileName}
+                  onChange={(event) => setProofFileName(event.target.value)}
+                  placeholder="Ex.: canhoto-ped-3866.pdf"
+                />
+              </ProofField>
+              <div className="md:col-span-2">
+                <ProofField label="Observações">
+                  <Textarea
+                    value={proofNotes}
+                    onChange={(event) => setProofNotes(event.target.value)}
+                    placeholder="Condição da entrega, ressalva ou conferência."
+                    rows={3}
+                  />
+                </ProofField>
+              </div>
+              <div className="md:col-span-2">
+                <Button size="sm" onClick={handleSubmitProof}>
+                  <Save />
+                  Salvar canhoto
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ProofField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      {children}
+    </div>
   );
 }
 

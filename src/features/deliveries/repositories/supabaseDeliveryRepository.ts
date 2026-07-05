@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureSupabaseSession, getSupabaseClient } from "@/lib/supabaseClient";
 import {
+  deliveryToLegacyRow,
   deliveryToRow,
   rowToDelivery,
   type DeliveryRepository,
@@ -30,14 +31,31 @@ export function createSupabaseDeliveryRepository(): DeliveryRepository {
     async save(delivery) {
       await ensureSupabaseSession();
       const client = requireClient();
-      const { data, error } = await client
+      let { data, error } = await client
         .from("deliveries")
         .upsert(deliveryToRow(delivery), { onConflict: "external_id" })
         .select("*")
         .single();
 
+      if (isMissingProofColumnError(error)) {
+        const legacyResult = await client
+          .from("deliveries")
+          .upsert(deliveryToLegacyRow(delivery), { onConflict: "external_id" })
+          .select("*")
+          .single();
+        data = legacyResult.data;
+        error = legacyResult.error;
+      }
+
       if (error) throw error;
       return rowToDelivery(data as DeliveryRow);
     },
   };
+}
+
+function isMissingProofColumnError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String(error.code) : "";
+  const message = "message" in error ? String(error.message) : "";
+  return code === "42703" && message.includes("proof_");
 }
