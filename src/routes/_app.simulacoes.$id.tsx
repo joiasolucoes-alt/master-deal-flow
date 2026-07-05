@@ -339,6 +339,12 @@ function normalizeExpenseItems(items: ExpenseItem[]) {
   ];
 }
 
+function inferPurchaseDivisionTotal(items: PurchaseItem[], fallbackTotal: number) {
+  const itemWithDivision = items.find((item) => item.value > 0 && item.allocationPercent > 0);
+  if (!itemWithDivision) return fallbackTotal;
+  return itemWithDivision.value / (itemWithDivision.allocationPercent / 100);
+}
+
 function saveApprovalRecordWhenEnabled(payload: {
   id: string;
   simulationId: string;
@@ -1486,13 +1492,24 @@ function PurchaseStep({
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
   const purchaseTotal = draft.purchaseItems.reduce((sum, item) => sum + item.value, 0);
+  const inferredDivisionTotal = useMemo(
+    () => inferPurchaseDivisionTotal(draft.purchaseItems, purchaseTotal),
+    [draft.purchaseItems, purchaseTotal],
+  );
+  const [divisionTotal, setDivisionTotal] = useState(inferredDivisionTotal);
+  const divisionBase = divisionTotal > 0 ? divisionTotal : purchaseTotal;
 
-  function withComputedAllocation(items: PurchaseItem[]) {
-    const total = items.reduce((sum, item) => sum + item.value, 0);
+  function withComputedAllocation(items: PurchaseItem[], total = divisionBase) {
     return items.map((item) => ({
       ...item,
       allocationPercent: getPurchaseShare(item, total),
     }));
+  }
+
+  function updateDivisionTotal(value: number) {
+    const nextTotal = Number.isFinite(value) ? value : 0;
+    setDivisionTotal(nextTotal);
+    setDraft((d) => ({ ...d, purchaseItems: withComputedAllocation(d.purchaseItems, nextTotal) }));
   }
 
   function addItem() {
@@ -1504,20 +1521,27 @@ function PurchaseStep({
       value: 0,
       allocationPercent: 0,
     };
-    setDraft((d) => ({ ...d, purchaseItems: withComputedAllocation([...d.purchaseItems, item]) }));
+    setDraft((d) => ({
+      ...d,
+      purchaseItems: withComputedAllocation([...d.purchaseItems, item], divisionBase),
+    }));
   }
   function updateItem(id: string, patch: Partial<PurchaseItem>) {
     setDraft((d) => ({
       ...d,
       purchaseItems: withComputedAllocation(
         d.purchaseItems.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+        divisionBase,
       ),
     }));
   }
   function remove(id: string) {
     setDraft((d) => ({
       ...d,
-      purchaseItems: withComputedAllocation(d.purchaseItems.filter((i) => i.id !== id)),
+      purchaseItems: withComputedAllocation(
+        d.purchaseItems.filter((i) => i.id !== id),
+        divisionBase,
+      ),
     }));
   }
 
@@ -1529,10 +1553,16 @@ function PurchaseStep({
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="VALOR TOTAL (R$)">
-          <Input value={formatCurrency(purchaseTotal)} disabled />
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            value={divisionTotal}
+            onChange={(event) => updateDivisionTotal(Number(event.target.value))}
+          />
         </Field>
         <Field label="DIVISÃO">
-          <Input value="Calculada automaticamente pelo valor de cada NF/custo" disabled />
+          <Input value="Calculada automaticamente: valor dividido pelo valor total" disabled />
         </Field>
       </div>
       {draft.purchaseItems.length === 0 ? (
@@ -1549,6 +1579,7 @@ function PurchaseStep({
                 <TableHead>NF</TableHead>
                 <TableHead>Fornecedor</TableHead>
                 <TableHead className="text-right">VALORES (R$)</TableHead>
+                <TableHead className="text-right">VALOR TOTAL (R$)</TableHead>
                 <TableHead className="text-right">DIVISÃO (%)</TableHead>
                 <TableHead />
               </TableRow>
@@ -1597,7 +1628,17 @@ function PurchaseStep({
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    {formatPercent(getPurchaseShare(item, purchaseTotal), 2)}
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={divisionTotal}
+                      onChange={(event) => updateDivisionTotal(Number(event.target.value))}
+                      className="ml-auto w-32 text-right"
+                    />
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {formatPercent(getPurchaseShare(item, divisionBase), 2)}
                   </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="icon" onClick={() => remove(item.id)}>
