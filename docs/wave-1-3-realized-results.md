@@ -14,6 +14,7 @@ Mostrar o resultado real da operação depois que o pedido começa a movimentar 
 - Margem realizada e comparação com a margem prevista da simulação.
 - Status de fechamento por pedido: em andamento, em fechamento ou concluído.
 - Fechamento oficial do resultado por pedido, liberado para Admin e Financeiro.
+- Aprovação formal da comissão depois do fechamento, liberada para Admin e Financeiro.
 
 ## SQL
 
@@ -23,6 +24,12 @@ Execute no Supabase:
 
 Esse SQL prepara a tabela `realized_results` para armazenar os fechamentos oficiais.
 
+Depois execute:
+
+`supabase/manual-sql/013_wave_1_3_commission_approval.sql`
+
+Esse SQL adiciona os campos de aprovação da comissão no fechamento do resultado.
+
 ## Como validar
 
 1. Abra Relatórios.
@@ -31,10 +38,10 @@ Esse SQL prepara a tabela `realized_results` para armazenar os fechamentos ofici
 4. Dê baixa em contas a receber e contas a pagar no Financeiro.
 5. Volte em Relatórios e veja se lucro e margem realizada mudam.
 6. Quando entrega e financeiro estiverem concluídos, use "Fechar" para gravar o resultado oficial.
+7. Depois do fechamento, use "Aprovar comissão" para registrar a conferência da comissão.
 
 ## Ainda não incluso
 
-- Aprovação formal de comissão.
 - Fechamento contábil definitivo.
 - Conciliação bancária.
 - Travamento de resultado fechado.

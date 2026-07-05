@@ -21,17 +21,20 @@
 - Registro de comprovante/canhoto na entrega.
 - Histórico detalhado de ocorrências de entrega.
 - Upload real de arquivos de comprovante/canhoto.
+- Fechamento gerencial do resultado por pedido.
+- Aprovação formal de comissão.
 
 ### Próximos blocos
 
-- Onda 1.3: fechamento gerencial e comissão aprovada.
+- Onda 1.3: reabertura controlada de resultado fechado e pagamento de comissão.
 
 ## Onda 1.3 - Resultado realizado
 
-- Comissão aprovada.
+- Aprovação formal de comissão.
 - Lucro realizado persistido.
 - Fechamento por pedido.
 - Relatórios gerenciais.
+- Reabertura controlada de resultado fechado.
 
 ## Onda 1.4 - Integrações
 

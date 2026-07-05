@@ -36,6 +36,7 @@ import { useAppContext } from "@/features/app/app-context";
 import { useAppStore } from "@/store/useAppStore";
 import { getSimulationTotals } from "@/lib/calculations";
 import {
+  approveCommissionForRealizedResult,
   buildRealizedResults,
   createClosedRealizedResultRecord,
   summarizeRealizedResults,
@@ -175,6 +176,26 @@ function ReportsPage() {
     },
     [auth.user?.name, canCloseResults, upsertRealizedResult],
   );
+  const handleApproveCommission = useCallback(
+    (result: RealizedOrderResult) => {
+      if (!canCloseResults) {
+        toast.error("Somente Admin ou Financeiro pode aprovar comissão.");
+        return;
+      }
+
+      const closedResult = closedResultByOrderId.get(result.orderId);
+      if (!closedResult || closedResult.status !== "closed") {
+        toast.error("Feche o resultado antes de aprovar a comissão.");
+        return;
+      }
+
+      if (closedResult.commissionApprovalStatus === "approved") return;
+
+      upsertRealizedResult(approveCommissionForRealizedResult(closedResult, auth.user?.name));
+      toast.success(`Comissão do pedido ${result.orderNumber} aprovada.`);
+    },
+    [auth.user?.name, canCloseResults, closedResultByOrderId, upsertRealizedResult],
+  );
   const realizedColumns = useMemo<DataColumn<RealizedOrderResult>[]>(
     () => [
       {
@@ -256,29 +277,65 @@ function ReportsPage() {
         },
       },
       {
+        key: "commissionApproval",
+        header: "Comissão",
+        cell: (result) => {
+          const closedResult = closedResultByOrderId.get(result.orderId);
+          if (!closedResult || closedResult.status !== "closed") return "Aguardando fechamento";
+          if (closedResult.commissionApprovalStatus === "approved") {
+            return (
+              <div className="space-y-1">
+                <p className="font-semibold text-success">Aprovada</p>
+                {closedResult.commissionApprovedAt ? (
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(closedResult.commissionApprovedAt)}
+                  </p>
+                ) : null}
+              </div>
+            );
+          }
+          return "Pendente";
+        },
+      },
+      {
         key: "actions",
         header: "",
         className: "text-right",
         cell: (result) => {
           const closedResult = closedResultByOrderId.get(result.orderId);
           const alreadyClosed = closedResult?.status === "closed";
+          const commissionApproved = closedResult?.commissionApprovalStatus === "approved";
           const readyToClose = result.deliveryCompleted && result.financialCompleted;
+
+          if (alreadyClosed) {
+            return (
+              <Button
+                variant={commissionApproved ? "outline" : "default"}
+                size="sm"
+                disabled={!canCloseResults || commissionApproved}
+                onClick={() => handleApproveCommission(result)}
+              >
+                <CheckCircle2 />
+                {commissionApproved ? "Aprovada" : "Aprovar comissão"}
+              </Button>
+            );
+          }
 
           return (
             <Button
-              variant={alreadyClosed ? "outline" : "default"}
+              variant="default"
               size="sm"
-              disabled={alreadyClosed || !canCloseResults || !readyToClose}
+              disabled={!canCloseResults || !readyToClose}
               onClick={() => handleCloseResult(result)}
             >
               <CheckCircle2 />
-              {alreadyClosed ? "Fechado" : "Fechar"}
+              Fechar
             </Button>
           );
         },
       },
     ],
-    [canCloseResults, closedResultByOrderId, handleCloseResult],
+    [canCloseResults, closedResultByOrderId, handleApproveCommission, handleCloseResult],
   );
 
   function exportReports() {

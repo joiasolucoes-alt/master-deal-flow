@@ -358,7 +358,21 @@ function createClosedRealizedResultRecord(result, closedBy = "Sistema") {
     realizedRevenueTotal: result.realizedRevenueTotal,
     realizedProfit: result.realizedProfit,
     realizedMarginPercent: result.realizedMarginPercent,
+    commissionApprovalStatus: "pending",
+    commissionApprovedBy: undefined,
+    commissionApprovedAt: undefined,
+    commissionNotes: "",
     notes: `Fechamento registrado por ${closedBy}.`,
+  };
+}
+
+function approveCommissionForRealizedResult(result, approvedBy = "Sistema") {
+  return {
+    ...result,
+    commissionApprovalStatus: "approved",
+    commissionApprovedBy: approvedBy,
+    commissionApprovedAt: "2026-07-05T12:00:00-03:00",
+    commissionNotes: `Comissão aprovada por ${approvedBy}.`,
   };
 }
 
@@ -682,6 +696,14 @@ const closedRealizedResult = createClosedRealizedResultRecord(
 assert.equal(closedRealizedResult.id, "realized-ord-realized-1");
 assert.equal(closedRealizedResult.status, "closed");
 assert.equal(closedRealizedResult.orderNumber, "PED REAL 1");
+assert.equal(closedRealizedResult.commissionApprovalStatus, "pending");
+const approvedCommissionResult = approveCommissionForRealizedResult(
+  closedRealizedResult,
+  "Financeiro",
+);
+assert.equal(approvedCommissionResult.commissionApprovalStatus, "approved");
+assert.equal(approvedCommissionResult.commissionApprovedBy, "Financeiro");
+assert.match(approvedCommissionResult.commissionNotes, /Comissão aprovada/);
 
 function requireSupabaseConfig(configured) {
   if (!configured) throw new Error("Supabase não está configurado.");

@@ -32,14 +32,54 @@ export function createSupabaseRealizedResultRepository(): RealizedResultReposito
     async save(result) {
       await ensureSupabaseSession();
       const client = requireClient();
+      const payload = realizedResultToRow(result);
       const { data, error } = await client
         .from("realized_results")
-        .upsert(realizedResultToRow(result), { onConflict: "external_id" })
+        .upsert(payload, { onConflict: "external_id" })
         .select("*")
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if (
+          result.commissionApprovalStatus === "pending" &&
+          isMissingCommissionColumnError(error)
+        ) {
+          const { data: legacyData, error: legacyError } = await client
+            .from("realized_results")
+            .upsert(stripCommissionApprovalColumns(payload), { onConflict: "external_id" })
+            .select("*")
+            .single();
+
+          if (legacyError) throw legacyError;
+          return rowToRealizedResult(legacyData as RealizedResultRow);
+        }
+
+        throw error;
+      }
+
       return rowToRealizedResult(data as RealizedResultRow);
     },
   };
+}
+
+function stripCommissionApprovalColumns(payload: Record<string, unknown>) {
+  const {
+    commission_approval_status: _commissionApprovalStatus,
+    commission_approved_by: _commissionApprovedBy,
+    commission_approved_at: _commissionApprovedAt,
+    commission_notes: _commissionNotes,
+    ...legacyPayload
+  } = payload;
+
+  return legacyPayload;
+}
+
+function isMissingCommissionColumnError(error: unknown) {
+  const message = error instanceof Error ? error.message : JSON.stringify(error);
+  return [
+    "commission_approval_status",
+    "commission_approved_by",
+    "commission_approved_at",
+    "commission_notes",
+  ].some((column) => message.includes(column));
 }

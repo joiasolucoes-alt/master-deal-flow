@@ -121,9 +121,28 @@ export function createClosedRealizedResultRecord(
     paymentProgress: result.paymentProgress,
     deliveryCompleted: result.deliveryCompleted,
     financialCompleted: result.financialCompleted,
+    commissionApprovalStatus: "pending",
+    commissionApprovedBy: undefined,
+    commissionApprovedAt: undefined,
+    commissionNotes: "",
     closedAt: now,
     notes: `Fechamento registrado por ${closedBy}.`,
     createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function approveCommissionForRealizedResult(
+  result: RealizedResultRecord,
+  approvedBy = "Sistema",
+): RealizedResultRecord {
+  const now = new Date().toISOString();
+  return {
+    ...result,
+    commissionApprovalStatus: "approved",
+    commissionApprovedBy: approvedBy,
+    commissionApprovedAt: now,
+    commissionNotes: `Comissão aprovada por ${approvedBy}.`,
     updatedAt: now,
   };
 }

@@ -1,4 +1,8 @@
-import type { RealizedResultRecord, RealizedResultStatus } from "@/data/types";
+import type {
+  CommissionApprovalStatus,
+  RealizedResultRecord,
+  RealizedResultStatus,
+} from "@/data/types";
 
 export interface RealizedResultRepository {
   list(): Promise<RealizedResultRecord[]>;
@@ -30,6 +34,10 @@ export type RealizedResultRow = {
   payment_progress?: number | null;
   delivery_completed?: boolean | null;
   financial_completed?: boolean | null;
+  commission_approval_status?: string | null;
+  commission_approved_by?: string | null;
+  commission_approved_at?: string | null;
+  commission_notes?: string | null;
   closed_at?: string | null;
   notes?: string | null;
   created_at?: string | null;
@@ -61,6 +69,10 @@ export function realizedResultToRow(result: RealizedResultRecord): Record<string
     payment_progress: result.paymentProgress,
     delivery_completed: result.deliveryCompleted,
     financial_completed: result.financialCompleted,
+    commission_approval_status: result.commissionApprovalStatus,
+    commission_approved_by: result.commissionApprovedBy ?? null,
+    commission_approved_at: result.commissionApprovedAt ?? null,
+    commission_notes: result.commissionNotes || null,
     closed_at: result.closedAt ?? null,
     notes: result.notes || null,
     created_at: result.createdAt,
@@ -94,6 +106,10 @@ export function rowToRealizedResult(row: RealizedResultRow): RealizedResultRecor
     paymentProgress: toNumber(row.payment_progress),
     deliveryCompleted: Boolean(row.delivery_completed),
     financialCompleted: Boolean(row.financial_completed),
+    commissionApprovalStatus: normalizeCommissionStatus(row.commission_approval_status),
+    commissionApprovedBy: row.commission_approved_by ?? undefined,
+    commissionApprovedAt: row.commission_approved_at ?? undefined,
+    commissionNotes: row.commission_notes || "",
     closedAt: row.closed_at ?? undefined,
     notes: row.notes || "",
     createdAt: row.created_at || now,
@@ -104,6 +120,11 @@ export function rowToRealizedResult(row: RealizedResultRow): RealizedResultRecor
 function normalizeStatus(status?: string | null): RealizedResultStatus {
   if (status === "in_progress" || status === "closed" || status === "cancelled") return status;
   return "draft";
+}
+
+function normalizeCommissionStatus(status?: string | null): CommissionApprovalStatus {
+  if (status === "approved" || status === "rejected") return status;
+  return "pending";
 }
 
 function toNumber(value: number | null | undefined) {
