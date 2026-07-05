@@ -6,6 +6,7 @@
 - Tela Entregas usando registros próprios de entrega.
 - Avanço de status: pendente, carregando, carregado, em rota, no destino e entregue.
 - Registro simples de ocorrência operacional.
+- Histórico detalhado de múltiplas ocorrências por entrega.
 - Registro de canhoto/comprovante com recebedor, documento, referência de arquivo e observação.
 - Atualização automática do status/progresso de entrega do pedido.
 - Persistência local preservada e persistência Supabase preparada.
@@ -17,13 +18,14 @@
 3. Clique em `Gerar entregas dos fretes`.
 4. Avance uma entrega e confira o progresso.
 5. Registre uma ocorrência e confira o alerta na entrega.
-6. Conclua uma entrega, clique em `Registrar` no bloco `Canhoto/comprovante` e salve os dados.
-7. Abra o pedido relacionado e confira o reflexo no status logístico.
+6. Abra novamente o formulário de ocorrência e registre uma segunda ocorrência.
+7. Confira o histórico detalhado no card da entrega.
+8. Conclua uma entrega, clique em `Registrar` no bloco `Canhoto/comprovante` e salve os dados.
+9. Abra o pedido relacionado e confira o reflexo no status logístico.
 
 ## Ainda não incluso
 
 - Upload real de comprovante/canhoto.
-- Histórico detalhado de múltiplas ocorrências.
 - Motorista acompanhando pelo celular.
 - Rastreamento externo.
 - Assinatura digital de recebimento.

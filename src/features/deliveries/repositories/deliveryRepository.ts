@@ -1,4 +1,4 @@
-import type { DeliveryRecord, DeliveryStatus } from "@/data/types";
+import type { DeliveryOccurrence, DeliveryRecord, DeliveryStatus } from "@/data/types";
 
 export interface DeliveryRepository {
   list(): Promise<DeliveryRecord[]>;
@@ -24,6 +24,7 @@ export type DeliveryRow = {
   proof_received_by?: string | null;
   proof_registered_at?: string | null;
   occurrence_notes?: string | null;
+  occurrence_history?: unknown;
   owner_name?: string | null;
   unit_name?: string | null;
   created_at?: string | null;
@@ -63,6 +64,7 @@ export function deliveryToRow(delivery: DeliveryRecord): Record<string, unknown>
     proof_received_by: delivery.proofReceivedBy || null,
     proof_registered_at: delivery.proofRegisteredAt ?? null,
     occurrence_notes: delivery.occurrenceNotes || null,
+    occurrence_history: delivery.occurrences ?? [],
     owner_name: delivery.owner,
     unit_name: delivery.unit,
     created_at: delivery.createdAt,
@@ -75,6 +77,7 @@ export function deliveryToLegacyRow(delivery: DeliveryRecord): Record<string, un
   delete row.proof_file_name;
   delete row.proof_received_by;
   delete row.proof_registered_at;
+  delete row.occurrence_history;
   return row;
 }
 
@@ -97,8 +100,33 @@ export function rowToDelivery(row: DeliveryRow): DeliveryRecord {
     proofReceivedBy: row.proof_received_by || "",
     proofRegisteredAt: row.proof_registered_at ?? undefined,
     occurrenceNotes: row.occurrence_notes || "",
+    occurrences: normalizeOccurrences(row.occurrence_history),
     owner: row.owner_name || "",
     unit: row.unit_name || "",
     createdAt: row.created_at || new Date().toISOString(),
   };
+}
+
+function normalizeOccurrences(value: unknown): DeliveryOccurrence[] {
+  if (!Array.isArray(value)) return [];
+  const occurrences: DeliveryOccurrence[] = [];
+
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const record = item as Record<string, unknown>;
+    const occurrence: DeliveryOccurrence = {
+      id: String(record.id || crypto.randomUUID()),
+      type: String(record.type || "Ocorrência"),
+      description: String(record.description || ""),
+      location: record.location ? String(record.location) : undefined,
+      createdAt: String(record.createdAt || new Date().toISOString()),
+      createdBy: String(record.createdBy || "Sistema"),
+    };
+
+    if (occurrence.description.trim()) {
+      occurrences.push(occurrence);
+    }
+  });
+
+  return occurrences;
 }

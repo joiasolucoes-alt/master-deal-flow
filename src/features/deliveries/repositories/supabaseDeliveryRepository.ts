@@ -37,7 +37,7 @@ export function createSupabaseDeliveryRepository(): DeliveryRepository {
         .select("*")
         .single();
 
-      if (isMissingProofColumnError(error)) {
+      if (isMissingDeliveryColumnError(error)) {
         const legacyResult = await client
           .from("deliveries")
           .upsert(deliveryToLegacyRow(delivery), { onConflict: "external_id" })
@@ -53,9 +53,9 @@ export function createSupabaseDeliveryRepository(): DeliveryRepository {
   };
 }
 
-function isMissingProofColumnError(error: unknown) {
+function isMissingDeliveryColumnError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const code = "code" in error ? String(error.code) : "";
   const message = "message" in error ? String(error.message) : "";
-  return code === "42703" && message.includes("proof_");
+  return code === "42703" && (message.includes("proof_") || message.includes("occurrence_"));
 }

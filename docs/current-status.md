@@ -22,6 +22,7 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 - Entregas com geração a partir de fretes liberados.
 - Avanço de entrega e registro simples de ocorrência.
 - Registro de canhoto/comprovante na entrega com recebedor, documento, referência de arquivo e observação.
+- Histórico detalhado de ocorrências de entrega com tipo, local, responsável, data e descrição.
 - Cálculos da planilha 374 no frontend.
 - Persistência opcional com Supabase via `VITE_DATA_PROVIDER=supabase`.
 - CRUD básico de clientes, fornecedores e produtos em Configurações.
@@ -48,3 +49,4 @@ Nenhum SQL foi aplicado automaticamente. Scripts para execução manual:
 5. `supabase/manual-sql/005_wave_2_freights.sql`
 6. `supabase/manual-sql/006_wave_2_deliveries.sql`
 7. `supabase/manual-sql/009_wave_2_delivery_proofs.sql`
+8. `supabase/manual-sql/010_wave_2_delivery_occurrences.sql`

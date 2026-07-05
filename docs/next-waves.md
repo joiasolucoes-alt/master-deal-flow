@@ -15,11 +15,11 @@
 - Entregas geradas a partir de fretes liberados.
 - Avanço operacional de entrega e ocorrência simples.
 - Registro de comprovante/canhoto na entrega.
+- Histórico detalhado de ocorrências de entrega.
 
 ### Próximos blocos
 
 - Upload real de arquivos de comprovante/canhoto.
-- Histórico detalhado de ocorrências de entrega.
 
 ## Onda 1.3 - Resultado realizado
 

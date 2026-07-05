@@ -277,6 +277,15 @@ export type DeliveryStatus =
   | "issue"
   | "cancelled";
 
+export interface DeliveryOccurrence {
+  id: string;
+  type: string;
+  description: string;
+  location?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
 export interface DeliveryRecord {
   id: string;
   orderId?: string;
@@ -295,6 +304,7 @@ export interface DeliveryRecord {
   proofReceivedBy?: string;
   proofRegisteredAt?: string;
   occurrenceNotes: string;
+  occurrences: DeliveryOccurrence[];
   owner: string;
   unit: string;
   createdAt: string;

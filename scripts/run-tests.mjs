@@ -229,6 +229,7 @@ function createDeliveryFromFreight(freight) {
     proofReceivedBy: "",
     proofRegisteredAt: undefined,
     occurrenceNotes: "",
+    occurrences: [],
   };
 }
 
@@ -276,6 +277,25 @@ function registerDeliveryProof(delivery, proof) {
     currentLocation: "Entrega concluída",
     deliveredAt: delivery.deliveredAt ?? "2026-07-04T12:00:00-03:00",
     proofRegisteredAt: delivery.proofRegisteredAt ?? "2026-07-04T12:00:00-03:00",
+  };
+}
+
+function registerDeliveryOccurrence(delivery, occurrence) {
+  const nextOccurrence = {
+    id: "occ-test-1",
+    type: occurrence.type || "Ocorrência operacional",
+    description: occurrence.description,
+    location: occurrence.location,
+    createdAt: "2026-07-05T12:00:00-03:00",
+    createdBy: occurrence.createdBy || "Sistema",
+  };
+
+  return {
+    ...delivery,
+    status: "issue",
+    currentLocation: nextOccurrence.location || delivery.currentLocation,
+    occurrenceNotes: nextOccurrence.description,
+    occurrences: [...(delivery.occurrences ?? []), nextOccurrence],
   };
 }
 
@@ -553,6 +573,19 @@ const proofDelivery = registerDeliveryProof(
 assert.equal(proofDelivery.status, "delivered");
 assert.equal(proofDelivery.proofReceivedBy, "Maria Cliente");
 assert.equal(proofDelivery.proofRegisteredAt, "2026-07-04T12:00:00-03:00");
+const occurrenceDelivery = registerDeliveryOccurrence(delivery, {
+  type: "Cliente ausente",
+  description: "Motorista aguardou 30 minutos e cliente não estava no local.",
+  location: "Destino",
+  createdBy: "Djalma",
+});
+assert.equal(occurrenceDelivery.status, "issue");
+assert.equal(
+  occurrenceDelivery.occurrenceNotes,
+  "Motorista aguardou 30 minutos e cliente não estava no local.",
+);
+assert.equal(occurrenceDelivery.occurrences.length, 1);
+assert.equal(occurrenceDelivery.occurrences[0].type, "Cliente ausente");
 
 function requireSupabaseConfig(configured) {
   if (!configured) throw new Error("Supabase não está configurado.");

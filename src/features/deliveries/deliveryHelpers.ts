@@ -33,6 +33,7 @@ export function createDeliveryFromFreight(freight: FreightRecord): DeliveryRecor
     proofReceivedBy: "",
     proofRegisteredAt: undefined,
     occurrenceNotes: "",
+    occurrences: [],
     owner: freight.owner,
     unit: freight.unit,
     createdAt: new Date().toISOString(),
@@ -116,9 +117,14 @@ function getOrderLogisticsStatus(delivery: DeliveryRecord) {
   if (delivery.status === "loaded") return "Carga carregada e aguardando saída.";
   if (delivery.status === "loading") return "Carga em carregamento.";
   if (delivery.status === "issue")
-    return `Ocorrência na entrega: ${delivery.occurrenceNotes || "sem detalhe"}.`;
+    return `Ocorrência na entrega: ${getLatestOccurrenceDescription(delivery)}.`;
   if (delivery.status === "cancelled") return "Entrega cancelada.";
   return "Entrega pendente.";
+}
+
+function getLatestOccurrenceDescription(delivery: DeliveryRecord) {
+  const latest = delivery.occurrences?.at(-1);
+  return latest?.description || delivery.occurrenceNotes || "sem detalhe";
 }
 
 function upsertTimeline(order: Order, delivery: DeliveryRecord) {
