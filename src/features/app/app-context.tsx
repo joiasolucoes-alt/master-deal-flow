@@ -699,14 +699,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
           profile = loadedProfile;
 
           if (!profile) {
+            try {
+              await withTimeout(
+                registerCurrentUserAsCommercial(client),
+                "Não foi possível preparar o perfil Comercial no tempo esperado.",
+              );
+
+              const { data: registeredProfile, error: registeredProfileError } = await withTimeout(
+                client
+                  .from("profiles")
+                  .select(
+                    "id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id",
+                  )
+                  .eq("auth_user_id", supabaseUser.id)
+                  .maybeSingle(),
+                "Não foi possível carregar o perfil Comercial no tempo esperado.",
+              );
+
+              if (registeredProfileError) throw registeredProfileError;
+              profile = registeredProfile;
+            } catch (error) {
+              console.warn("Auto cadastro Comercial ainda não está disponível no Supabase.", error);
+            }
+          }
+
+          if (!profile) {
+            const displayName =
+              supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário";
             const { data: insertedProfile, error: insertError } = await withTimeout(
               client
                 .from("profiles")
                 .insert({
                   auth_user_id: supabaseUser.id,
-                  full_name:
-                    supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
+                  full_name: displayName,
+                  name: displayName,
                   email: supabaseUser.email,
+                  role: "Comercial",
                 })
                 .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
                 .maybeSingle(),
@@ -800,7 +828,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           role,
           accessError: activeMemberships.length
             ? null
-            : "Seu usuário foi autenticado, mas ainda não possui acesso a nenhuma organização no Master Flow.",
+            : "Seu usuário foi autenticado, mas o acesso Comercial ainda não foi criado. Rode o SQL 014 no Supabase e tente entrar novamente.",
         });
       } catch (error) {
         console.error("Falha ao carregar contexto de autenticação.", error);

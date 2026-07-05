@@ -72,6 +72,8 @@ supabase/manual-sql/014_self_signup_commercial_access.sql
 
 Se a regra desejada for criar a conta e entrar imediatamente, desative a confirmacao obrigatoria de e-mail em Authentication > Providers > Email no painel do Supabase. Se a confirmacao estiver ligada, a conta e criada, mas o acesso so acontece depois da confirmacao.
 
+Se aparecer a mensagem "usuario autenticado, mas o acesso Comercial ainda nao foi criado", rode o SQL 014 no Supabase e tente entrar novamente. Esse SQL cria a funcao que vincula o usuario novo na organizacao padrao como Comercial.
+
 ## 6. Scripts manuais da Onda 1.1
 
 Nao aplique migrations automaticamente no banco real durante a homologacao. Use o SQL Editor do Supabase e rode, nesta ordem:
