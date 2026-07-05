@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
   Copy,
+  ExternalLink,
+  FileText,
   Link2,
   MapPin,
   Pencil,
@@ -10,6 +12,7 @@ import {
   RotateCw,
   Save,
   Truck,
+  Upload,
   XCircle,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -21,6 +24,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAppContext } from "@/features/app/app-context";
 import type { FreightRecord } from "@/data/types";
@@ -30,6 +40,15 @@ import {
   getNextFreightStatus,
   updateOrderFromFreight,
 } from "@/features/freights/freightHelpers";
+import {
+  FREIGHT_DOCUMENT_TYPE_LABEL,
+  getFreightDocumentSignedUrl,
+  listFreightDocuments,
+  saveFreightDocument,
+  validateFreightDocumentFile,
+  type FreightDocumentRecord,
+  type FreightDocumentType,
+} from "@/features/freights/freightDocumentStorage";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
@@ -79,6 +98,25 @@ function FreightsPage() {
   const value = visibleFreights.reduce((s, f) => s + f.freightValue, 0);
   const selectedFreight = visibleFreights.find((freight) => freight.id === selectedFreightId);
   const [form, setForm] = useState<FreightFormState>(() => createFreightFormState());
+  const [documents, setDocuments] = useState<FreightDocumentRecord[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
+
+  const refreshFreightDocuments = useCallback(async (freightId: string) => {
+    setDocumentsLoading(true);
+    setDocumentsError(null);
+    try {
+      const nextDocuments = await listFreightDocuments(freightId);
+      setDocuments(nextDocuments);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível carregar os documentos.";
+      setDocumentsError(message);
+      setDocuments([]);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedFreight && visibleFreights.length > 0 && selectedFreightId) {
@@ -93,6 +131,16 @@ function FreightsPage() {
     }
     setForm(createFreightFormState(selectedFreight));
   }, [selectedFreight]);
+
+  useEffect(() => {
+    if (!selectedFreight) {
+      setDocuments([]);
+      setDocumentsError(null);
+      return;
+    }
+
+    void refreshFreightDocuments(selectedFreight.id);
+  }, [refreshFreightDocuments, selectedFreight]);
 
   const handleGenerateFreights = () => {
     if (eligibleOrders.length === 0) {
@@ -146,6 +194,37 @@ function FreightsPage() {
 
     upsertFreight(nextFreight);
     toast.success("Dados do frete salvos.");
+  };
+
+  const handleUploadFreightDocument = async ({
+    type,
+    file,
+    notes,
+  }: {
+    type: FreightDocumentType;
+    file: File;
+    notes: string;
+  }) => {
+    if (!selectedFreight) return;
+    const document = await saveFreightDocument({ freight: selectedFreight, type, file, notes });
+    setDocuments((current) => [document, ...current.filter((item) => item.id !== document.id)]);
+    toast.success("Documento do frete anexado.");
+  };
+
+  const handleOpenFreightDocument = async (document: FreightDocumentRecord) => {
+    if (!document.filePath) {
+      toast.info("Este documento foi registrado localmente, sem arquivo salvo no Supabase.");
+      return;
+    }
+
+    try {
+      const url = await getFreightDocumentSignedUrl(document.filePath);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível abrir o documento.";
+      toast.error(message);
+    }
   };
 
   const columns: DataColumn<FreightRecord>[] = [
@@ -236,9 +315,14 @@ function FreightsPage() {
           <FreightDetailsForm
             freight={selectedFreight}
             form={form}
+            documents={documents}
+            documentsLoading={documentsLoading}
+            documentsError={documentsError}
             onChange={updateForm}
             onSave={handleSaveFreightDetails}
             onAdvance={handleAdvanceFreight}
+            onUploadDocument={handleUploadFreightDocument}
+            onOpenDocument={handleOpenFreightDocument}
           />
         </CardContent>
       </Card>
@@ -319,16 +403,35 @@ function FreightsPage() {
 function FreightDetailsForm({
   freight,
   form,
+  documents,
+  documentsLoading,
+  documentsError,
   onChange,
   onSave,
   onAdvance,
+  onUploadDocument,
+  onOpenDocument,
 }: {
   freight?: FreightRecord;
   form: FreightFormState;
+  documents: FreightDocumentRecord[];
+  documentsLoading: boolean;
+  documentsError: string | null;
   onChange: (key: keyof FreightFormState, value: string) => void;
   onSave: () => void;
   onAdvance: (freight: FreightRecord) => void;
+  onUploadDocument: (payload: {
+    type: FreightDocumentType;
+    file: File;
+    notes: string;
+  }) => Promise<void>;
+  onOpenDocument: (document: FreightDocumentRecord) => void;
 }) {
+  const [documentType, setDocumentType] = useState<FreightDocumentType>("contract");
+  const [documentNotes, setDocumentNotes] = useState("");
+  const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
+  const [documentUploading, setDocumentUploading] = useState(false);
+
   if (!freight) {
     return (
       <div className="mt-4 rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
@@ -339,6 +442,46 @@ function FreightDetailsForm({
   }
 
   const canAdvance = freight.status !== "delivered" && freight.status !== "cancelled";
+
+  const handleSelectDocumentFile = (file?: File) => {
+    if (!file) {
+      setSelectedDocumentFile(null);
+      return;
+    }
+
+    const validationMessage = validateFreightDocumentFile(file);
+    if (validationMessage) {
+      toast.error(validationMessage);
+      setSelectedDocumentFile(null);
+      return;
+    }
+
+    setSelectedDocumentFile(file);
+  };
+
+  const handleUploadDocument = async () => {
+    if (!selectedDocumentFile) {
+      toast.info("Selecione um arquivo antes de anexar.");
+      return;
+    }
+
+    setDocumentUploading(true);
+    try {
+      await onUploadDocument({
+        type: documentType,
+        file: selectedDocumentFile,
+        notes: documentNotes,
+      });
+      setSelectedDocumentFile(null);
+      setDocumentNotes("");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível anexar o documento.";
+      toast.error(message);
+    } finally {
+      setDocumentUploading(false);
+    }
+  };
 
   return (
     <div className="mt-4 rounded-2xl border bg-muted/20 p-4">
@@ -425,6 +568,115 @@ function FreightDetailsForm({
         />
       </Field>
 
+      <div className="mt-4 space-y-3 rounded-xl border bg-background/50 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <FileText className="h-4 w-4 text-primary" />
+              Documentos do frete
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Anexe contrato, proposta, nota ou outro documento ligado a este frete.
+            </p>
+          </div>
+          <Badge variant="outline" className="rounded-full">
+            {documents.length} arquivo{documents.length === 1 ? "" : "s"}
+          </Badge>
+        </div>
+
+        {documentsError ? (
+          <p className="rounded-lg border border-warning/30 bg-warning-soft p-3 text-xs text-warning">
+            {documentsError}
+          </p>
+        ) : null}
+
+        <div className="grid gap-3 md:grid-cols-[180px_1fr] xl:grid-cols-[180px_1fr_1.2fr_auto]">
+          <Field label="Tipo">
+            <Select
+              value={documentType}
+              onValueChange={(value) => setDocumentType(value as FreightDocumentType)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(FREIGHT_DOCUMENT_TYPE_LABEL).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Arquivo">
+            <div className="space-y-1">
+              <Input
+                type="file"
+                accept="application/pdf,image/jpeg,image/png"
+                onChange={(event) => handleSelectDocumentFile(event.target.files?.[0])}
+              />
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Upload className="h-3.5 w-3.5" />
+                PDF, JPG ou PNG até 10 MB.
+              </p>
+            </div>
+          </Field>
+          <Field label="Observação">
+            <Input
+              value={documentNotes}
+              onChange={(event) => setDocumentNotes(event.target.value)}
+              placeholder="Ex.: proposta aprovada pela transportadora"
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button disabled={documentUploading} onClick={handleUploadDocument}>
+              <Upload />
+              {documentUploading ? "Anexando..." : "Anexar"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {documentsLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando documentos...</p>
+          ) : null}
+          {!documentsLoading && documents.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              Nenhum documento anexado neste frete.
+            </p>
+          ) : null}
+          {documents.map((document) => (
+            <div
+              key={document.id}
+              className="flex flex-col gap-3 rounded-lg border p-3 text-sm md:flex-row md:items-center md:justify-between"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="rounded-full">
+                    {FREIGHT_DOCUMENT_TYPE_LABEL[document.type]}
+                  </Badge>
+                  <span className="truncate font-medium">{document.fileName}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatDateTime(document.createdAt)}
+                  {document.fileSize ? ` • ${formatBytes(document.fileSize)}` : ""}
+                  {document.notes ? ` • ${document.notes}` : ""}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!document.filePath}
+                onClick={() => onOpenDocument(document)}
+              >
+                <ExternalLink />
+                Abrir
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
         <Button variant="outline" onClick={onSave}>
           <Save />
@@ -488,4 +740,10 @@ function fromDateTimeInput(value: string, fallback: string) {
 function parseDecimalInput(value: string) {
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
