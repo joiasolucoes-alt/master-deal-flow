@@ -121,19 +121,42 @@ function FinancialPage() {
     toast.success("Contas a pagar geradas a partir dos pedidos.");
   };
 
-  const handleMarkAsPaid = (title: FinancialTitle) => {
-    const paidTitle: FinancialTitle = {
+  const handleRegisterPayment = (title: FinancialTitle) => {
+    const remainingAmount = getRemainingAmount(title);
+    if (remainingAmount <= 0) {
+      toast.info("Este título já está totalmente baixado.");
+      return;
+    }
+
+    const value = window.prompt(
+      `Informe o valor da baixa para ${title.titleNumber}. Saldo: ${formatCurrency(remainingAmount)}`,
+      remainingAmount.toFixed(2).replace(".", ","),
+    );
+    if (value === null) return;
+
+    const amount = parseCurrencyInput(value);
+    if (amount <= 0) {
+      toast.error("Informe um valor maior que zero.");
+      return;
+    }
+    if (amount > remainingAmount) {
+      toast.error("O valor da baixa não pode ser maior que o saldo do título.");
+      return;
+    }
+
+    const paidAmount = roundCurrency(title.paidAmount + amount);
+    const updatedTitle: FinancialTitle = {
       ...title,
-      status: "paid",
-      paidAmount: title.amount,
-      paidAt: new Date().toISOString(),
+      paidAmount,
+      paidAt: paidAmount >= title.amount ? new Date().toISOString() : title.paidAt,
     };
-    upsertFinancialTitle(paidTitle);
+    updatedTitle.status = getFinancialTitleStatus(updatedTitle);
+    upsertFinancialTitle(updatedTitle);
 
     if (title.type === "receivable") {
       const relatedTitles = financialTitles
         .filter((item) => item.orderId === title.orderId && item.type === "receivable")
-        .map((item) => (item.id === title.id ? paidTitle : item));
+        .map((item) => (item.id === title.id ? updatedTitle : item));
       const order = orders.find((item) => item.id === title.orderId);
       if (order && relatedTitles.length) {
         upsertOrder(updateOrderBilling(order, relatedTitles));
@@ -141,12 +164,14 @@ function FinancialPage() {
     }
 
     toast.success(
-      title.type === "payable" ? "Conta marcada como paga." : "Conta marcada como recebida.",
+      title.type === "payable"
+        ? "Baixa de pagamento registrada."
+        : "Baixa de recebimento registrada.",
     );
   };
 
-  const receivableColumns = buildFinancialColumns("Cliente", "Recebido", handleMarkAsPaid);
-  const payableColumns = buildFinancialColumns("Favorecido", "Pago", handleMarkAsPaid);
+  const receivableColumns = buildFinancialColumns("Cliente", "Recebido", handleRegisterPayment);
+  const payableColumns = buildFinancialColumns("Favorecido", "Pago", handleRegisterPayment);
 
   return (
     <div className="space-y-6">
@@ -278,7 +303,7 @@ function FinancialPage() {
 function buildFinancialColumns(
   partyLabel: string,
   paidLabel: string,
-  onMarkAsPaid: (title: FinancialTitle) => void,
+  onRegisterPayment: (title: FinancialTitle) => void,
 ): DataColumn<FinancialTitle>[] {
   return [
     {
@@ -302,6 +327,12 @@ function buildFinancialColumns(
       cell: (r) => formatCurrency(r.paidAmount),
     },
     {
+      key: "remaining",
+      header: "Saldo",
+      className: "text-right",
+      cell: (r) => <span className="font-medium">{formatCurrency(getRemainingAmount(r))}</span>,
+    },
+    {
       key: "status",
       header: "Status",
       cell: (r) => <StatusBadge status={getStatusLabel(r.status)} />,
@@ -317,7 +348,7 @@ function buildFinancialColumns(
           disabled={r.status === "paid" || r.status === "cancelled"}
           onClick={(event) => {
             event.stopPropagation();
-            onMarkAsPaid(r);
+            onRegisterPayment(r);
           }}
         >
           <CheckCircle2 />
@@ -413,6 +444,25 @@ function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
     billingProgress,
     status,
   };
+}
+
+function getRemainingAmount(title: FinancialTitle) {
+  return Math.max(0, roundCurrency(title.amount - title.paidAmount));
+}
+
+function parseCurrencyInput(value: string) {
+  const normalized = value
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/[R$]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? roundCurrency(parsed) : 0;
+}
+
+function roundCurrency(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 function buildCashflow(titles: FinancialTitle[]) {
