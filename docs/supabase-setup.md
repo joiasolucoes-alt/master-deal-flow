@@ -60,6 +60,18 @@ Nesta primeira onda, as politicas permitem leitura, criacao e edicao para usuari
 
 As regras por perfil, unidade e responsavel serao refinadas depois.
 
+## Cadastro de novos usuarios
+
+A tela de login permite criar conta com e-mail e senha. O usuario novo nasce como Comercial.
+
+Para esse fluxo funcionar no Supabase, rode tambem:
+
+```text
+supabase/manual-sql/014_self_signup_commercial_access.sql
+```
+
+Se a regra desejada for criar a conta e entrar imediatamente, desative a confirmacao obrigatoria de e-mail em Authentication > Providers > Email no painel do Supabase. Se a confirmacao estiver ligada, a conta e criada, mas o acesso so acontece depois da confirmacao.
+
 ## 6. Scripts manuais da Onda 1.1
 
 Nao aplique migrations automaticamente no banco real durante a homologacao. Use o SQL Editor do Supabase e rode, nesta ordem:
@@ -68,6 +80,7 @@ Nao aplique migrations automaticamente no banco real durante a homologacao. Use 
 1. supabase/manual-sql/001_approval_workflow_hardening.sql
 2. supabase/manual-sql/002_catalog_crud_support.sql
 3. supabase/manual-sql/003_basic_rls_for_homologation.sql
+4. supabase/manual-sql/014_self_signup_commercial_access.sql
 ```
 
 Cada arquivo possui cabecalho com objetivo, risco, validacao e reversao sugerida.

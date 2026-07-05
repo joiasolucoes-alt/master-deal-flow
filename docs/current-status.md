@@ -5,6 +5,7 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 ## Pronto para validar
 
 - Login com Supabase Auth iniciado, com fallback local.
+- Cadastro de novo usuário pelo login, criando conta no Supabase e perfil inicial Comercial.
 - Dashboard e navegação principal.
 - Central de simulações.
 - Criação, edição, rascunho e duplicação de simulações.
@@ -58,3 +59,4 @@ Nenhum SQL foi aplicado automaticamente. Scripts para execução manual:
 9. `supabase/manual-sql/011_wave_2_delivery_proof_uploads.sql`
 10. `supabase/manual-sql/012_wave_1_3_realized_results.sql`
 11. `supabase/manual-sql/013_wave_1_3_commission_approval.sql`
+12. `supabase/manual-sql/014_self_signup_commercial_access.sql`

@@ -20,8 +20,9 @@ const loginHighlights = [
 ] as const;
 
 function LoginPage() {
-  const { login, auth, hydrated } = useAppContext();
+  const { login, registerUser, auth, hydrated } = useAppContext();
   const navigate = useNavigate();
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -93,11 +94,15 @@ function LoginPage() {
 
             setIsSubmitting(true);
             try {
-              const result = await login(email, password);
+              const result =
+                mode === "login"
+                  ? await login(email, password)
+                  : await registerUser({ email, password });
               if (!result.ok) {
                 toast.error(result.message);
                 return;
               }
+              if (mode === "signup") toast.success("Conta criada com perfil Comercial.");
               navigate({ to: "/dashboard" });
             } finally {
               setIsSubmitting(false);
@@ -110,8 +115,35 @@ function LoginPage() {
               Bem-vindo MasterFlow
             </h1>
             <p className="text-sm text-muted-foreground">
-              Acesse sua conta para continuar gerenciando suas negociações.
+              {mode === "login"
+                ? "Acesse sua conta para continuar gerenciando suas negociações."
+                : "Crie sua conta Comercial para começar a usar o Master Flow."}
             </p>
+          </div>
+
+          <div className="grid grid-cols-2 rounded-lg border border-border bg-muted/20 p-1">
+            <button
+              type="button"
+              onClick={() => setMode("login")}
+              className={`rounded-md px-4 py-2 text-sm font-semibold transition ${
+                mode === "login"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Entrar
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("signup")}
+              className={`rounded-md px-4 py-2 text-sm font-semibold transition ${
+                mode === "signup"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Criar conta
+            </button>
           </div>
 
           <div className="space-y-4">
@@ -135,7 +167,7 @@ function LoginPage() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
                   required
                 />
                 <button
@@ -149,25 +181,33 @@ function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox checked={remember} onCheckedChange={(v) => setRemember(Boolean(v))} />
-                Manter conectado
-              </label>
-              <button
-                type="button"
-                onClick={() => notifyActionUnavailable("Recuperação de senha")}
-                className="text-sm font-medium text-primary hover:underline"
-              >
-                Esqueci minha senha
-              </button>
-            </div>
+            {mode === "login" ? (
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox checked={remember} onCheckedChange={(v) => setRemember(Boolean(v))} />
+                  Manter conectado
+                </label>
+                <button
+                  type="button"
+                  onClick={() => notifyActionUnavailable("Recuperação de senha")}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {auth.accessError ? <p className="text-sm text-destructive">{auth.accessError}</p> : null}
 
           <Button type="submit" className="h-12 w-full text-base" disabled={isSubmitting}>
-            {isSubmitting ? "Autenticando..." : "Entrar"}
+            {isSubmitting
+              ? mode === "login"
+                ? "Autenticando..."
+                : "Criando conta..."
+              : mode === "login"
+                ? "Entrar"
+                : "Criar conta"}
           </Button>
 
           <p className="text-center text-xs text-muted-foreground">

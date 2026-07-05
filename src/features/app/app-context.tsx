@@ -97,10 +97,10 @@ interface AppContextValue {
   users: User[];
   login: (email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
   refreshUserContext: (session?: Session | null) => Promise<void>;
-  registerUser: (payload: { name: string; email: string; password: string }) => {
+  registerUser: (payload: { email: string; password: string }) => Promise<{
     ok: boolean;
-    message: string;
-  };
+    message?: string;
+  }>;
   updateCurrentProfile: (payload: { name: string }) => Promise<{ ok: boolean; message?: string }>;
   updateUserAccess: (
     id: string,
@@ -149,6 +149,7 @@ const DATABASE_ROLE_BY_APP_ROLE: Record<UserRole, string> = {
   Financeiro: "financeiro",
   Admin: "admin",
 };
+const DEFAULT_SIGNUP_ROLE = "comercial";
 
 function getInitials(name: string, email: string) {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -533,6 +534,11 @@ async function loadUserMemberships(
   );
 }
 
+async function registerCurrentUserAsCommercial(client: SupabaseClient) {
+  const { error } = await client.rpc("register_current_user_as_comercial");
+  if (error) throw error;
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const authBootstrapStartedRef = useRef(false);
@@ -724,12 +730,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        const activeMemberships = rpcContext?.memberships.length
+        let activeMemberships = rpcContext?.memberships.length
           ? rpcContext.memberships
           : await withTimeout(
               loadUserMemberships(client, supabaseUser, profile as AuthProfile | null),
               "Não foi possível carregar suas permissões no tempo esperado.",
             );
+
+        if (activeMemberships.length === 0) {
+          try {
+            await withTimeout(
+              registerCurrentUserAsCommercial(client),
+              "Não foi possível criar o acesso Comercial no tempo esperado.",
+            );
+            activeMemberships = await withTimeout(
+              loadUserMemberships(client, supabaseUser, profile as AuthProfile | null),
+              "Não foi possível carregar suas permissões após o cadastro.",
+            );
+          } catch (error) {
+            console.error("Falha ao vincular usuário como Comercial.", error);
+          }
+        }
+
         if (
           activeMemberships.some((membership) => normalizeDatabaseRole(membership.role) === "admin")
         ) {
@@ -1032,11 +1054,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: false, message: "Erro de conexão com Supabase." };
   };
 
-  const registerUser = (_payload: { name: string; email: string; password: string }) => ({
-    ok: false,
-    message:
-      "Cadastro local desativado. Solicite a criação do usuário no Supabase Auth ao administrador.",
-  });
+  const registerUser = async (payload: { email: string; password: string }) => {
+    const normalizedEmail = payload.email.trim().toLowerCase();
+    const password = payload.password.trim();
+
+    if (!normalizedEmail || !password) {
+      return { ok: false, message: "E-mail e senha são obrigatórios." };
+    }
+
+    if (password.length < 6) {
+      return { ok: false, message: "A senha precisa ter pelo menos 6 caracteres." };
+    }
+
+    const config = getSupabaseConfigStatus();
+    const client = config.configured ? getSupabaseClient() : null;
+    if (!client) {
+      return { ok: false, message: "Supabase não configurado para criar conta." };
+    }
+
+    setAuth((current) => ({ ...current, isLoading: true, accessError: null }));
+    const displayName = normalizedEmail.split("@")[0] || "Usuário";
+
+    try {
+      const { data, error } = await withTimeout(
+        client.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: {
+              full_name: displayName,
+              role: DEFAULT_SIGNUP_ROLE,
+            },
+          },
+        }),
+        "O cadastro demorou mais que o esperado. Verifique a conexão e tente novamente.",
+      );
+
+      if (error) {
+        clearAuthContext();
+        return { ok: false, message: error.message || "Não foi possível criar a conta." };
+      }
+
+      if (!data.session) {
+        clearAuthContext();
+        return {
+          ok: false,
+          message:
+            "Conta criada, mas o Supabase está exigindo confirmação de e-mail antes do primeiro acesso.",
+        };
+      }
+
+      await registerCurrentUserAsCommercial(client);
+      await refreshUserContext(data.session);
+      return { ok: true };
+    } catch (error) {
+      console.error("Falha ao cadastrar usuário no Supabase.", error);
+      clearAuthContext();
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Não foi possível criar a conta.",
+      };
+    }
+  };
 
   const updateUserAccess = async (
     id: string,
@@ -1062,15 +1141,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
 
         if (organizationIds.length) {
-          const { error: membershipError } = await client
-            .from("organization_members")
-            .update({ role: DATABASE_ROLE_BY_APP_ROLE[payload.role], updated_at: now })
-            .eq("user_id", id)
-            .in("organization_id", organizationIds);
+          const databaseRole = DATABASE_ROLE_BY_APP_ROLE[payload.role];
 
-          if (membershipError) {
-            console.error("Falha ao atualizar perfil do usuário no Supabase.", membershipError);
-            return { ok: false, message: "Não foi possível atualizar o perfil no Supabase." };
+          for (const organizationId of organizationIds) {
+            const { data: existingMembership, error: membershipLoadError } = await client
+              .from("organization_members")
+              .select("id")
+              .eq("user_id", id)
+              .eq("organization_id", organizationId)
+              .maybeSingle();
+
+            if (membershipLoadError) {
+              console.error(
+                "Falha ao consultar perfil do usuário no Supabase.",
+                membershipLoadError,
+              );
+              return { ok: false, message: "Não foi possível consultar o perfil no Supabase." };
+            }
+
+            const membershipResult = existingMembership?.id
+              ? await client
+                  .from("organization_members")
+                  .update({ role: databaseRole, updated_at: now })
+                  .eq("id", existingMembership.id)
+              : await client.from("organization_members").insert({
+                  organization_id: organizationId,
+                  user_id: id,
+                  role: databaseRole,
+                  unit_id: null,
+                  updated_at: now,
+                });
+
+            if (membershipResult.error) {
+              console.error(
+                "Falha ao atualizar perfil do usuário no Supabase.",
+                membershipResult.error,
+              );
+              return { ok: false, message: "Não foi possível atualizar o perfil no Supabase." };
+            }
           }
         }
       }
