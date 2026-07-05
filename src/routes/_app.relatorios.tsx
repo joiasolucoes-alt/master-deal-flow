@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Bar,
@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import {
   BadgeDollarSign,
+  CheckCircle2,
   Download,
   FileText,
   Percent,
@@ -23,18 +24,20 @@ import {
   Share2,
   WalletCards,
 } from "lucide-react";
+import { toast } from "sonner";
 import { DataTable, type DataColumn } from "@/components/app/data-table";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCompactCurrency, formatCurrency, formatPercent } from "@/lib/format";
+import { formatCompactCurrency, formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { downloadTextFile, notifyActionUnavailable } from "@/lib/actions";
 import { useAppContext } from "@/features/app/app-context";
 import { useAppStore } from "@/store/useAppStore";
 import { getSimulationTotals } from "@/lib/calculations";
 import {
   buildRealizedResults,
+  createClosedRealizedResultRecord,
   summarizeRealizedResults,
   type RealizedOrderResult,
 } from "@/features/results/realizedResult";
@@ -79,7 +82,16 @@ const pieColors = [
 ];
 
 function ReportsPage() {
-  const { auth, simulations, orders, financialTitles, freights, deliveries } = useAppContext();
+  const {
+    auth,
+    simulations,
+    orders,
+    financialTitles,
+    realizedResults: closedRealizedResults,
+    freights,
+    deliveries,
+    upsertRealizedResult,
+  } = useAppContext();
   const negotiations = useAppStore((store) => store.negotiations);
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, auth.user),
@@ -140,6 +152,28 @@ function ReportsPage() {
   const realizedSummary = useMemo(
     () => summarizeRealizedResults(realizedResults),
     [realizedResults],
+  );
+  const closedResultByOrderId = useMemo(
+    () => new Map(closedRealizedResults.map((result) => [result.orderId, result])),
+    [closedRealizedResults],
+  );
+  const canCloseResults = auth.user?.role === "Admin" || auth.user?.role === "Financeiro";
+  const handleCloseResult = useCallback(
+    (result: RealizedOrderResult) => {
+      if (!canCloseResults) {
+        toast.error("Somente Admin ou Financeiro pode fechar resultado.");
+        return;
+      }
+
+      if (!result.deliveryCompleted || !result.financialCompleted) {
+        toast.error("Para fechar, o pedido precisa estar entregue e financeiro quitado.");
+        return;
+      }
+
+      upsertRealizedResult(createClosedRealizedResultRecord(result, auth.user?.name));
+      toast.success(`Resultado do pedido ${result.orderNumber} fechado.`);
+    },
+    [auth.user?.name, canCloseResults, upsertRealizedResult],
   );
   const realizedColumns = useMemo<DataColumn<RealizedOrderResult>[]>(
     () => [
@@ -203,10 +237,48 @@ function ReportsPage() {
       {
         key: "status",
         header: "Fechamento",
-        cell: (result) => result.closingStatus,
+        cell: (result) => {
+          const closedResult = closedResultByOrderId.get(result.orderId);
+          if (closedResult?.status === "closed") {
+            return (
+              <div className="space-y-1">
+                <p className="font-semibold text-success">Fechado</p>
+                {closedResult.closedAt ? (
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(closedResult.closedAt)}
+                  </p>
+                ) : null}
+              </div>
+            );
+          }
+
+          return result.closingStatus;
+        },
+      },
+      {
+        key: "actions",
+        header: "",
+        className: "text-right",
+        cell: (result) => {
+          const closedResult = closedResultByOrderId.get(result.orderId);
+          const alreadyClosed = closedResult?.status === "closed";
+          const readyToClose = result.deliveryCompleted && result.financialCompleted;
+
+          return (
+            <Button
+              variant={alreadyClosed ? "outline" : "default"}
+              size="sm"
+              disabled={alreadyClosed || !canCloseResults || !readyToClose}
+              onClick={() => handleCloseResult(result)}
+            >
+              <CheckCircle2 />
+              {alreadyClosed ? "Fechado" : "Fechar"}
+            </Button>
+          );
+        },
       },
     ],
-    [],
+    [canCloseResults, closedResultByOrderId, handleCloseResult],
   );
 
   function exportReports() {

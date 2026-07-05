@@ -242,6 +242,38 @@ export interface FinancialTitle {
   paidAt?: string;
 }
 
+export type RealizedResultStatus = "draft" | "in_progress" | "closed" | "cancelled";
+
+export interface RealizedResultRecord {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  client: string;
+  owner: string;
+  unit: string;
+  status: RealizedResultStatus;
+  orderTotal: number;
+  realizedRevenueTotal: number;
+  receivableOpenTotal: number;
+  costBookedTotal: number;
+  costPaidTotal: number;
+  commissionPercent: number;
+  commissionTotal: number;
+  realizedProfit: number;
+  projectedNetResult: number;
+  predictedMarginPercent: number;
+  realizedMarginPercent: number;
+  marginDeltaPercent: number;
+  billingProgress: number;
+  paymentProgress: number;
+  deliveryCompleted: boolean;
+  financialCompleted: boolean;
+  closedAt?: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type FreightStatus = "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled";
 
 export interface FreightRecord {

@@ -20,6 +20,7 @@ import type {
   NotificationItem,
   Order,
   Product,
+  RealizedResultRecord,
   Simulation,
   Supplier,
 } from "@/data/types";
@@ -34,6 +35,7 @@ export type AppStore = AppStoreState & {
   setSimulations: (value: Simulation[]) => void;
   setOrders: (value: Order[]) => void;
   setFinancialTitles: (value: FinancialTitle[]) => void;
+  setRealizedResults: (value: RealizedResultRecord[]) => void;
   setFreights: (value: FreightRecord[]) => void;
   setDeliveries: (value: DeliveryRecord[]) => void;
   setClients: (value: Client[]) => void;
@@ -42,6 +44,7 @@ export type AppStore = AppStoreState & {
   upsertSimulation: (simulation: Simulation, audit?: AuditEvent) => void;
   upsertOrder: (order: Order, audit?: AuditEvent) => void;
   upsertFinancialTitle: (title: FinancialTitle, audit?: AuditEvent) => void;
+  upsertRealizedResult: (result: RealizedResultRecord, audit?: AuditEvent) => void;
   upsertFreight: (freight: FreightRecord, audit?: AuditEvent) => void;
   upsertDelivery: (delivery: DeliveryRecord, audit?: AuditEvent) => void;
   upsertClient: (client: Client) => void;
@@ -59,6 +62,7 @@ type PersistedState = Omit<
   | "setSimulations"
   | "setOrders"
   | "setFinancialTitles"
+  | "setRealizedResults"
   | "setFreights"
   | "setDeliveries"
   | "setClients"
@@ -67,6 +71,7 @@ type PersistedState = Omit<
   | "upsertSimulation"
   | "upsertOrder"
   | "upsertFinancialTitle"
+  | "upsertRealizedResult"
   | "upsertFreight"
   | "upsertDelivery"
   | "upsertClient"
@@ -85,6 +90,7 @@ function baseState(): PersistedState {
     negotiations,
     orders,
     financialTitles,
+    realizedResults: [],
     freights,
     deliveries,
     clients,
@@ -172,6 +178,8 @@ const storeActions = {
   setOrders: (value: Order[]) => setState((current) => ({ ...current, orders: value })),
   setFinancialTitles: (value: FinancialTitle[]) =>
     setState((current) => ({ ...current, financialTitles: value })),
+  setRealizedResults: (value: RealizedResultRecord[]) =>
+    setState((current) => ({ ...current, realizedResults: value })),
   setFreights: (value: FreightRecord[]) => setState((current) => ({ ...current, freights: value })),
   setDeliveries: (value: DeliveryRecord[]) =>
     setState((current) => ({ ...current, deliveries: value })),
@@ -200,6 +208,14 @@ const storeActions = {
       financialTitles: current.financialTitles.some((item) => item.id === title.id)
         ? current.financialTitles.map((item) => (item.id === title.id ? title : item))
         : [title, ...current.financialTitles],
+      auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
+    })),
+  upsertRealizedResult: (result: RealizedResultRecord, audit?: AuditEvent) =>
+    setState((current) => ({
+      ...current,
+      realizedResults: current.realizedResults.some((item) => item.id === result.id)
+        ? current.realizedResults.map((item) => (item.id === result.id ? result : item))
+        : [result, ...current.realizedResults],
       auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
     })),
   upsertFreight: (freight: FreightRecord, audit?: AuditEvent) =>

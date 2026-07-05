@@ -349,6 +349,19 @@ function buildRealizedResult({ order, simulation, financialTitles = [], freights
   };
 }
 
+function createClosedRealizedResultRecord(result, closedBy = "Sistema") {
+  return {
+    id: `realized-${result.orderId}`,
+    orderId: result.orderId,
+    orderNumber: result.orderNumber,
+    status: "closed",
+    realizedRevenueTotal: result.realizedRevenueTotal,
+    realizedProfit: result.realizedProfit,
+    realizedMarginPercent: result.realizedMarginPercent,
+    notes: `Fechamento registrado por ${closedBy}.`,
+  };
+}
+
 function transitionSimulation(simulation, status, extra = {}) {
   return { ...simulation, status, ...extra };
 }
@@ -662,6 +675,13 @@ assert.equal(realizedResult.costPaidTotal, 600);
 assert.equal(realizedResult.commissionTotal, 25);
 assert.equal(realizedResult.realizedProfit, 375);
 assert.equal(Math.round(realizedResult.realizedMarginPercent * 100), 3750);
+const closedRealizedResult = createClosedRealizedResultRecord(
+  { ...realizedResult, orderId: "ord-realized-1", orderNumber: "PED REAL 1" },
+  "Financeiro",
+);
+assert.equal(closedRealizedResult.id, "realized-ord-realized-1");
+assert.equal(closedRealizedResult.status, "closed");
+assert.equal(closedRealizedResult.orderNumber, "PED REAL 1");
 
 function requireSupabaseConfig(configured) {
   if (!configured) throw new Error("Supabase não está configurado.");

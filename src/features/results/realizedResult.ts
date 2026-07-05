@@ -3,6 +3,7 @@ import type {
   FinancialTitle,
   FreightRecord,
   Order,
+  RealizedResultRecord,
   Simulation,
 } from "@/data/types";
 import { getSimulationTotals } from "@/lib/calculations";
@@ -88,6 +89,42 @@ export function summarizeRealizedResults(results: RealizedOrderResult[]): Realiz
     averagePredictedMarginPercent: weightedPredictedMargin,
     averageRealizedMarginPercent,
     completedOrders: results.filter((result) => result.closingStatus === "Concluído").length,
+  };
+}
+
+export function createClosedRealizedResultRecord(
+  result: RealizedOrderResult,
+  closedBy = "Sistema",
+): RealizedResultRecord {
+  const now = new Date().toISOString();
+  return {
+    id: `realized-${result.orderId}`,
+    orderId: result.orderId,
+    orderNumber: result.orderNumber,
+    client: result.client,
+    owner: result.owner,
+    unit: result.unit,
+    status: "closed",
+    orderTotal: result.orderTotal,
+    realizedRevenueTotal: result.realizedRevenueTotal,
+    receivableOpenTotal: result.receivableOpenTotal,
+    costBookedTotal: result.costBookedTotal,
+    costPaidTotal: result.costPaidTotal,
+    commissionPercent: result.commissionPercent,
+    commissionTotal: result.commissionTotal,
+    realizedProfit: result.realizedProfit,
+    projectedNetResult: result.projectedNetResult,
+    predictedMarginPercent: result.predictedMarginPercent,
+    realizedMarginPercent: result.realizedMarginPercent,
+    marginDeltaPercent: result.marginDeltaPercent,
+    billingProgress: result.billingProgress,
+    paymentProgress: result.paymentProgress,
+    deliveryCompleted: result.deliveryCompleted,
+    financialCompleted: result.financialCompleted,
+    closedAt: now,
+    notes: `Fechamento registrado por ${closedBy}.`,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 

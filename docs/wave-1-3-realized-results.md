@@ -13,6 +13,7 @@ Mostrar o resultado real da operação depois que o pedido começa a movimentar 
 - Lucro realizado: receita recebida menos custos pagos e comissão estimada.
 - Margem realizada e comparação com a margem prevista da simulação.
 - Status de fechamento por pedido: em andamento, em fechamento ou concluído.
+- Fechamento oficial do resultado por pedido, liberado para Admin e Financeiro.
 
 ## SQL
 
@@ -20,7 +21,7 @@ Execute no Supabase:
 
 `supabase/manual-sql/012_wave_1_3_realized_results.sql`
 
-Esse SQL prepara a tabela `realized_results` para armazenamento futuro dos fechamentos.
+Esse SQL prepara a tabela `realized_results` para armazenar os fechamentos oficiais.
 
 ## Como validar
 
@@ -29,6 +30,7 @@ Esse SQL prepara a tabela `realized_results` para armazenamento futuro dos fecha
 3. Na tabela "Resultado realizado por pedido", compare margem real com margem prevista.
 4. Dê baixa em contas a receber e contas a pagar no Financeiro.
 5. Volte em Relatórios e veja se lucro e margem realizada mudam.
+6. Quando entrega e financeiro estiverem concluídos, use "Fechar" para gravar o resultado oficial.
 
 ## Ainda não incluso
 
@@ -36,4 +38,4 @@ Esse SQL prepara a tabela `realized_results` para armazenamento futuro dos fecha
 - Fechamento contábil definitivo.
 - Conciliação bancária.
 - Travamento de resultado fechado.
-- Gravação automática do resultado calculado na tabela `realized_results`.
+- Reabertura controlada de resultado fechado.
