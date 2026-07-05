@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   FileCheck2,
   History,
+  Upload,
+  ExternalLink,
   MapPin,
   Plus,
   Save,
@@ -29,6 +31,11 @@ import {
   getNextDeliveryStatus,
   updateOrderFromDelivery,
 } from "@/features/deliveries/deliveryHelpers";
+import {
+  getDeliveryProofSignedUrl,
+  uploadDeliveryProofFile,
+  validateDeliveryProofFile,
+} from "@/features/deliveries/deliveryProofStorage";
 import { formatDateTime } from "@/lib/format";
 import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
@@ -76,9 +83,7 @@ function DeliveriesPage() {
     (delivery) => delivery.status === "issue" || getOccurrences(delivery).length > 0,
   );
   const proofPending = delivered.filter((delivery) => !delivery.proofRegisteredAt);
-  const actionableDeliveries = visibleDeliveries.filter(
-    (delivery) => delivery.status !== "delivered" || !delivery.proofRegisteredAt,
-  );
+  const actionableDeliveries = visibleDeliveries;
 
   const handleGenerateDeliveries = () => {
     if (eligibleFreights.length === 0) {
@@ -163,10 +168,25 @@ function DeliveriesPage() {
       DeliveryRecord,
       "proofDocumentNumber" | "proofFileName" | "proofReceivedBy" | "proofNotes"
     >,
+    file?: File,
   ) => {
+    return saveProofWithOptionalUpload(delivery, proof, file);
+  };
+
+  const saveProofWithOptionalUpload = async (
+    delivery: DeliveryRecord,
+    proof: Pick<
+      DeliveryRecord,
+      "proofDocumentNumber" | "proofFileName" | "proofReceivedBy" | "proofNotes"
+    >,
+    file?: File,
+  ) => {
+    const upload = file ? await uploadDeliveryProofFile({ deliveryId: delivery.id, file }) : null;
     const nextDelivery: DeliveryRecord = {
       ...delivery,
       ...proof,
+      ...(upload ?? {}),
+      proofFileName: upload?.proofFileName ?? proof.proofFileName,
       status: "delivered",
       currentLocation: "Entrega concluída",
       deliveredAt: delivery.deliveredAt ?? new Date().toISOString(),
@@ -261,7 +281,8 @@ function DeliveryCard({
       DeliveryRecord,
       "proofDocumentNumber" | "proofFileName" | "proofReceivedBy" | "proofNotes"
     >,
-  ) => void;
+    file?: File,
+  ) => Promise<void>;
 }) {
   const progress = getDeliveryProgress(delivery.status);
   const [proofOpen, setProofOpen] = useState(Boolean(delivery.proofRegisteredAt));
@@ -271,24 +292,69 @@ function DeliveryCard({
   const [proofFileName, setProofFileName] = useState(delivery.proofFileName ?? "");
   const [proofReceivedBy, setProofReceivedBy] = useState(delivery.proofReceivedBy ?? "");
   const [proofNotes, setProofNotes] = useState(delivery.proofNotes ?? "");
+  const [selectedProofFile, setSelectedProofFile] = useState<File | null>(null);
+  const [proofUploading, setProofUploading] = useState(false);
   const [occurrenceOpen, setOccurrenceOpen] = useState(false);
   const [occurrenceType, setOccurrenceType] = useState("Ocorrência operacional");
   const [occurrenceLocation, setOccurrenceLocation] = useState(delivery.currentLocation ?? "");
   const [occurrenceDescription, setOccurrenceDescription] = useState("");
   const proofReady = delivery.status === "delivered";
 
-  const handleSubmitProof = () => {
+  const handleSubmitProof = async () => {
     if (!proofReceivedBy.trim() && !proofDocumentNumber.trim() && !proofFileName.trim()) {
       toast.info("Informe ao menos recebedor, número do canhoto ou referência do arquivo.");
       return;
     }
 
-    onSaveProof(delivery, {
-      proofDocumentNumber: proofDocumentNumber.trim(),
-      proofFileName: proofFileName.trim(),
-      proofReceivedBy: proofReceivedBy.trim(),
-      proofNotes: proofNotes.trim(),
-    });
+    setProofUploading(true);
+    try {
+      await onSaveProof(
+        delivery,
+        {
+          proofDocumentNumber: proofDocumentNumber.trim(),
+          proofFileName: proofFileName.trim(),
+          proofReceivedBy: proofReceivedBy.trim(),
+          proofNotes: proofNotes.trim(),
+        },
+        selectedProofFile ?? undefined,
+      );
+      setSelectedProofFile(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível anexar o comprovante.";
+      toast.error(message);
+    } finally {
+      setProofUploading(false);
+    }
+  };
+
+  const handleSelectProofFile = (file?: File) => {
+    if (!file) {
+      setSelectedProofFile(null);
+      return;
+    }
+
+    const validationMessage = validateDeliveryProofFile(file);
+    if (validationMessage) {
+      toast.error(validationMessage);
+      setSelectedProofFile(null);
+      return;
+    }
+
+    setSelectedProofFile(file);
+    setProofFileName(file.name);
+  };
+
+  const handleOpenProofFile = async () => {
+    if (!delivery.proofFilePath) return;
+    try {
+      const url = await getDeliveryProofSignedUrl(delivery.proofFilePath);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível abrir o comprovante.";
+      toast.error(message);
+    }
   };
 
   const handleSubmitOccurrence = () => {
@@ -378,7 +444,23 @@ function DeliveryCard({
                 : "Recebedor não informado"}
               {delivery.proofDocumentNumber ? ` • Doc. ${delivery.proofDocumentNumber}` : ""}
             </p>
-            {delivery.proofFileName ? <p>Referência: {delivery.proofFileName}</p> : null}
+            {delivery.proofFileName ? (
+              <p>
+                Referência: {delivery.proofFileName}
+                {delivery.proofFileSize ? ` • ${formatBytes(delivery.proofFileSize)}` : ""}
+              </p>
+            ) : null}
+            {delivery.proofFilePath ? (
+              <Button
+                className="mt-2 h-8"
+                variant="outline"
+                size="sm"
+                onClick={handleOpenProofFile}
+              >
+                <ExternalLink />
+                Abrir arquivo
+              </Button>
+            ) : null}
           </div>
         ) : null}
         <div className="grid gap-2 sm:grid-cols-3">
@@ -497,6 +579,19 @@ function DeliveryCard({
                   placeholder="Ex.: canhoto-ped-3866.pdf"
                 />
               </ProofField>
+              <ProofField label="Arquivo">
+                <div className="space-y-2">
+                  <Input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png"
+                    onChange={(event) => handleSelectProofFile(event.target.files?.[0])}
+                  />
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Upload className="h-3.5 w-3.5" />
+                    PDF, JPG ou PNG até 8 MB.
+                  </p>
+                </div>
+              </ProofField>
               <div className="md:col-span-2">
                 <ProofField label="Observações">
                   <Textarea
@@ -508,9 +603,9 @@ function DeliveryCard({
                 </ProofField>
               </div>
               <div className="md:col-span-2">
-                <Button size="sm" onClick={handleSubmitProof}>
+                <Button size="sm" disabled={proofUploading} onClick={handleSubmitProof}>
                   <Save />
-                  Salvar canhoto
+                  {proofUploading ? "Salvando..." : "Salvar canhoto"}
                 </Button>
               </div>
             </div>
@@ -553,6 +648,12 @@ function createOccurrence({
 
 function getOccurrences(delivery: DeliveryRecord) {
   return delivery.occurrences ?? [];
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function getNextLocation(status: DeliveryRecord["status"]) {

@@ -23,6 +23,7 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 - Avanço de entrega e registro simples de ocorrência.
 - Registro de canhoto/comprovante na entrega com recebedor, documento, referência de arquivo e observação.
 - Histórico detalhado de ocorrências de entrega com tipo, local, responsável, data e descrição.
+- Upload real de arquivo de comprovante/canhoto no Supabase Storage.
 - Cálculos da planilha 374 no frontend.
 - Persistência opcional com Supabase via `VITE_DATA_PROVIDER=supabase`.
 - CRUD básico de clientes, fornecedores e produtos em Configurações.
@@ -32,10 +33,10 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 
 - O modo local continua como fallback e para testes offline.
 - RLS por perfil/unidade/responsável ainda deve ser refinado no banco.
-- Upload real de comprovante, comissão e lucro realizado ficam para próximas ondas.
+- Comissão e lucro realizado ficam para próximas ondas.
 - Financeiro ainda está na primeira versão: não há conciliação bancária, baixa parcial manual ou integração com banco.
 - Frete ainda está na primeira versão: não há cotação real com transportadoras, cálculo de tabela ou comprovantes.
-- Entrega ainda está na primeira versão: há registro do canhoto, mas ainda não há upload real de arquivo, assinatura digital ou rastreamento externo.
+- Entrega ainda está na primeira versão: há upload de canhoto, mas ainda não há assinatura digital ou rastreamento externo.
 - Notificações são básicas e ainda não têm uma central dedicada.
 
 ## SQL manual
@@ -50,3 +51,4 @@ Nenhum SQL foi aplicado automaticamente. Scripts para execução manual:
 6. `supabase/manual-sql/006_wave_2_deliveries.sql`
 7. `supabase/manual-sql/009_wave_2_delivery_proofs.sql`
 8. `supabase/manual-sql/010_wave_2_delivery_occurrences.sql`
+9. `supabase/manual-sql/011_wave_2_delivery_proof_uploads.sql`

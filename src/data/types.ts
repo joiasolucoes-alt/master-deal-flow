@@ -301,6 +301,9 @@ export interface DeliveryRecord {
   proofNotes: string;
   proofDocumentNumber?: string;
   proofFileName?: string;
+  proofFilePath?: string;
+  proofFileSize?: number;
+  proofMimeType?: string;
   proofReceivedBy?: string;
   proofRegisteredAt?: string;
   occurrenceNotes: string;

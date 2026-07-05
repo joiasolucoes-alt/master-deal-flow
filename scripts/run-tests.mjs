@@ -226,6 +226,9 @@ function createDeliveryFromFreight(freight) {
     proofNotes: "",
     proofDocumentNumber: "",
     proofFileName: "",
+    proofFilePath: "",
+    proofFileSize: undefined,
+    proofMimeType: "",
     proofReceivedBy: "",
     proofRegisteredAt: undefined,
     occurrenceNotes: "",
@@ -567,11 +570,15 @@ const proofDelivery = registerDeliveryProof(
     proofReceivedBy: "Maria Cliente",
     proofDocumentNumber: "NF 587102",
     proofFileName: "canhoto-ped-frete-1.pdf",
+    proofFilePath: "delivery-freight-ord-freight-1/file.pdf",
+    proofFileSize: 2048,
+    proofMimeType: "application/pdf",
     proofNotes: "Entrega conferida sem ressalva.",
   },
 );
 assert.equal(proofDelivery.status, "delivered");
 assert.equal(proofDelivery.proofReceivedBy, "Maria Cliente");
+assert.equal(proofDelivery.proofFilePath, "delivery-freight-ord-freight-1/file.pdf");
 assert.equal(proofDelivery.proofRegisteredAt, "2026-07-04T12:00:00-03:00");
 const occurrenceDelivery = registerDeliveryOccurrence(delivery, {
   type: "Cliente ausente",

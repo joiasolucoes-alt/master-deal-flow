@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureSupabaseSession, getSupabaseClient } from "@/lib/supabaseClient";
 import {
   deliveryToLegacyRow,
+  deliveryToProofUploadLegacyRow,
   deliveryToRow,
   rowToDelivery,
   type DeliveryRepository,
@@ -37,7 +38,15 @@ export function createSupabaseDeliveryRepository(): DeliveryRepository {
         .select("*")
         .single();
 
-      if (isMissingDeliveryColumnError(error)) {
+      if (isMissingProofUploadColumnError(error)) {
+        const legacyResult = await client
+          .from("deliveries")
+          .upsert(deliveryToProofUploadLegacyRow(delivery), { onConflict: "external_id" })
+          .select("*")
+          .single();
+        data = legacyResult.data;
+        error = legacyResult.error;
+      } else if (isMissingDeliveryColumnError(error)) {
         const legacyResult = await client
           .from("deliveries")
           .upsert(deliveryToLegacyRow(delivery), { onConflict: "external_id" })
@@ -58,4 +67,16 @@ function isMissingDeliveryColumnError(error: unknown) {
   const code = "code" in error ? String(error.code) : "";
   const message = "message" in error ? String(error.message) : "";
   return code === "42703" && (message.includes("proof_") || message.includes("occurrence_"));
+}
+
+function isMissingProofUploadColumnError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String(error.code) : "";
+  const message = "message" in error ? String(error.message) : "";
+  return (
+    code === "42703" &&
+    (message.includes("proof_file_path") ||
+      message.includes("proof_file_size") ||
+      message.includes("proof_mime_type"))
+  );
 }

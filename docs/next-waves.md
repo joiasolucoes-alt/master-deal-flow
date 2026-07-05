@@ -16,10 +16,11 @@
 - Avanço operacional de entrega e ocorrência simples.
 - Registro de comprovante/canhoto na entrega.
 - Histórico detalhado de ocorrências de entrega.
+- Upload real de arquivos de comprovante/canhoto.
 
 ### Próximos blocos
 
-- Upload real de arquivos de comprovante/canhoto.
+- Onda 1.3: resultado realizado.
 
 ## Onda 1.3 - Resultado realizado
 

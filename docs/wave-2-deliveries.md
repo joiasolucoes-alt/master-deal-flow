@@ -8,6 +8,7 @@
 - Registro simples de ocorrência operacional.
 - Histórico detalhado de múltiplas ocorrências por entrega.
 - Registro de canhoto/comprovante com recebedor, documento, referência de arquivo e observação.
+- Upload real de comprovante/canhoto em PDF, JPG ou PNG.
 - Atualização automática do status/progresso de entrega do pedido.
 - Persistência local preservada e persistência Supabase preparada.
 
@@ -20,12 +21,13 @@
 5. Registre uma ocorrência e confira o alerta na entrega.
 6. Abra novamente o formulário de ocorrência e registre uma segunda ocorrência.
 7. Confira o histórico detalhado no card da entrega.
-8. Conclua uma entrega, clique em `Registrar` no bloco `Canhoto/comprovante` e salve os dados.
-9. Abra o pedido relacionado e confira o reflexo no status logístico.
+8. Rode o SQL `011_wave_2_delivery_proof_uploads.sql`.
+9. Conclua uma entrega, clique em `Registrar` no bloco `Canhoto/comprovante`, selecione um PDF/JPG/PNG e salve.
+10. Abra o arquivo pelo botão `Abrir arquivo`.
+11. Abra o pedido relacionado e confira o reflexo no status logístico.
 
 ## Ainda não incluso
 
-- Upload real de comprovante/canhoto.
 - Motorista acompanhando pelo celular.
 - Rastreamento externo.
 - Assinatura digital de recebimento.

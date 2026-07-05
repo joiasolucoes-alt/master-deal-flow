@@ -21,6 +21,9 @@ export type DeliveryRow = {
   proof_notes?: string | null;
   proof_document_number?: string | null;
   proof_file_name?: string | null;
+  proof_file_path?: string | null;
+  proof_file_size?: number | null;
+  proof_mime_type?: string | null;
   proof_received_by?: string | null;
   proof_registered_at?: string | null;
   occurrence_notes?: string | null;
@@ -61,6 +64,9 @@ export function deliveryToRow(delivery: DeliveryRecord): Record<string, unknown>
     proof_notes: delivery.proofNotes || null,
     proof_document_number: delivery.proofDocumentNumber || null,
     proof_file_name: delivery.proofFileName || null,
+    proof_file_path: delivery.proofFilePath || null,
+    proof_file_size: delivery.proofFileSize ?? null,
+    proof_mime_type: delivery.proofMimeType || null,
     proof_received_by: delivery.proofReceivedBy || null,
     proof_registered_at: delivery.proofRegisteredAt ?? null,
     occurrence_notes: delivery.occurrenceNotes || null,
@@ -75,9 +81,20 @@ export function deliveryToLegacyRow(delivery: DeliveryRecord): Record<string, un
   const row = deliveryToRow(delivery);
   delete row.proof_document_number;
   delete row.proof_file_name;
+  delete row.proof_file_path;
+  delete row.proof_file_size;
+  delete row.proof_mime_type;
   delete row.proof_received_by;
   delete row.proof_registered_at;
   delete row.occurrence_history;
+  return row;
+}
+
+export function deliveryToProofUploadLegacyRow(delivery: DeliveryRecord): Record<string, unknown> {
+  const row = deliveryToRow(delivery);
+  delete row.proof_file_path;
+  delete row.proof_file_size;
+  delete row.proof_mime_type;
   return row;
 }
 
@@ -97,6 +114,9 @@ export function rowToDelivery(row: DeliveryRow): DeliveryRecord {
     proofNotes: row.proof_notes || "",
     proofDocumentNumber: row.proof_document_number || "",
     proofFileName: row.proof_file_name || "",
+    proofFilePath: row.proof_file_path || "",
+    proofFileSize: typeof row.proof_file_size === "number" ? row.proof_file_size : undefined,
+    proofMimeType: row.proof_mime_type || "",
     proofReceivedBy: row.proof_received_by || "",
     proofRegisteredAt: row.proof_registered_at ?? undefined,
     occurrenceNotes: row.occurrence_notes || "",
