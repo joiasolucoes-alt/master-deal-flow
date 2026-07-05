@@ -14,15 +14,30 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Download, FileText, Share2 } from "lucide-react";
+import {
+  BadgeDollarSign,
+  Download,
+  FileText,
+  Percent,
+  Scale,
+  Share2,
+  WalletCards,
+} from "lucide-react";
+import { DataTable, type DataColumn } from "@/components/app/data-table";
 import { PageHeader } from "@/components/app/page-header";
+import { StatCard } from "@/components/app/stat-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCompactCurrency, formatCurrency } from "@/lib/format";
+import { formatCompactCurrency, formatCurrency, formatPercent } from "@/lib/format";
 import { downloadTextFile, notifyActionUnavailable } from "@/lib/actions";
 import { useAppContext } from "@/features/app/app-context";
 import { useAppStore } from "@/store/useAppStore";
 import { getSimulationTotals } from "@/lib/calculations";
+import {
+  buildRealizedResults,
+  summarizeRealizedResults,
+  type RealizedOrderResult,
+} from "@/features/results/realizedResult";
 import {
   filterNegotiationsForUser,
   filterOrdersForUser,
@@ -64,7 +79,7 @@ const pieColors = [
 ];
 
 function ReportsPage() {
-  const { auth, simulations, orders } = useAppContext();
+  const { auth, simulations, orders, financialTitles, freights, deliveries } = useAppContext();
   const negotiations = useAppStore((store) => store.negotiations);
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, auth.user),
@@ -101,6 +116,98 @@ function ReportsPage() {
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
+  const visibleOrderIds = useMemo(
+    () => new Set(visibleOrders.map((order) => order.id)),
+    [visibleOrders],
+  );
+  const realizedResults = useMemo(
+    () =>
+      buildRealizedResults({
+        orders: visibleOrders,
+        simulations: visibleSimulations,
+        financialTitles: financialTitles.filter((title) =>
+          title.orderId ? visibleOrderIds.has(title.orderId) : false,
+        ),
+        freights: freights.filter((freight) =>
+          freight.orderId ? visibleOrderIds.has(freight.orderId) : false,
+        ),
+        deliveries: deliveries.filter((delivery) =>
+          delivery.orderId ? visibleOrderIds.has(delivery.orderId) : false,
+        ),
+      }),
+    [deliveries, financialTitles, freights, visibleOrderIds, visibleOrders, visibleSimulations],
+  );
+  const realizedSummary = useMemo(
+    () => summarizeRealizedResults(realizedResults),
+    [realizedResults],
+  );
+  const realizedColumns = useMemo<DataColumn<RealizedOrderResult>[]>(
+    () => [
+      {
+        key: "order",
+        header: "Pedido",
+        cell: (result) => (
+          <div>
+            <p className="font-semibold text-foreground">{result.orderNumber}</p>
+            <p className="text-xs text-muted-foreground">{result.client}</p>
+          </div>
+        ),
+      },
+      {
+        key: "realizedRevenueTotal",
+        header: "Recebido",
+        className: "text-right",
+        cell: (result) => formatCurrency(result.realizedRevenueTotal),
+      },
+      {
+        key: "costPaidTotal",
+        header: "Custos pagos",
+        className: "text-right",
+        cell: (result) => formatCurrency(result.costPaidTotal),
+      },
+      {
+        key: "commissionTotal",
+        header: "Comissão",
+        className: "text-right",
+        cell: (result) => formatCurrency(result.commissionTotal),
+      },
+      {
+        key: "realizedProfit",
+        header: "Lucro realizado",
+        className: "text-right",
+        cell: (result) => (
+          <span className={result.realizedProfit >= 0 ? "text-success" : "text-danger"}>
+            {formatCurrency(result.realizedProfit)}
+          </span>
+        ),
+      },
+      {
+        key: "margin",
+        header: "Margem real",
+        className: "text-right",
+        cell: (result) => (
+          <div>
+            <p className="font-semibold text-foreground">
+              {formatPercent(result.realizedMarginPercent, 2)}
+            </p>
+            <p
+              className={
+                result.marginDeltaPercent >= 0 ? "text-xs text-success" : "text-xs text-danger"
+              }
+            >
+              {formatPercent(result.marginDeltaPercent, 2)} vs previsto
+            </p>
+          </div>
+        ),
+      },
+      {
+        key: "status",
+        header: "Fechamento",
+        cell: (result) => result.closingStatus,
+      },
+    ],
+    [],
+  );
 
   function exportReports() {
     downloadTextFile(
@@ -128,6 +235,37 @@ function ReportsPage() {
           </>
         }
       />
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Receita recebida"
+          value={formatCompactCurrency(realizedSummary.realizedRevenueTotal)}
+          delta={`${realizedSummary.completedOrders} pedidos concluídos`}
+          icon={WalletCards}
+          tone="info"
+        />
+        <StatCard
+          label="Lucro realizado"
+          value={formatCompactCurrency(realizedSummary.realizedProfit)}
+          delta={formatCurrency(realizedSummary.commissionTotal) + " em comissão"}
+          icon={BadgeDollarSign}
+          tone={realizedSummary.realizedProfit >= 0 ? "success" : "danger"}
+        />
+        <StatCard
+          label="Margem realizada"
+          value={formatPercent(realizedSummary.averageRealizedMarginPercent, 2)}
+          delta={`${formatPercent(realizedSummary.averagePredictedMarginPercent, 2)} previsto`}
+          icon={Percent}
+          tone="success"
+        />
+        <StatCard
+          label="Saldo a receber"
+          value={formatCompactCurrency(realizedSummary.receivableOpenTotal)}
+          delta={formatCompactCurrency(realizedSummary.costPaidTotal) + " custos pagos"}
+          icon={Scale}
+          tone={realizedSummary.receivableOpenTotal > 0 ? "warning" : "success"}
+        />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="shadow-card">
@@ -297,6 +435,20 @@ function ReportsPage() {
               </Button>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-card">
+        <CardHeader>
+          <CardTitle>Resultado realizado por pedido</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            columns={realizedColumns}
+            data={realizedResults}
+            emptyTitle="Nenhum resultado realizado"
+            emptyDescription="Pedidos com movimentação financeira aparecerão aqui para comparação entre previsto e realizado."
+          />
         </CardContent>
       </Card>
     </div>

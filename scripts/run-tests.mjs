@@ -302,6 +302,53 @@ function registerDeliveryOccurrence(delivery, occurrence) {
   };
 }
 
+function buildRealizedResult({ order, simulation, financialTitles = [], freights = [] }) {
+  const receivables = financialTitles.filter((title) => title.type === "receivable");
+  const payables = financialTitles.filter((title) => title.type === "payable");
+  const receivableAmount = receivables.length
+    ? receivables.reduce((sum, title) => sum + title.amount, 0)
+    : order.totalValue;
+  const realizedRevenueTotal = receivables.length
+    ? receivables.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0)
+    : (order.totalValue * order.billingProgress) / 100;
+  const goodsCostTotal = order.products.reduce(
+    (sum, product) => sum + (product.costTotal ?? product.quantityTotal * product.costUnit),
+    0,
+  );
+  const freightCostTotal = freights.reduce((sum, freight) => sum + freight.freightValue, 0);
+  const payableBookedTotal = payables.reduce((sum, title) => sum + title.amount, 0);
+  const costBookedTotal =
+    payableBookedTotal > 0 ? payableBookedTotal : goodsCostTotal + freightCostTotal;
+  const costPaidTotal = payables.reduce(
+    (sum, title) => sum + Math.min(title.paidAmount, title.amount),
+    0,
+  );
+  const commissionExpense = simulation?.expenseItems?.find(
+    (expense) => expense.type === "Comissão",
+  );
+  const commissionPercent =
+    commissionExpense?.calculationType === "percentage" ? commissionExpense.value : 2.5;
+  const commissionTotal = Math.round(realizedRevenueTotal * (commissionPercent / 100) * 100) / 100;
+  const realizedProfit =
+    Math.round((realizedRevenueTotal - costPaidTotal - commissionTotal) * 100) / 100;
+  const predictedMarginPercent = simulation ? getTotals(simulation).marginPercent : 0;
+  const realizedMarginPercent =
+    realizedRevenueTotal > 0 ? (realizedProfit / realizedRevenueTotal) * 100 : 0;
+
+  return {
+    realizedRevenueTotal,
+    receivableOpenTotal: Math.max(0, receivableAmount - realizedRevenueTotal),
+    costBookedTotal,
+    costPaidTotal,
+    commissionPercent,
+    commissionTotal,
+    realizedProfit,
+    predictedMarginPercent,
+    realizedMarginPercent,
+    marginDeltaPercent: realizedMarginPercent - predictedMarginPercent,
+  };
+}
+
 function transitionSimulation(simulation, status, extra = {}) {
   return { ...simulation, status, ...extra };
 }
@@ -593,6 +640,28 @@ assert.equal(
 );
 assert.equal(occurrenceDelivery.occurrences.length, 1);
 assert.equal(occurrenceDelivery.occurrences[0].type, "Cliente ausente");
+
+const realizedResult = buildRealizedResult({
+  order: {
+    id: "ord-realized-1",
+    totalValue: 1000,
+    billingProgress: 0,
+    products: [{ quantityTotal: 10, costUnit: 60, saleUnit: 100 }],
+  },
+  simulation: {
+    products: [{ quantityTotal: 10, costUnit: 60, saleUnit: 100 }],
+    expenseItems: [{ type: "Comissão", calculationType: "percentage", value: 2.5 }],
+  },
+  financialTitles: [
+    { orderId: "ord-realized-1", type: "receivable", amount: 1000, paidAmount: 1000 },
+    { orderId: "ord-realized-1", type: "payable", amount: 600, paidAmount: 600 },
+  ],
+});
+assert.equal(realizedResult.realizedRevenueTotal, 1000);
+assert.equal(realizedResult.costPaidTotal, 600);
+assert.equal(realizedResult.commissionTotal, 25);
+assert.equal(realizedResult.realizedProfit, 375);
+assert.equal(Math.round(realizedResult.realizedMarginPercent * 100), 3750);
 
 function requireSupabaseConfig(configured) {
   if (!configured) throw new Error("Supabase não está configurado.");

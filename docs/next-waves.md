@@ -4,6 +4,10 @@
 
 ### Em andamento
 
+- Resultado realizado v1.
+- Comissão estimada a partir da simulação.
+- Lucro realizado com base em recebimentos e custos pagos.
+- Comparação entre margem prevista e margem realizada.
 - Financeiro real v1.
 - Contas a receber geradas a partir dos pedidos.
 - Contas a pagar geradas a partir de pedidos e fretes contratados.
@@ -20,13 +24,13 @@
 
 ### Próximos blocos
 
-- Onda 1.3: resultado realizado.
+- Onda 1.3: fechamento gerencial e comissão aprovada.
 
 ## Onda 1.3 - Resultado realizado
 
-- Comissão.
-- Lucro realizado.
-- Comparação entre margem prevista e margem real.
+- Comissão aprovada.
+- Lucro realizado persistido.
+- Fechamento por pedido.
 - Relatórios gerenciais.
 
 ## Onda 1.4 - Integrações
