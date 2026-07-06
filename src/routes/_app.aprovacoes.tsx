@@ -477,13 +477,16 @@ function ApprovalDetails({
         </div>
 
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-foreground">Comentário interno</h3>
+          <h3 className="text-sm font-semibold text-foreground">Motivo do reajuste / observação</h3>
           <Textarea
             rows={3}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Adicione observações para o solicitante..."
+            placeholder="Explique o que o Comercial precisa corrigir antes de reenviar..."
           />
+          <p className="text-xs text-muted-foreground">
+            Obrigatório ao solicitar ajuste. Esse texto aparecerá para o Comercial na aba Reajustes.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -494,7 +497,7 @@ function ApprovalDetails({
               </Button>
             }
             title="Solicitar ajuste"
-            description="A simulação retornará ao solicitante para revisão."
+            description="A simulação retornará ao solicitante com o motivo informado."
             actionLabel="Confirmar"
             onConfirm={() => onDecide("adjust")}
           />

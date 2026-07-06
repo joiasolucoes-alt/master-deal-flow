@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Copy,
   Download,
+  MessageSquare,
   Pencil,
   Plus,
   Send,
@@ -93,6 +94,10 @@ import {
 import { filterSimulationsForUser } from "@/lib/visibility";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
+import {
+  getSimulationAdjustmentReason,
+  isSimulationAdjustmentRequested,
+} from "@/lib/simulationStatus";
 
 export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
@@ -697,6 +702,22 @@ function SimulationDetailPage() {
           Prioridade: {draft.priority}
         </Badge>
       </div>
+
+      {isSimulationAdjustmentRequested(draft) ? (
+        <Card className="border-warning/40 bg-warning-soft/40 shadow-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <MessageSquare className="h-4 w-4" />
+              Motivo do reajuste
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-relaxed text-foreground">
+              {getSimulationAdjustmentReason(draft)}
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <ProgressStepper steps={STEPS} activeStep={step} onStepChange={setStep} />
 

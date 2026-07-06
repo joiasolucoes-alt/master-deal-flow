@@ -15,21 +15,15 @@ import { getSimulationTotals } from "@/lib/calculations";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
-import { isSimulationAdjustmentRequested } from "@/lib/simulationStatus";
+import {
+  getSimulationAdjustmentReason,
+  isSimulationAdjustmentRequested,
+} from "@/lib/simulationStatus";
 import { filterSimulationsForUser } from "@/lib/visibility";
 
 export const Route = createFileRoute("/_app/reajustes")({
   component: AdjustmentsPage,
 });
-
-function getAdjustmentNote(simulation: Simulation) {
-  return (
-    simulation.approvalNotes ||
-    simulation.approvalFlow?.financial.notes ||
-    simulation.approvalFlow?.principal.notes ||
-    "Revisar dados da simulação."
-  );
-}
 
 function AdjustmentsPage() {
   const navigate = useNavigate();
@@ -71,7 +65,7 @@ function AdjustmentsPage() {
       visibleSimulations.filter(isSimulationAdjustmentRequested).filter((simulation) => {
         const query = search.trim().toLowerCase();
         if (!query) return true;
-        return `${simulation.number} ${simulation.client} ${simulation.supplier} ${simulation.owner} ${getAdjustmentNote(
+        return `${simulation.number} ${simulation.client} ${simulation.supplier} ${simulation.owner} ${getSimulationAdjustmentReason(
           simulation,
         )}`
           .toLowerCase()
@@ -120,10 +114,10 @@ function AdjustmentsPage() {
     },
     {
       key: "reason",
-      header: "Solicitação",
+      header: "Motivo do reajuste",
       cell: (simulation) => (
         <span className="line-clamp-2 text-sm text-muted-foreground">
-          {getAdjustmentNote(simulation)}
+          {getSimulationAdjustmentReason(simulation)}
         </span>
       ),
     },
@@ -176,7 +170,7 @@ function AdjustmentsPage() {
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Número, cliente, fornecedor ou observação"
+              placeholder="Número, cliente, fornecedor ou motivo"
               className="pl-9"
             />
           </div>
