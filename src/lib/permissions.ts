@@ -9,6 +9,7 @@ export type Permission =
   | "simulations:create"
   | "simulations:edit-own"
   | "simulations:submit"
+  | "adjustments:view"
   | "approvals:view"
   | "approvals:decide"
   | "orders:view"
@@ -27,6 +28,7 @@ const allPermissions: Permission[] = [
   "simulations:create",
   "simulations:edit-own",
   "simulations:submit",
+  "adjustments:view",
   "approvals:view",
   "approvals:decide",
   "orders:view",
@@ -47,6 +49,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "simulations:create",
     "simulations:edit-own",
     "simulations:submit",
+    "adjustments:view",
     "approvals:view",
     "orders:view",
     "deliveries:view",
@@ -59,6 +62,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "simulations:create",
     "simulations:edit-own",
     "simulations:submit",
+    "adjustments:view",
     "orders:view",
   ],
   Aprovador: [
@@ -85,6 +89,7 @@ const routePermissions: Array<{ prefix: string; permission: Permission }> = [
   { prefix: "/dashboard", permission: "dashboard:view" },
   { prefix: "/negociacoes", permission: "negotiations:view" },
   { prefix: "/simulacoes", permission: "simulations:view" },
+  { prefix: "/reajustes", permission: "adjustments:view" },
   { prefix: "/aprovacoes", permission: "approvals:view" },
   { prefix: "/pedidos", permission: "orders:view" },
   { prefix: "/financeiro", permission: "finance:view" },

@@ -21,6 +21,7 @@ import { getSimulationTotals } from "@/lib/calculations";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import { canCreateSimulation } from "@/lib/permissions";
+import { isSimulationAdjustmentRequested } from "@/lib/simulationStatus";
 import { filterSimulationsForUser } from "@/lib/visibility";
 import { BadgeDollarSign, CheckCircle2, FileSpreadsheet, TriangleAlert } from "lucide-react";
 import type { Simulation } from "@/data/types";
@@ -58,7 +59,10 @@ function SimulationsPage() {
   const filtered = useMemo(
     () =>
       visibleSimulations.filter((sim) => {
-        if (status !== "Todos" && sim.status !== status) return false;
+        const effectiveStatus = isSimulationAdjustmentRequested(sim)
+          ? "Ajuste solicitado"
+          : sim.status;
+        if (status !== "Todos" && effectiveStatus !== status) return false;
         if (owner !== "Todos" && sim.owner !== owner) return false;
         if (
           search &&
@@ -137,7 +141,13 @@ function SimulationsPage() {
       header: "Viabilidade",
       cell: (s) => <ViabilityBadge viability={getSimulationTotals(s).viability} compact />,
     },
-    { key: "status", header: "Status", cell: (s) => <StatusBadge status={s.status} /> },
+    {
+      key: "status",
+      header: "Status",
+      cell: (s) => (
+        <StatusBadge status={isSimulationAdjustmentRequested(s) ? "Ajuste solicitado" : s.status} />
+      ),
+    },
     {
       key: "actions",
       header: "",

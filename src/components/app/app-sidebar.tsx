@@ -8,6 +8,7 @@ import {
   Handshake,
   LayoutDashboard,
   PackageSearch,
+  RotateCcw,
   Settings,
   ShieldCheck,
   Truck,
@@ -47,6 +48,12 @@ const navigation: Array<{
     to: "/simulacoes",
     icon: BriefcaseBusiness,
     permission: "simulations:view",
+  },
+  {
+    title: "Reajustes",
+    to: "/reajustes",
+    icon: RotateCcw,
+    permission: "adjustments:view",
   },
   {
     title: "Aprovações",

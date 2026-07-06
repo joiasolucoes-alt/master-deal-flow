@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as MotoristaTokenRouteImport } from './routes/motorista.$token'
 import { Route as AppSimulacoesRouteImport } from './routes/_app.simulacoes'
 import { Route as AppRelatoriosRouteImport } from './routes/_app.relatorios'
+import { Route as AppReajustesRouteImport } from './routes/_app.reajustes'
 import { Route as AppPerfilRouteImport } from './routes/_app.perfil'
 import { Route as AppPedidosRouteImport } from './routes/_app.pedidos'
 import { Route as AppNegociacoesRouteImport } from './routes/_app.negociacoes'
@@ -57,6 +58,11 @@ const AppSimulacoesRoute = AppSimulacoesRouteImport.update({
 const AppRelatoriosRoute = AppRelatoriosRouteImport.update({
   id: '/relatorios',
   path: '/relatorios',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReajustesRoute = AppReajustesRouteImport.update({
+  id: '/reajustes',
+  path: '/reajustes',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPerfilRoute = AppPerfilRouteImport.update({
@@ -142,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/negociacoes': typeof AppNegociacoesRouteWithChildren
   '/pedidos': typeof AppPedidosRouteWithChildren
   '/perfil': typeof AppPerfilRoute
+  '/reajustes': typeof AppReajustesRoute
   '/relatorios': typeof AppRelatoriosRoute
   '/simulacoes': typeof AppSimulacoesRouteWithChildren
   '/motorista/$token': typeof MotoristaTokenRoute
@@ -162,6 +169,7 @@ export interface FileRoutesByTo {
   '/fretes': typeof AppFretesRoute
   '/negociacoes': typeof AppNegociacoesRouteWithChildren
   '/perfil': typeof AppPerfilRoute
+  '/reajustes': typeof AppReajustesRoute
   '/relatorios': typeof AppRelatoriosRoute
   '/motorista/$token': typeof MotoristaTokenRoute
   '/negociacoes/$id': typeof AppNegociacoesIdRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/_app/negociacoes': typeof AppNegociacoesRouteWithChildren
   '/_app/pedidos': typeof AppPedidosRouteWithChildren
   '/_app/perfil': typeof AppPerfilRoute
+  '/_app/reajustes': typeof AppReajustesRoute
   '/_app/relatorios': typeof AppRelatoriosRoute
   '/_app/simulacoes': typeof AppSimulacoesRouteWithChildren
   '/motorista/$token': typeof MotoristaTokenRoute
@@ -207,6 +216,7 @@ export interface FileRouteTypes {
     | '/negociacoes'
     | '/pedidos'
     | '/perfil'
+    | '/reajustes'
     | '/relatorios'
     | '/simulacoes'
     | '/motorista/$token'
@@ -227,6 +237,7 @@ export interface FileRouteTypes {
     | '/fretes'
     | '/negociacoes'
     | '/perfil'
+    | '/reajustes'
     | '/relatorios'
     | '/motorista/$token'
     | '/negociacoes/$id'
@@ -248,6 +259,7 @@ export interface FileRouteTypes {
     | '/_app/negociacoes'
     | '/_app/pedidos'
     | '/_app/perfil'
+    | '/_app/reajustes'
     | '/_app/relatorios'
     | '/_app/simulacoes'
     | '/motorista/$token'
@@ -307,6 +319,13 @@ declare module '@tanstack/react-router' {
       path: '/relatorios'
       fullPath: '/relatorios'
       preLoaderRoute: typeof AppRelatoriosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/reajustes': {
+      id: '/_app/reajustes'
+      path: '/reajustes'
+      fullPath: '/reajustes'
+      preLoaderRoute: typeof AppReajustesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/perfil': {
@@ -460,6 +479,7 @@ interface AppRouteChildren {
   AppNegociacoesRoute: typeof AppNegociacoesRouteWithChildren
   AppPedidosRoute: typeof AppPedidosRouteWithChildren
   AppPerfilRoute: typeof AppPerfilRoute
+  AppReajustesRoute: typeof AppReajustesRoute
   AppRelatoriosRoute: typeof AppRelatoriosRoute
   AppSimulacoesRoute: typeof AppSimulacoesRouteWithChildren
 }
@@ -474,6 +494,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppNegociacoesRoute: AppNegociacoesRouteWithChildren,
   AppPedidosRoute: AppPedidosRouteWithChildren,
   AppPerfilRoute: AppPerfilRoute,
+  AppReajustesRoute: AppReajustesRoute,
   AppRelatoriosRoute: AppRelatoriosRoute,
   AppSimulacoesRoute: AppSimulacoesRouteWithChildren,
 }
