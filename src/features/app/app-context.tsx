@@ -340,12 +340,7 @@ function mergeRemoteSimulationsWithLocalPending(
       continue;
     }
 
-    if (
-      remoteSimulation.status !== localSimulation.status ||
-      !remoteSimulation.approvalFlow ||
-      remoteSimulation.approvalFlow.financial.status !==
-        localSimulation.approvalFlow?.financial.status
-    ) {
+    if (!remoteSimulation.approvalFlow && remoteSimulation.status === "Rascunho") {
       const index = merged.findIndex((simulation) => simulation.id === localSimulation.id);
       if (index >= 0) merged[index] = localSimulation;
     }

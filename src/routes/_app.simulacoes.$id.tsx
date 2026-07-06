@@ -73,12 +73,13 @@ import {
   getSimulationTotals,
 } from "@/lib/calculations";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
-import { formatCurrency, formatPercent, formatPrecisePercent } from "@/lib/format";
+import { formatCurrency, formatDate, formatPercent, formatPrecisePercent } from "@/lib/format";
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { useAppStore } from "@/store/useAppStore";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
+import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import {
   canConvertApprovedSimulation,
   initializeApprovalFlow,
@@ -404,8 +405,10 @@ function SimulationDetailPage() {
     () => filterSimulationsForUser(simulations, currentUser),
     [currentUser, simulations],
   );
-  const existingSimulation =
+  const [remoteSimulation, setRemoteSimulation] = useState<Simulation | null>(null);
+  const localExistingSimulation =
     id === "nova" ? null : visibleSimulations.find((simulation) => simulation.id === id);
+  const existingSimulation = remoteSimulation ?? localExistingSimulation;
   const draftStorageKey = useMemo(
     () => getSimulationFormDraftKey(id, currentUser?.id, currentUser?.email),
     [currentUser?.email, currentUser?.id, id],
@@ -442,6 +445,30 @@ function SimulationDetailPage() {
     setDraft(initial);
     setStep(canUseSavedFormDraft ? clampStep(savedFormDraft?.step) : 0);
   }, [canUseSavedFormDraft, draftStorageKey, initial, savedFormDraft?.step]);
+
+  useEffect(() => {
+    setRemoteSimulation(null);
+    if (id === "nova" || !auth.hasAccess || !isSupabaseProvider()) return;
+    if (!getSupabaseConfigStatus().configured) return;
+
+    let cancelled = false;
+    const repository = createSupabaseSimulationRepository();
+
+    async function loadLatestSimulation() {
+      try {
+        const latest = await repository.getById(id);
+        if (!cancelled) setRemoteSimulation(latest);
+      } catch (error) {
+        console.error("Falha ao carregar simulação atualizada no Supabase.", error);
+      }
+    }
+
+    void loadLatestSimulation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.hasAccess, id]);
 
   useEffect(() => {
     if (!existingSimulation) return;
@@ -646,6 +673,7 @@ function SimulationDetailPage() {
       adjustmentStage: undefined,
     });
     if (!window.confirm("Enviar esta simulação para aprovação?")) return;
+    setRemoteSimulation(next);
     upsertSimulation(next);
     saveApprovalRecordWhenEnabled({
       id: `apr-${next.id}-financial`,

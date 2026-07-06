@@ -92,8 +92,12 @@ export function createSupabaseApprovalRepository(): ApprovalRepository {
       }
 
       if (error) throw error;
-      await insertAuditEvent(client, record);
-      await insertNotification(client, record);
+      await insertAuditEvent(client, record).catch((auditError) => {
+        console.warn("Aprovação salva, mas auditoria não foi registrada.", auditError);
+      });
+      await insertNotification(client, record).catch((notificationError) => {
+        console.warn("Aprovação salva, mas notificação não foi registrada.", notificationError);
+      });
       return rowToApproval(data as ApprovalRow);
     },
   };

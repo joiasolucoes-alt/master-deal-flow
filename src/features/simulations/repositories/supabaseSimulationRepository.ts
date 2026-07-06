@@ -13,6 +13,7 @@ import {
 } from "@/features/simulations/repositories/simulationRepository";
 import { getSimulationTotals } from "@/lib/calculations";
 import { normalizeRole } from "@/lib/permissions";
+import { isSimulationAdjustmentRequested } from "@/lib/simulationStatus";
 import { matchesUserIdentity } from "@/lib/userIdentity";
 
 const SIMULATION_SELECT = `
@@ -115,9 +116,20 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
         error = retry.error;
       }
 
+      if (error) {
+        const retry = await client
+          .from("simulations")
+          .select(SIMULATION_SELECT)
+          .order("created_at", { ascending: false });
+        data = retry.data;
+        error = retry.error;
+      }
+
       if (error) throw error;
 
-      const simulations = ((data ?? []) as SimulationRow[]).map(rowToSimulation);
+      const simulations = ((data ?? []) as SimulationRow[])
+        .map(rowToSimulation)
+        .filter(isSimulationAdjustmentRequested);
       if (!user || normalizeRole(user.role) === "Admin") return simulations;
       return simulations.filter((simulation) => matchesUserIdentity(simulation.owner, user));
     },
@@ -184,8 +196,14 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
       await insertAuditEvent(client, "simulation", simulationUuid, simulation.id, "saved", {
         number: simulation.number,
         status: simulation.status,
+      }).catch((auditError) => {
+        console.warn("Simulação salva, mas auditoria não foi registrada.", auditError);
       });
-      await insertNotification(client, simulation.id, simulation.status, simulation.number);
+      await insertNotification(client, simulation.id, simulation.status, simulation.number).catch(
+        (notificationError) => {
+          console.warn("Simulação salva, mas notificação não foi registrada.", notificationError);
+        },
+      );
 
       const saved = await fetchSimulationInternal(client, simulation.id);
       return saved ? rowToSimulation(saved) : simulation;
