@@ -18,7 +18,7 @@ import { getSimulationTotals } from "@/lib/calculations";
 import { formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { ClipboardCheck, FileWarning, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
-import type { ApprovalStage, Simulation } from "@/data/types";
+import type { ApprovalStage, Simulation, User } from "@/data/types";
 import { convertSimulationToOrder } from "@/features/simulations/services/simulationService";
 import { useAppStore } from "@/store/useAppStore";
 import { canReviewApprovals, isPendingApprovalStatus } from "@/lib/permissions";
@@ -82,6 +82,7 @@ function ApprovalsPage() {
     upsertOrder,
     selectedApprovalId,
     setSelectedApprovalId,
+    users,
   } = useAppContext();
   const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
@@ -187,6 +188,7 @@ function ApprovalsPage() {
       notes: comment || selected.approvalNotes,
       bankAccount: stage === "financial" ? bankAccount : undefined,
     });
+    const ownerUser = findSimulationOwnerUser(users, selected);
 
     saveApprovalDecision({
       simulationId: selected.id,
@@ -232,24 +234,32 @@ function ApprovalsPage() {
           decision === "approve"
             ? "Etapa financeira aprovada"
             : decision === "adjust"
-              ? "Ajuste solicitado na simulação"
+              ? "Ajuste solicitado para sua simulação"
               : "Simulação reprovada",
-        description: `${selected.number}: ${APPROVAL_STAGE_LABELS[stage]}.`,
+        description:
+          decision === "adjust"
+            ? `${selected.number} voltou para o Comercial: ${comment.trim()}`
+            : `${selected.number}: ${APPROVAL_STAGE_LABELS[stage]}.`,
         type: decision === "adjust" ? "warning" : "info",
         createdAt: new Date().toISOString(),
         unread: true,
         entityType: "simulation",
         entityId: selected.id,
-        targetUserName: selected.owner,
+        targetUserId: ownerUser?.id,
+        targetUserEmail: ownerUser?.email,
+        targetUserName: ownerUser?.name ?? selected.owner,
       });
       toast.success(
         decision === "approve"
           ? "Etapa financeira aprovada. A simulação segue para aprovação final."
-          : "Decisão registrada.",
+          : decision === "adjust"
+            ? "Ajuste solicitado. A simulação voltou para o Comercial."
+            : "Decisão registrada.",
       );
     }
     setComment("");
     setBankAccount("");
+    if (decision !== "approve") setSelectedApprovalId(null);
   }
 
   if (!canReview) {
@@ -580,5 +590,12 @@ function KV({ label, value, highlight }: { label: string; value: string; highlig
         {value}
       </p>
     </div>
+  );
+}
+
+function findSimulationOwnerUser(users: User[], simulation: Simulation) {
+  const owner = simulation.owner.trim().toLowerCase();
+  return users.find(
+    (user) => user.name.trim().toLowerCase() === owner || user.email.trim().toLowerCase() === owner,
   );
 }

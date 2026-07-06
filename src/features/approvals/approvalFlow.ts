@@ -111,6 +111,7 @@ export function applyApprovalDecision(
       ...simulation,
       status: "Ajuste solicitado",
       approvalFlow: nextFlow,
+      approvalChecklist: undefined,
       approvalNotes: payload.notes || simulation.approvalNotes,
     };
   }

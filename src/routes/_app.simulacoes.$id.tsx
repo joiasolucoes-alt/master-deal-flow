@@ -610,7 +610,12 @@ function SimulationDetailPage() {
       return;
     }
 
-    const next = initializeApprovalFlow({ ...draft, status: "Pendente de aprovação" as const });
+    const next = initializeApprovalFlow({
+      ...draft,
+      status: "Pendente de aprovação" as const,
+      approvalChecklist: undefined,
+      approvalNotes: undefined,
+    });
     if (!window.confirm("Enviar esta simulação para aprovação?")) return;
     upsertSimulation(next);
     saveApprovalRecordWhenEnabled({
