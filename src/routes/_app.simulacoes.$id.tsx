@@ -294,6 +294,22 @@ function clearSavedSimulationFormDraft(key: string) {
   writeLocalStorage<SavedSimulationFormDrafts>(SIMULATION_FORM_DRAFT_STORAGE_KEY, nextDrafts);
 }
 
+function mergeWorkflowStateFromServer(draft: Simulation, source: Simulation): Simulation {
+  return {
+    ...draft,
+    status: source.status,
+    approvalChecklist: source.approvalChecklist,
+    approvalFlow: source.approvalFlow,
+    approvalNotes: source.approvalNotes,
+    adjustmentReason: source.adjustmentReason,
+    adjustmentRequestedAt: source.adjustmentRequestedAt,
+    adjustmentRequestedBy: source.adjustmentRequestedBy,
+    adjustmentStage: source.adjustmentStage,
+    orderId: source.orderId,
+    convertedAt: source.convertedAt,
+  };
+}
+
 function createDefaultExpenseItem(type: StandardExpenseType): ExpenseItem {
   const defaults: Record<
     StandardExpenseType,
@@ -401,13 +417,12 @@ function SimulationDetailPage() {
   const canUseSavedFormDraft = Boolean(
     savedFormDraft?.draft && (id === "nova" || savedFormDraft.draft.id === existingSimulation?.id),
   );
-  const initial = useMemo(
-    () =>
-      canUseSavedFormDraft
-        ? savedFormDraft!.draft
-        : (existingSimulation ?? createEmptySimulation(currentUser, clients, suppliers)),
-    [canUseSavedFormDraft, clients, currentUser, existingSimulation, savedFormDraft, suppliers],
-  );
+  const initial = useMemo(() => {
+    const base = canUseSavedFormDraft
+      ? savedFormDraft!.draft
+      : (existingSimulation ?? createEmptySimulation(currentUser, clients, suppliers));
+    return existingSimulation ? mergeWorkflowStateFromServer(base, existingSimulation) : base;
+  }, [canUseSavedFormDraft, clients, currentUser, existingSimulation, savedFormDraft, suppliers]);
   const [draft, setDraft] = useState<Simulation>(initial);
   const [step, setStep] = useState(canUseSavedFormDraft ? clampStep(savedFormDraft?.step) : 0);
   const activeDraftStorageKeyRef = useRef(draftStorageKey);
@@ -427,6 +442,11 @@ function SimulationDetailPage() {
     setDraft(initial);
     setStep(canUseSavedFormDraft ? clampStep(savedFormDraft?.step) : 0);
   }, [canUseSavedFormDraft, draftStorageKey, initial, savedFormDraft?.step]);
+
+  useEffect(() => {
+    if (!existingSimulation) return;
+    setDraft((current) => mergeWorkflowStateFromServer(current, existingSimulation));
+  }, [existingSimulation]);
 
   useEffect(() => {
     if (!canOpenSimulation) return;
@@ -716,9 +736,26 @@ function SimulationDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm leading-relaxed text-foreground">
-              {getSimulationAdjustmentReason(draft)}
-            </p>
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm leading-relaxed text-foreground">
+                  {getSimulationAdjustmentReason(draft)}
+                </p>
+                {draft.adjustmentRequestedBy || draft.adjustmentRequestedAt ? (
+                  <p className="text-xs text-muted-foreground">
+                    Solicitado por {draft.adjustmentRequestedBy ?? "aprovador"}{" "}
+                    {draft.adjustmentRequestedAt
+                      ? `em ${formatDate(draft.adjustmentRequestedAt)}`
+                      : ""}
+                  </p>
+                ) : null}
+              </div>
+              {userCanSubmit ? (
+                <Button onClick={submitForApproval} className="shrink-0">
+                  <Send /> Enviar novamente
+                </Button>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       ) : null}
