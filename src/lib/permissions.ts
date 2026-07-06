@@ -80,6 +80,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "approvals:decide",
     "orders:view",
     "finance:view",
+    "freights:view",
     "reports:view",
   ],
   Admin: allPermissions,
