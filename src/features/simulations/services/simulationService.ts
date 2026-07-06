@@ -9,6 +9,16 @@ export function nowIso() {
 export function nextId(prefix: "SIM" | "PED") {
   return `${prefix}-2026-${String(Math.floor(Date.now() % 10000)).padStart(4, "0")}`;
 }
+
+export function getOrderNumberFromSimulation(simulationNumber: string) {
+  const currentYear = new Date().getFullYear();
+  const match = simulationNumber.match(/(?:SIM|PED)-(\d{4})-(\d+)/i);
+  if (match) return `PED-${match[1]}-${match[2].padStart(4, "0")}`;
+
+  const numericGroups = simulationNumber.match(/\d+/g);
+  const suffix = numericGroups?.at(-1);
+  return `PED-${currentYear}-${String(suffix ?? Math.floor(Date.now() % 10000)).padStart(4, "0")}`;
+}
 export function audit(
   entityType: AuditEvent["entityType"],
   entityId: string,
@@ -73,7 +83,7 @@ export function convertSimulationToOrder(
   const createdAt = nowIso();
   const order: Order = {
     id: orderId,
-    number: nextId("PED"),
+    number: getOrderNumberFromSimulation(simulation.number),
     simulationId: simulation.id,
     client: simulation.client,
     origin: `${simulation.unit}`,

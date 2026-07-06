@@ -80,6 +80,7 @@ import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { useAppStore } from "@/store/useAppStore";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
+import { getOrderNumberFromSimulation } from "@/features/simulations/services/simulationService";
 import {
   canConvertApprovedSimulation,
   initializeApprovalFlow,
@@ -592,7 +593,7 @@ function SimulationDetailPage() {
       return;
     }
     const orderId = `ord-${Date.now()}`;
-    const orderNumber = `PED-2026-${String(Math.floor(Date.now() % 10000)).padStart(4, "0")}`;
+    const orderNumber = getOrderNumberFromSimulation(draft.number);
     const order = {
       id: orderId,
       number: orderNumber,
