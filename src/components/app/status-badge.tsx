@@ -8,6 +8,7 @@ const statusTone: Record<string, string> = {
   Aprovada: "border-transparent bg-success-soft text-success",
   Reprovada: "border-transparent bg-danger-soft text-danger",
   "Ajuste solicitado": "border-transparent bg-warning-soft text-warning",
+  "Aguardando faturamento": "border-transparent bg-warning-soft text-warning",
   "Em faturamento": "border-transparent bg-info-soft text-info",
   "Em separação": "border-transparent bg-warning-soft text-warning",
   "Em rota": "border-transparent bg-primary-soft text-primary",

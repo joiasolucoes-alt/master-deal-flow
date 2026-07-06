@@ -45,7 +45,6 @@ export function createFinancialTitlesFromOrder(order: Order, now = new Date()) {
     const previousTotal = installmentAmount * index;
     const amount = isLast ? roundCurrency(order.totalValue - previousTotal) : installmentAmount;
     const dueDate = addDays(order.date, days);
-    const paidAmount = roundCurrency((amount * order.billingProgress) / 100);
     const status = getFinancialTitleStatus(
       {
         id: "",
@@ -57,7 +56,7 @@ export function createFinancialTitlesFromOrder(order: Order, now = new Date()) {
         status: "open",
         dueDate,
         amount,
-        paidAmount,
+        paidAmount: 0,
         paymentMethod: order.paymentTerms,
         bankName: "",
         notes: "Título gerado a partir do pedido.",
@@ -78,7 +77,7 @@ export function createFinancialTitlesFromOrder(order: Order, now = new Date()) {
       status,
       dueDate,
       amount,
-      paidAmount,
+      paidAmount: 0,
       paymentMethod: order.paymentTerms,
       bankName: "",
       notes: "Título gerado a partir do pedido.",
@@ -138,11 +137,17 @@ export function createPayableTitlesFromOrder(
   return titles;
 }
 
-export function calculateBillingProgress(titles: FinancialTitle[]) {
-  const total = titles.reduce((sum, title) => sum + title.amount, 0);
+export function calculateBillingProgress(titles: FinancialTitle[], expectedTotal?: number) {
+  const receivableTitles = titles.filter(
+    (title) => title.type === "receivable" && title.status !== "cancelled",
+  );
+  const total =
+    typeof expectedTotal === "number" && expectedTotal > 0
+      ? expectedTotal
+      : receivableTitles.reduce((sum, title) => sum + title.amount, 0);
   if (total <= 0) return 0;
-  const paid = titles.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0);
-  return Math.min(100, Math.round((paid / total) * 100));
+  const billed = receivableTitles.reduce((sum, title) => sum + title.amount, 0);
+  return Math.min(100, Math.round((billed / total) * 100));
 }
 
 function createPayableTitle(payload: {

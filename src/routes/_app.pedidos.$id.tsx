@@ -25,7 +25,7 @@ export const Route = createFileRoute("/_app/pedidos/$id")({
 
 function OrderDetailPage() {
   const { id } = useParams({ from: "/_app/pedidos/$id" });
-  const { auth, orders } = useAppContext();
+  const { auth, orders, financialTitles } = useAppContext();
   const order = filterOrdersForUser(orders, auth.user).find((o) => o.id === id);
   if (!order) {
     return (
@@ -39,6 +39,13 @@ function OrderDetailPage() {
       </div>
     );
   }
+  const orderReceivables = financialTitles.filter(
+    (title) => title.orderId === order.id && title.type === "receivable",
+  );
+  const billedAmount = orderReceivables
+    .filter((title) => title.status !== "cancelled")
+    .reduce((sum, title) => sum + title.amount, 0);
+  const receivedAmount = orderReceivables.reduce((sum, title) => sum + title.paidAmount, 0);
 
   return (
     <div className="space-y-6">
@@ -123,6 +130,32 @@ function OrderDetailPage() {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle>Faturamento</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              <Info label="NF principal" value={order.invoiceNumber ?? "Não faturado"} />
+              <Info label="Valor faturado" value={formatCurrency(billedAmount)} highlight />
+              <Info label="Valor recebido" value={formatCurrency(receivedAmount)} />
+              <Info
+                label="Emissão"
+                value={order.invoiceIssuedAt ? formatDate(order.invoiceIssuedAt) : "-"}
+              />
+              <Info
+                label="Vencimento"
+                value={order.billingDueDate ? formatDate(order.billingDueDate) : "-"}
+              />
+              <Info label="Faturado por" value={order.billedBy ?? "-"} />
+              <div className="md:col-span-3">
+                <p className="text-xs text-muted-foreground">Observação</p>
+                <p className="mt-1 font-medium text-foreground">
+                  {order.billingNotes || "Sem observação registrada."}
+                </p>
+              </div>
             </CardContent>
           </Card>
 

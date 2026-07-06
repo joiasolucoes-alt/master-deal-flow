@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Bar,
@@ -10,14 +10,25 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ArrowDownCircle, Banknote, CheckCircle2, CreditCard, Plus, Wallet } from "lucide-react";
+import {
+  ArrowDownCircle,
+  Banknote,
+  CheckCircle2,
+  CreditCard,
+  FileCheck2,
+  Plus,
+  ReceiptText,
+  Wallet,
+} from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
 import { DataTable, type DataColumn } from "@/components/app/data-table";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useAppContext } from "@/features/app/app-context";
 import type { FinancialTitle, Order } from "@/data/types";
 import {
@@ -38,6 +49,8 @@ export const Route = createFileRoute("/_app/financeiro")({
 function FinancialPage() {
   const { auth, orders, financialTitles, freights, upsertFinancialTitle, upsertOrder } =
     useAppContext();
+  const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
+  const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
   const visibleOrderIds = useMemo(
     () => new Set(visibleOrders.map((order) => order.id)),
@@ -78,6 +91,19 @@ function FinancialPage() {
     (order) =>
       !financialTitles.some((title) => title.orderId === order.id && title.type === "receivable"),
   );
+  const billableOrders = useMemo(
+    () =>
+      visibleOrders.filter(
+        (order) =>
+          (order.status === "Aguardando faturamento" || order.status === "Em faturamento") &&
+          order.billingProgress < 100,
+      ),
+    [visibleOrders],
+  );
+  const selectedBillingOrder = useMemo(
+    () => billableOrders.find((order) => order.id === selectedBillingOrderId) ?? null,
+    [billableOrders, selectedBillingOrderId],
+  );
   const ordersWithoutPayables = visibleOrders.filter(
     (order) =>
       !financialTitles.some((title) => title.orderId === order.id && title.type === "payable"),
@@ -90,12 +116,105 @@ function FinancialPage() {
     }
 
     ordersWithoutReceivables.forEach((order) => {
-      createFinancialTitlesFromOrder(order).forEach(upsertFinancialTitle);
-      if (order.status === "Aguardando faturamento") {
-        upsertOrder({ ...order, status: "Em faturamento" });
-      }
+      const titles = createFinancialTitlesFromOrder(order);
+      titles.forEach(upsertFinancialTitle);
+      upsertOrder(updateOrderBilling(order, titles));
     });
     toast.success("Contas a receber geradas a partir dos pedidos.");
+  };
+
+  const handleSelectBillingOrder = (order: Order) => {
+    const remainingAmount = getRemainingBillingAmount(order, financialTitles);
+    setSelectedBillingOrderId(order.id);
+    setBillingForm({
+      invoiceNumber: order.invoiceNumber ?? `NF ${order.number.replace(/\D/g, "").slice(-6)}`,
+      invoiceAmount: formatCurrencyInput(remainingAmount || order.totalValue),
+      invoiceIssuedAt: toDateInput(order.invoiceIssuedAt ?? new Date().toISOString()),
+      billingDueDate: toDateInput(order.billingDueDate ?? getDefaultDueDate(order)),
+      billingNotes: order.billingNotes ?? "",
+    });
+  };
+
+  const handleRegisterBilling = () => {
+    if (!selectedBillingOrder) {
+      toast.error("Selecione um pedido para faturar.");
+      return;
+    }
+
+    const invoiceNumber = billingForm.invoiceNumber.trim();
+    const invoiceAmount = parseCurrencyInput(billingForm.invoiceAmount);
+    if (!invoiceNumber) {
+      toast.error("Informe o número da NF.");
+      return;
+    }
+    if (invoiceAmount <= 0) {
+      toast.error("Informe um valor faturado maior que zero.");
+      return;
+    }
+    if (!billingForm.invoiceIssuedAt || !billingForm.billingDueDate) {
+      toast.error("Informe a emissão e o vencimento da NF.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const title: FinancialTitle = {
+      id: `fin-${selectedBillingOrder.id}-${slugify(invoiceNumber)}`,
+      orderId: selectedBillingOrder.id,
+      orderNumber: selectedBillingOrder.number,
+      client: selectedBillingOrder.client,
+      titleNumber: invoiceNumber,
+      type: "receivable",
+      status: "open",
+      dueDate: dateInputToIso(billingForm.billingDueDate),
+      amount: invoiceAmount,
+      paidAmount: 0,
+      paymentMethod: selectedBillingOrder.paymentTerms,
+      bankName: "",
+      invoiceNumber,
+      invoiceIssuedAt: dateInputToIso(billingForm.invoiceIssuedAt),
+      notes:
+        billingForm.billingNotes ||
+        `Faturamento registrado para o pedido ${selectedBillingOrder.number}.`,
+      owner: selectedBillingOrder.owner,
+      unit: selectedBillingOrder.unit,
+      createdAt: now,
+    };
+    title.status = getFinancialTitleStatus(title);
+
+    const nextTitles = upsertTitleInMemory(financialTitles, title).filter(
+      (item) => item.orderId === selectedBillingOrder.id && item.type === "receivable",
+    );
+    const updatedOrder = updateOrderBilling(
+      {
+        ...selectedBillingOrder,
+        invoiceNumber,
+        invoiceAmount: getBilledAmount(nextTitles),
+        invoiceIssuedAt: title.invoiceIssuedAt,
+        billingDueDate: title.dueDate,
+        billingNotes: billingForm.billingNotes,
+        billedAt: now,
+        billedBy: auth.user?.name ?? auth.user?.email ?? "Financeiro",
+        documents: addUnique(
+          selectedBillingOrder.documents,
+          `${invoiceNumber} - ${formatCurrency(invoiceAmount)}`,
+        ),
+        notes: addUnique(
+          selectedBillingOrder.notes,
+          `Faturamento ${invoiceNumber} registrado em ${formatDate(now)}.`,
+        ),
+      },
+      nextTitles,
+    );
+
+    upsertFinancialTitle(title);
+    upsertOrder(updatedOrder);
+    setSelectedBillingOrderId(null);
+    setBillingForm(createEmptyBillingForm());
+    toast.success(
+      updatedOrder.status === "Em separação"
+        ? "Faturamento concluído e pedido liberado para separação."
+        : "Faturamento parcial registrado.",
+    );
   };
 
   const handleGeneratePayables = () => {
@@ -268,6 +387,135 @@ function FinancialPage() {
         </CardContent>
       </Card>
 
+      <Card className="shadow-card">
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle>Faturamento de pedidos</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Registre a NF, vencimento e valor faturado antes de liberar o pedido para separação.
+            </p>
+          </div>
+          <ReceiptText className="h-5 w-5 text-primary" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <DataTable
+            columns={buildBillingOrderColumns(handleSelectBillingOrder)}
+            data={billableOrders}
+            emptyTitle="Sem pedidos para faturar"
+            emptyDescription="Pedidos faturados ou entregues não aparecem nesta fila."
+          />
+
+          {selectedBillingOrder ? (
+            <div className="rounded-md border border-border bg-card/60 p-4">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">Pedido selecionado</p>
+                  <p className="text-base font-semibold text-foreground">
+                    {selectedBillingOrder.number} • {selectedBillingOrder.client}
+                  </p>
+                </div>
+                <StatusBadge status={selectedBillingOrder.status} />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <label className="space-y-1 text-sm font-medium">
+                  <span>NF</span>
+                  <Input
+                    value={billingForm.invoiceNumber}
+                    onChange={(event) =>
+                      setBillingForm((current) => ({
+                        ...current,
+                        invoiceNumber: event.target.value,
+                      }))
+                    }
+                    placeholder="Ex: NF 587102"
+                  />
+                </label>
+                <label className="space-y-1 text-sm font-medium">
+                  <span>Valor faturado</span>
+                  <Input
+                    value={billingForm.invoiceAmount}
+                    onChange={(event) =>
+                      setBillingForm((current) => ({
+                        ...current,
+                        invoiceAmount: event.target.value,
+                      }))
+                    }
+                    placeholder="0,00"
+                  />
+                </label>
+                <label className="space-y-1 text-sm font-medium">
+                  <span>Emissão</span>
+                  <Input
+                    type="date"
+                    value={billingForm.invoiceIssuedAt}
+                    onChange={(event) =>
+                      setBillingForm((current) => ({
+                        ...current,
+                        invoiceIssuedAt: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="space-y-1 text-sm font-medium">
+                  <span>Vencimento</span>
+                  <Input
+                    type="date"
+                    value={billingForm.billingDueDate}
+                    onChange={(event) =>
+                      setBillingForm((current) => ({
+                        ...current,
+                        billingDueDate: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <label className="mt-4 block space-y-1 text-sm font-medium">
+                <span>Observação do faturamento</span>
+                <Textarea
+                  value={billingForm.billingNotes}
+                  onChange={(event) =>
+                    setBillingForm((current) => ({
+                      ...current,
+                      billingNotes: event.target.value,
+                    }))
+                  }
+                  placeholder="Notas internas, condição especial ou orientação para o pedido."
+                />
+              </label>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+                <span>
+                  Restante a faturar:{" "}
+                  <strong className="text-foreground">
+                    {formatCurrency(
+                      getRemainingBillingAmount(selectedBillingOrder, financialTitles),
+                    )}
+                  </strong>
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedBillingOrderId(null);
+                      setBillingForm(createEmptyBillingForm());
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleRegisterBilling}>
+                    <FileCheck2 />
+                    Registrar faturamento
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="receivable" className="space-y-4">
         <TabsList>
           <TabsTrigger value="receivable">Contas a receber</TabsTrigger>
@@ -359,6 +607,67 @@ function buildFinancialColumns(
   ];
 }
 
+type BillingForm = {
+  invoiceNumber: string;
+  invoiceAmount: string;
+  invoiceIssuedAt: string;
+  billingDueDate: string;
+  billingNotes: string;
+};
+
+function buildBillingOrderColumns(onSelect: (order: Order) => void): DataColumn<Order>[] {
+  return [
+    {
+      key: "number",
+      header: "Pedido",
+      cell: (order) => <span className="font-semibold text-foreground">{order.number}</span>,
+    },
+    { key: "client", header: "Cliente", cell: (order) => order.client },
+    {
+      key: "value",
+      header: "Valor",
+      className: "text-right",
+      cell: (order) => <span className="font-medium">{formatCurrency(order.totalValue)}</span>,
+    },
+    {
+      key: "billing",
+      header: "Faturado",
+      cell: (order) => (
+        <div className="w-32 space-y-1">
+          <div className="flex items-center justify-between text-xs">
+            <span>{order.billingProgress}%</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${order.billingProgress}%` }}
+            />
+          </div>
+        </div>
+      ),
+    },
+    { key: "status", header: "Status", cell: (order) => <StatusBadge status={order.status} /> },
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      cell: (order) => (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(order);
+          }}
+        >
+          <ReceiptText />
+          Faturar
+        </Button>
+      ),
+    },
+  ];
+}
+
 function FinancialTitleCard({
   title,
   actionLabel,
@@ -430,7 +739,7 @@ function FinancialTitleCard({
 }
 
 function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
-  const billingProgress = calculateBillingProgress(titles);
+  const billingProgress = calculateBillingProgress(titles, order.totalValue);
   const status =
     billingProgress >= 100 &&
     (order.status === "Aguardando faturamento" || order.status === "Em faturamento")
@@ -444,6 +753,81 @@ function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
     billingProgress,
     status,
   };
+}
+
+function createEmptyBillingForm(): BillingForm {
+  const today = toDateInput(new Date().toISOString());
+  return {
+    invoiceNumber: "",
+    invoiceAmount: "",
+    invoiceIssuedAt: today,
+    billingDueDate: today,
+    billingNotes: "",
+  };
+}
+
+function getRemainingBillingAmount(order: Order, titles: FinancialTitle[]) {
+  const billedAmount = getBilledAmount(
+    titles.filter((title) => title.orderId === order.id && title.type === "receivable"),
+  );
+  return Math.max(0, roundCurrency(order.totalValue - billedAmount));
+}
+
+function getBilledAmount(titles: FinancialTitle[]) {
+  return roundCurrency(
+    titles
+      .filter((title) => title.type === "receivable" && title.status !== "cancelled")
+      .reduce((sum, title) => sum + title.amount, 0),
+  );
+}
+
+function upsertTitleInMemory(titles: FinancialTitle[], title: FinancialTitle) {
+  const exists = titles.some((item) => item.id === title.id);
+  if (exists) return titles.map((item) => (item.id === title.id ? title : item));
+  return [title, ...titles];
+}
+
+function getDefaultDueDate(order: Order) {
+  const days = order.paymentTerms.match(/\d+/)?.[0];
+  const dueDays = days ? Number(days) : 28;
+  const base = new Date();
+  base.setDate(base.getDate() + (Number.isFinite(dueDays) ? dueDays : 28));
+  return base.toISOString();
+}
+
+function dateInputToIso(value: string) {
+  if (!value) return new Date().toISOString();
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+}
+
+function toDateInput(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function formatCurrencyInput(value: number) {
+  return roundCurrency(value).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function slugify(value: string) {
+  return (
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || crypto.randomUUID()
+  );
+}
+
+function addUnique(values: string[], value: string) {
+  if (values.includes(value)) return values;
+  return [...values, value];
 }
 
 function getRemainingAmount(title: FinancialTitle) {

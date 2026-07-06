@@ -215,6 +215,13 @@ export interface Order {
   priority: Priority;
   products: SimulationProduct[];
   billingProgress: number;
+  invoiceNumber?: string;
+  invoiceAmount?: number;
+  invoiceIssuedAt?: string;
+  billingDueDate?: string;
+  billingNotes?: string;
+  billedAt?: string;
+  billedBy?: string;
   deliveryProgress: number;
   paymentTerms: string;
   logisticsStatus: string;
@@ -239,6 +246,8 @@ export interface FinancialTitle {
   paidAmount: number;
   paymentMethod: string;
   bankName: string;
+  invoiceNumber?: string;
+  invoiceIssuedAt?: string;
   notes: string;
   owner: string;
   unit: string;
