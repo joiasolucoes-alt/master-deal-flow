@@ -1,4 +1,5 @@
 import type { Simulation, User, UserRole } from "@/data/types";
+import { matchesUserIdentity } from "@/lib/userIdentity";
 
 export type Permission =
   | "dashboard:view"
@@ -125,7 +126,7 @@ export function isPendingApprovalStatus(status: Simulation["status"]) {
 }
 
 export function isSimulationOwner(user: User | null | undefined, simulation: Simulation) {
-  return Boolean(user && simulation.owner === user.name);
+  return matchesUserIdentity(simulation.owner, user);
 }
 
 export function canCreateSimulation(user: User | null | undefined) {

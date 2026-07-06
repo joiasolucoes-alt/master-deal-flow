@@ -165,6 +165,32 @@ function getApprovalFlowFromRows(
   return flow;
 }
 
+function getLatestApprovalRow(approvals: SimulationApprovalRow[] | undefined) {
+  return [...(approvals ?? [])].sort((a, b) =>
+    getApprovalRowTime(b).localeCompare(getApprovalRowTime(a)),
+  )[0];
+}
+
+function getStatusFromApprovalRows(
+  status: string | null | undefined,
+  approvals: SimulationApprovalRow[] | undefined,
+): Simulation["status"] {
+  const latest = getLatestApprovalRow(approvals);
+
+  if (latest?.status === "adjustment_requested") return "Ajuste solicitado";
+  if (latest?.status === "rejected") return "Reprovada";
+
+  return (status || "Rascunho") as Simulation["status"];
+}
+
+function getApprovalNotesFromRows(
+  notes: string | null | undefined,
+  approvals: SimulationApprovalRow[] | undefined,
+) {
+  const latest = getLatestApprovalRow(approvals);
+  return notes || latest?.comment || undefined;
+}
+
 export function simulationToRow(simulation: Simulation): Record<string, unknown> {
   const totals = getSimulationTotals(simulation);
 
@@ -304,7 +330,7 @@ export function rowToSimulation(row: SimulationRow): Simulation {
     validUntil: toDateTime(row.valid_until),
     notes: row.notes || "",
     financialNotes: row.financial_notes || undefined,
-    status: (row.status || "Rascunho") as Simulation["status"],
+    status: getStatusFromApprovalRows(row.status, row.approvals),
     priority: (row.priority || "Média") as Simulation["priority"],
     products: (row.simulation_items ?? []).map(rowToProduct),
     purchaseItems: (row.simulation_purchase_costs ?? []).map(rowToPurchase),
@@ -312,7 +338,7 @@ export function rowToSimulation(row: SimulationRow): Simulation {
     financial,
     approvalChecklist: row.approval_checklist ?? undefined,
     approvalFlow: row.approval_flow ?? getApprovalFlowFromRows(row.approvals),
-    approvalNotes: row.approval_notes ?? undefined,
+    approvalNotes: getApprovalNotesFromRows(row.approval_notes, row.approvals),
     orderId: row.converted_order_external_id ?? undefined,
     convertedAt: row.converted_at ?? undefined,
   };
