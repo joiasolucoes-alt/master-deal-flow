@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Check, MessageSquare, RotateCcw, X } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -31,6 +31,7 @@ import {
   isFinancialApprovalComplete,
 } from "@/features/approvals/approvalFlow";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
+import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
 
@@ -77,6 +78,7 @@ function ApprovalsPage() {
   const {
     auth,
     simulations,
+    setSimulations,
     orders,
     upsertSimulation,
     upsertOrder,
@@ -87,6 +89,34 @@ function ApprovalsPage() {
   const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
   const canReview = canReviewApprovals(currentUser);
+  const setSimulationsRef = useRef(setSimulations);
+
+  useEffect(() => {
+    setSimulationsRef.current = setSimulations;
+  }, [setSimulations]);
+
+  useEffect(() => {
+    if (!auth.hasAccess || !canReview || !isSupabaseProvider()) return;
+    if (!getSupabaseConfigStatus().configured) return;
+
+    let cancelled = false;
+    const repository = createSupabaseSimulationRepository();
+
+    async function loadLatestSimulations() {
+      try {
+        const remoteSimulations = await repository.list();
+        if (!cancelled) setSimulationsRef.current(remoteSimulations);
+      } catch (error) {
+        console.error("Falha ao atualizar fila de aprovações pelo Supabase.", error);
+      }
+    }
+
+    void loadLatestSimulations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.hasAccess, auth.user?.id, canReview]);
   const pending = useMemo(
     () =>
       simulations.filter((simulation) => {

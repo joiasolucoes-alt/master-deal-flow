@@ -17,8 +17,7 @@ export const APPROVAL_STAGE_LABELS: Record<ApprovalStage, string> = {
 
 export function getApprovalFlow(simulation: Simulation): SimulationApprovalFlow {
   const inferredApproved = simulation.status === "Aprovada";
-
-  return {
+  const flow: SimulationApprovalFlow = {
     financial: {
       ...pendingStep,
       ...(inferredApproved ? { status: "approved" as const } : {}),
@@ -29,6 +28,23 @@ export function getApprovalFlow(simulation: Simulation): SimulationApprovalFlow 
       ...(inferredApproved ? { status: "approved" as const } : {}),
       ...(simulation.approvalFlow?.principal ?? {}),
     },
+  };
+
+  if (simulation.status !== "Pendente de aprovação" && simulation.status !== "Em análise") {
+    return flow;
+  }
+
+  const hasStaleAdjustment =
+    flow.financial.status === "adjustment_requested" ||
+    flow.financial.status === "rejected" ||
+    flow.principal.status === "adjustment_requested" ||
+    flow.principal.status === "rejected";
+
+  if (!hasStaleAdjustment) return flow;
+
+  return {
+    financial: { status: "pending" },
+    principal: { status: "pending" },
   };
 }
 
