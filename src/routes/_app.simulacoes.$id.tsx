@@ -688,15 +688,13 @@ function SimulationDetailPage() {
     addNotification({
       id: `not-${Date.now()}`,
       title: "Simulação enviada para aprovação",
-      description: `${next.number} foi enviada para análise.`,
+      description: `${next.number} está aguardando aprovação financeira.`,
       type: "warning",
       createdAt: new Date().toISOString(),
       unread: true,
       entityType: "approval",
       entityId: next.id,
-      targetUserId: currentUser?.id,
-      targetUserEmail: currentUser?.email,
-      targetUserName: next.owner,
+      targetRole: "Financeiro",
     });
     setDraft(next);
     toast.success("Simulação enviada para aprovação");

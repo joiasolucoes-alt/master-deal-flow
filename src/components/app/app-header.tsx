@@ -62,6 +62,7 @@ export function AppHeader() {
       if (item.targetUserName && item.targetUserName.trim().toLowerCase() === userName) {
         return true;
       }
+      if (item.targetRole && item.targetRole === user?.role) return true;
       return false;
     });
   }, [notifications, user?.email, user?.id, user?.name, user?.role]);
@@ -127,7 +128,7 @@ export function AppHeader() {
     markNotificationRead(item.id);
     window.setTimeout(() => {
       if (item.entityType === "approval" && item.entityId) {
-        if (user?.role === "Admin" || user?.role === "Aprovador") {
+        if (user?.role === "Admin" || user?.role === "Aprovador" || user?.role === "Financeiro") {
           navigate({ to: "/aprovacoes" });
         } else {
           navigate({ to: "/simulacoes/$id", params: { id: item.entityId } });

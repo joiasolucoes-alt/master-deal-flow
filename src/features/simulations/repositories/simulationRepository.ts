@@ -181,12 +181,14 @@ function getStatusFromApprovalRows(
   status: string | null | undefined,
   approvals: SimulationApprovalRow[] | undefined,
 ): Simulation["status"] {
+  if (status) return status as Simulation["status"];
+
   const latest = getLatestApprovalRow(approvals);
 
   if (latest?.status === "adjustment_requested") return "Ajuste solicitado";
   if (latest?.status === "rejected") return "Reprovada";
 
-  return (status || "Rascunho") as Simulation["status"];
+  return "Rascunho";
 }
 
 function getApprovalNotesFromRows(

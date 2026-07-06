@@ -80,6 +80,7 @@ export interface NotificationItem {
   targetUserId?: string;
   targetUserEmail?: string;
   targetUserName?: string;
+  targetRole?: UserRole;
 }
 
 export interface SimulationProduct {

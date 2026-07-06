@@ -249,6 +249,19 @@ function ApprovalsPage() {
         targetUserEmail: ownerUser?.email,
         targetUserName: ownerUser?.name ?? selected.owner,
       });
+      if (decision === "approve" && stage === "financial") {
+        addNotification({
+          id: `not-${Date.now()}-principal`,
+          title: "Simulação aguardando aprovação final",
+          description: `${selected.number} passou pelo Financeiro e aguarda decisão final.`,
+          type: "warning",
+          createdAt: new Date().toISOString(),
+          unread: true,
+          entityType: "approval",
+          entityId: selected.id,
+          targetRole: "Aprovador",
+        });
+      }
       toast.success(
         decision === "approve"
           ? "Etapa financeira aprovada. A simulação segue para aprovação final."
