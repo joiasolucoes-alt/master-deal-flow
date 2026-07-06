@@ -180,6 +180,10 @@ export interface Simulation {
   };
   approvalFlow?: SimulationApprovalFlow;
   approvalNotes?: string;
+  adjustmentReason?: string;
+  adjustmentRequestedAt?: string;
+  adjustmentRequestedBy?: string;
+  adjustmentStage?: ApprovalStage;
   orderId?: string;
   convertedAt?: string;
 }

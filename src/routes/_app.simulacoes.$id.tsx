@@ -620,6 +620,10 @@ function SimulationDetailPage() {
       status: "Pendente de aprovação" as const,
       approvalChecklist: undefined,
       approvalNotes: undefined,
+      adjustmentReason: undefined,
+      adjustmentRequestedAt: undefined,
+      adjustmentRequestedBy: undefined,
+      adjustmentStage: undefined,
     });
     if (!window.confirm("Enviar esta simulação para aprovação?")) return;
     upsertSimulation(next);

@@ -113,6 +113,10 @@ export function applyApprovalDecision(
       approvalFlow: nextFlow,
       approvalChecklist: undefined,
       approvalNotes: payload.notes || simulation.approvalNotes,
+      adjustmentReason: payload.notes || simulation.adjustmentReason || simulation.approvalNotes,
+      adjustmentRequestedAt: decidedAt,
+      adjustmentRequestedBy: payload.approverName || payload.approverId,
+      adjustmentStage: stage,
     };
   }
 
@@ -122,6 +126,10 @@ export function applyApprovalDecision(
       status: "Reprovada",
       approvalFlow: nextFlow,
       approvalNotes: payload.notes || simulation.approvalNotes,
+      adjustmentReason: undefined,
+      adjustmentRequestedAt: undefined,
+      adjustmentRequestedBy: undefined,
+      adjustmentStage: undefined,
     };
   }
 
@@ -133,5 +141,9 @@ export function applyApprovalDecision(
         : "Pendente de aprovação",
     approvalFlow: nextFlow,
     approvalNotes: payload.notes || simulation.approvalNotes,
+    adjustmentReason: undefined,
+    adjustmentRequestedAt: undefined,
+    adjustmentRequestedBy: undefined,
+    adjustmentStage: undefined,
   };
 }

@@ -29,11 +29,17 @@ function AdjustmentsPage() {
   const navigate = useNavigate();
   const { auth, simulations, setSimulations } = useAppContext();
   const [search, setSearch] = useState("");
+  const [remoteAdjustments, setRemoteAdjustments] = useState<Simulation[] | null>(null);
   const setSimulationsRef = useRef(setSimulations);
+  const simulationsRef = useRef(simulations);
 
   useEffect(() => {
     setSimulationsRef.current = setSimulations;
   }, [setSimulations]);
+
+  useEffect(() => {
+    simulationsRef.current = simulations;
+  }, [simulations]);
 
   useEffect(() => {
     if (!auth.hasAccess || !isSupabaseProvider() || !getSupabaseConfigStatus().configured) return;
@@ -41,23 +47,30 @@ function AdjustmentsPage() {
     let cancelled = false;
     const repository = createSupabaseSimulationRepository();
 
-    void repository
-      .list()
-      .then((remoteSimulations) => {
-        if (!cancelled) setSimulationsRef.current(remoteSimulations);
-      })
-      .catch((error) => {
+    async function loadAdjustments() {
+      try {
+        const adjustments = repository.listAdjustments
+          ? await repository.listAdjustments(auth.user)
+          : [];
+        if (cancelled) return;
+        setRemoteAdjustments(adjustments);
+        setSimulationsRef.current(mergeSimulations(simulationsRef.current, adjustments));
+      } catch (error) {
         console.error("Falha ao atualizar reajustes pelo Supabase.", error);
-      });
+      }
+    }
+
+    void loadAdjustments();
 
     return () => {
       cancelled = true;
     };
-  }, [auth.hasAccess]);
+  }, [auth.hasAccess, auth.user]);
 
+  const adjustmentSource = remoteAdjustments ?? simulations;
   const visibleSimulations = useMemo(
-    () => filterSimulationsForUser(simulations, auth.user),
-    [auth.user, simulations],
+    () => filterSimulationsForUser(adjustmentSource, auth.user),
+    [adjustmentSource, auth.user],
   );
 
   const adjustments = useMemo(
@@ -188,4 +201,10 @@ function AdjustmentsPage() {
       />
     </div>
   );
+}
+
+function mergeSimulations(current: Simulation[], incoming: Simulation[]) {
+  const byId = new Map(current.map((simulation) => [simulation.id, simulation]));
+  for (const simulation of incoming) byId.set(simulation.id, simulation);
+  return Array.from(byId.values());
 }

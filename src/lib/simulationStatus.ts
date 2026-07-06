@@ -10,6 +10,7 @@ export function isSimulationAdjustmentRequested(simulation: Simulation) {
 
 export function getSimulationAdjustmentReason(simulation: Simulation) {
   return (
+    simulation.adjustmentReason ||
     simulation.approvalNotes ||
     simulation.approvalFlow?.financial.notes ||
     simulation.approvalFlow?.principal.notes ||

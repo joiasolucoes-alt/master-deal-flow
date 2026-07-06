@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureSupabaseSession, getSupabaseClient } from "@/lib/supabaseClient";
-import type { Simulation } from "@/data/types";
+import type { Simulation, User } from "@/data/types";
 import {
   expenseToSimulationCostRow,
   installmentToRow,
@@ -12,6 +12,8 @@ import {
   type SimulationRow,
 } from "@/features/simulations/repositories/simulationRepository";
 import { getSimulationTotals } from "@/lib/calculations";
+import { normalizeRole } from "@/lib/permissions";
+import { matchesUserIdentity } from "@/lib/userIdentity";
 
 const SIMULATION_SELECT = `
   *,
@@ -33,6 +35,40 @@ function isMissingSchemaColumnError(error: unknown, column: string) {
   const message = "message" in error ? String(error.message) : "";
   const code = "code" in error ? String(error.code) : "";
   return code === "PGRST204" && message.includes(column);
+}
+
+function getMissingSchemaColumn(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+  if (code !== "PGRST204") return null;
+  return message.match(/'([^']+)'/)?.[1] ?? null;
+}
+
+async function upsertSimulationRowWithSchemaFallback(
+  client: SupabaseClient,
+  row: Record<string, unknown>,
+) {
+  const compatibleRow = { ...row };
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await client
+      .from("simulations")
+      .upsert(compatibleRow, { onConflict: "external_id" })
+      .select("id")
+      .single();
+
+    const missingColumn = getMissingSchemaColumn(result.error);
+    if (!result.error || !missingColumn || !(missingColumn in compatibleRow)) return result;
+
+    delete compatibleRow[missingColumn];
+  }
+
+  return client
+    .from("simulations")
+    .upsert(compatibleRow, { onConflict: "external_id" })
+    .select("id")
+    .single();
 }
 
 async function fetchSimulationInternal(client: SupabaseClient, id: string) {
@@ -60,6 +96,32 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
       return ((data ?? []) as SimulationRow[]).map(rowToSimulation);
     },
 
+    async listAdjustments(user?: User | null) {
+      await ensureSupabaseSession();
+      const client = requireClient();
+      let { data, error } = await client
+        .from("simulations")
+        .select(SIMULATION_SELECT)
+        .eq("status", "Ajuste solicitado")
+        .order("adjustment_requested_at", { ascending: false, nullsFirst: false });
+
+      if (error && isMissingSchemaColumnError(error, "adjustment_requested_at")) {
+        const retry = await client
+          .from("simulations")
+          .select(SIMULATION_SELECT)
+          .eq("status", "Ajuste solicitado")
+          .order("created_at", { ascending: false });
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) throw error;
+
+      const simulations = ((data ?? []) as SimulationRow[]).map(rowToSimulation);
+      if (!user || normalizeRole(user.role) === "Admin") return simulations;
+      return simulations.filter((simulation) => matchesUserIdentity(simulation.owner, user));
+    },
+
     async getById(id: string) {
       await ensureSupabaseSession();
       const client = requireClient();
@@ -71,23 +133,7 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
       await ensureSupabaseSession();
       const client = requireClient();
       const row = simulationToRow(simulation);
-      let { data, error } = await client
-        .from("simulations")
-        .upsert(row, { onConflict: "external_id" })
-        .select("id")
-        .single();
-
-      if (error && isMissingSchemaColumnError(error, "approval_flow")) {
-        const compatibleRow = { ...row };
-        delete compatibleRow.approval_flow;
-        const retry = await client
-          .from("simulations")
-          .upsert(compatibleRow, { onConflict: "external_id" })
-          .select("id")
-          .single();
-        data = retry.data;
-        error = retry.error;
-      }
+      const { data, error } = await upsertSimulationRowWithSchemaFallback(client, row);
 
       if (error) throw error;
       if (!data?.id) throw new Error("Simulação não retornou identificador no Supabase.");
