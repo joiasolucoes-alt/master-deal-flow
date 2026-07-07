@@ -1,206 +1,223 @@
-import type {
-  ExpenseItem,
-  FreightRecord,
-  NegotiationWallet,
-  NegotiationWalletEntry,
-  Order,
-  Simulation,
-} from "@/data/types";
+import type { ExpenseItem, FreightRecord, Order, Simulation, User } from "@/data/types";
 import { getExpenseTotal, getSimulationTotals } from "@/lib/calculations";
 
-const FREIGHT_EXPENSE_ALIASES = new Set([
-  "frete",
-  "fretes",
-  "transporte",
-  "logistica",
-  "logística",
-]);
-const MONEY_EPSILON = 0.005;
+export type NegotiationWalletStatus = "open" | "locked" | "closed" | "transferred" | "cancelled";
+export type WalletEntryDirection = "credit" | "debit";
+export type WalletEntryCategory =
+  | "freight_saving"
+  | "freight_extra_cost"
+  | "financial_cost_adjustment"
+  | "boleto_delay_cost"
+  | "commission_adjustment"
+  | "fiscal_cost_adjustment"
+  | "discount_given"
+  | "price_adjustment"
+  | "unloading_cost"
+  | "chapa_cost"
+  | "operational_extra_cost"
+  | "supplier_cost_change"
+  | "customer_payment_adjustment"
+  | "manual_adjustment"
+  | "closing_transfer";
+export type WalletSourceModule =
+  "simulation" | "order" | "financial" | "freight" | "delivery" | "billing" | "manual" | "closing";
 
-export function createNegotiationWallet(order: Order, simulation: Simulation): NegotiationWallet {
+export interface NegotiationWalletEntry {
+  id: string;
+  walletId: string;
+  organizationId: string;
+  negotiationId?: string;
+  simulationId?: string;
+  orderId: string;
+  entryType: "automatic" | "manual" | "reversal" | "transfer" | "closing";
+  category: WalletEntryCategory;
+  sourceModule: WalletSourceModule;
+  amount: number;
+  direction: WalletEntryDirection;
+  description: string;
+  referenceId?: string;
+  metadata?: Record<string, unknown>;
+  createdBy?: string;
+  createdAt: string;
+  reversedAt?: string;
+  reversedBy?: string;
+  reversalReason?: string;
+}
+
+export interface NegotiationWallet {
+  id: string;
+  organizationId: string;
+  negotiationId?: string;
+  simulationId?: string;
+  orderId: string;
+  initialExpectedProfit: number;
+  currentBalance: number;
+  finalBalance?: number;
+  status: NegotiationWalletStatus;
+  openedAt: string;
+  closedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  entries: NegotiationWalletEntry[];
+}
+
+export interface OpportunityPoolEntry {
+  id: string;
+  poolId: string;
+  walletId?: string;
+  organizationId: string;
+  amount: number;
+  direction: WalletEntryDirection;
+  description: string;
+  createdBy?: string;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface OpportunityPool {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  balance: number;
+  status: "active" | "archived";
+  createdAt: string;
+  updatedAt: string;
+  entries: OpportunityPoolEntry[];
+}
+
+export function getWalletTotals(wallet: NegotiationWallet) {
+  const activeEntries = wallet.entries.filter((entry) => !entry.reversedAt);
+  const credits = activeEntries
+    .filter((entry) => entry.direction === "credit")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const debits = activeEntries
+    .filter((entry) => entry.direction === "debit")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  return {
+    credits,
+    debits,
+    balance: roundCurrency(wallet.initialExpectedProfit + credits - debits),
+  };
+}
+
+export function recalculateWallet(wallet: NegotiationWallet): NegotiationWallet {
+  const totals = getWalletTotals(wallet);
+  return { ...wallet, currentBalance: totals.balance, updatedAt: new Date().toISOString() };
+}
+
+export function createWalletFromSimulationOrder({
+  simulation,
+  order,
+  organizationId,
+}: {
+  simulation: Simulation;
+  order: Order;
+  organizationId: string;
+}): NegotiationWallet {
   const now = new Date().toISOString();
-
+  const initialExpectedProfit = roundCurrency(getSimulationTotals(simulation).netProfit);
   return {
     id: `wallet-${order.id}`,
-    orderId: order.id,
+    organizationId,
     simulationId: simulation.id,
-    orderNumber: order.number,
-    client: order.client,
+    orderId: order.id,
+    initialExpectedProfit,
+    currentBalance: initialExpectedProfit,
+    status: "open",
+    openedAt: now,
     createdAt: now,
     updatedAt: now,
     entries: [],
   };
 }
 
-export function ensureNegotiationWallet(
-  wallets: NegotiationWallet[],
-  order: Order,
-  simulation?: Simulation,
+export function createWalletEntry(input: Omit<NegotiationWalletEntry, "id" | "createdAt">) {
+  return {
+    ...input,
+    id: `went-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function upsertWalletEntry(wallet: NegotiationWallet, entry: NegotiationWalletEntry) {
+  const entries = wallet.entries.some((item) => item.id === entry.id)
+    ? wallet.entries.map((item) => (item.id === entry.id ? entry : item))
+    : [entry, ...wallet.entries];
+  return recalculateWallet({ ...wallet, entries });
+}
+
+export function createFreightWalletEntry({
+  wallet,
+  simulation,
+  freight,
+  user,
+}: {
+  wallet: NegotiationWallet;
+  simulation?: Simulation;
+  freight: FreightRecord;
+  user?: User | null;
+}) {
+  const expectedFreight = getExpectedExpense(simulation, "Frete");
+  if (expectedFreight <= 0 || freight.freightValue <= 0) return null;
+  const difference = roundCurrency(expectedFreight - freight.freightValue);
+  if (difference === 0) return null;
+  return createWalletEntry({
+    walletId: wallet.id,
+    organizationId: wallet.organizationId,
+    simulationId: wallet.simulationId,
+    orderId: wallet.orderId,
+    entryType: "automatic",
+    category: difference > 0 ? "freight_saving" : "freight_extra_cost",
+    sourceModule: "freight",
+    amount: Math.abs(difference),
+    direction: difference > 0 ? "credit" : "debit",
+    description:
+      difference > 0
+        ? "Economia na contratação do frete em relação ao valor previsto"
+        : "Custo adicional de frete em relação ao valor previsto",
+    referenceId: freight.id,
+    metadata: { expectedFreight, hiredFreight: freight.freightValue, freightCode: freight.code },
+    createdBy: user?.id ?? user?.email,
+  });
+}
+
+export function reverseEntriesByReference(
+  wallet: NegotiationWallet,
+  referenceId: string,
+  user?: User | null,
+  reason = "Substituído por novo lançamento automático",
 ) {
-  const existing = wallets.find((wallet) => wallet.orderId === order.id);
-  if (existing) return existing;
-  if (!simulation) return null;
-  return createNegotiationWallet(order, simulation);
+  return recalculateWallet({
+    ...wallet,
+    entries: wallet.entries.map((entry) =>
+      entry.referenceId === referenceId && !entry.reversedAt
+        ? {
+            ...entry,
+            reversedAt: new Date().toISOString(),
+            reversedBy: user?.id ?? user?.email,
+            reversalReason: reason,
+          }
+        : entry,
+    ),
+  });
 }
 
-export function getNegotiationWalletBalance(wallet?: NegotiationWallet | null) {
-  if (!wallet) return 0;
-
-  return wallet.entries.reduce((balance, entry) => {
-    const signedAmount = entry.direction === "credit" ? entry.amount : -entry.amount;
-    return balance + signedAmount;
-  }, 0);
-}
-
-export function getExpectedExpense(simulation: Simulation, expenseType: ExpenseItem["type"]) {
+export function getExpectedExpense(simulation: Simulation | undefined, type: ExpenseItem["type"]) {
+  if (!simulation) return 0;
   const totals = getSimulationTotals(simulation);
   const bases = {
     revenue: totals.revenue,
     purchaseTotal: totals.purchaseTotal,
     grossProfit: totals.grossProfit,
   };
-
-  return simulation.expenseItems
-    .filter((expense) => isSameExpenseType(expense.type, expenseType))
-    .reduce((sum, expense) => sum + getExpenseTotal(expense, bases), 0);
-}
-
-export function createFreightWalletEntry(params: {
-  freight: FreightRecord;
-  expectedFreightValue: number;
-}): NegotiationWalletEntry | null {
-  const { freight, expectedFreightValue } = params;
-  if (!freight.orderId) return null;
-  if (expectedFreightValue <= 0) return null;
-
-  const difference = roundMoney(expectedFreightValue - freight.freightValue);
-  if (Math.abs(difference) < MONEY_EPSILON) return null;
-
-  const isSaving = difference > 0;
-  const amount = Math.abs(difference);
-
-  return {
-    id: `wallet-entry-${freight.id}-${Date.now()}`,
-    orderId: freight.orderId,
-    sourceModule: "freight",
-    category: isSaving ? "freight_saving" : "freight_extra_cost",
-    direction: isSaving ? "credit" : "debit",
-    amount,
-    description: isSaving
-      ? `Economia de frete: contratado por ${formatMoneyForDescription(freight.freightValue)} versus previsto de ${formatMoneyForDescription(expectedFreightValue)}.`
-      : `Custo extra de frete: contratado por ${formatMoneyForDescription(freight.freightValue)} versus previsto de ${formatMoneyForDescription(expectedFreightValue)}.`,
-    referenceId: freight.id,
-    occurredAt: new Date().toISOString(),
-    metadata: {
-      freightCode: freight.code,
-      expectedFreightValue,
-      contractedFreightValue: freight.freightValue,
-      difference,
-    },
-  };
-}
-
-export function upsertFreightWalletEntry(
-  wallet: NegotiationWallet,
-  nextEntry: NegotiationWalletEntry | null,
-  referenceId: string,
-) {
-  const now = new Date().toISOString();
-  const activeEntries = wallet.entries.filter(
-    (entry) =>
-      entry.sourceModule === "freight" &&
-      entry.referenceId === referenceId &&
-      !entry.reversedEntryId &&
-      !entry.reversalOfEntryId,
+  return roundCurrency(
+    simulation.expenseItems
+      .filter((expense) => expense.type === type)
+      .reduce((sum, expense) => sum + getExpenseTotal(expense, bases), 0),
   );
-  const untouchedEntries = wallet.entries.filter(
-    (entry) =>
-      !(
-        entry.sourceModule === "freight" &&
-        entry.referenceId === referenceId &&
-        !entry.reversedEntryId &&
-        !entry.reversalOfEntryId
-      ),
-  );
-
-  const reversalEntries = activeEntries.map((entry) => createReversalEntry(entry, now));
-
-  return {
-    ...wallet,
-    updatedAt: now,
-    entries: [
-      ...untouchedEntries,
-      ...activeEntries.map((entry) => markEntryReversed(entry, now)),
-      ...reversalEntries,
-      ...(nextEntry ? [nextEntry] : []),
-    ],
-  };
 }
 
-export function applyFreightWalletEntry(params: {
-  wallets: NegotiationWallet[];
-  order: Order;
-  simulation: Simulation;
-  freight: FreightRecord;
-}) {
-  const wallet = ensureNegotiationWallet(params.wallets, params.order, params.simulation);
-  if (!wallet) return null;
-
-  const expectedFreightValue = getExpectedExpense(params.simulation, "Frete");
-  const nextEntry = createFreightWalletEntry({
-    freight: params.freight,
-    expectedFreightValue,
-  });
-
-  return upsertFreightWalletEntry(wallet, nextEntry, params.freight.id);
-}
-
-function createReversalEntry(
-  entry: NegotiationWalletEntry,
-  occurredAt: string,
-): NegotiationWalletEntry {
-  return {
-    ...entry,
-    id: `wallet-reversal-${entry.id}-${Date.now()}`,
-    direction: entry.direction === "credit" ? "debit" : "credit",
-    description: `Estorno: ${entry.description}`,
-    occurredAt,
-    reversalOfEntryId: entry.id,
-  };
-}
-
-function markEntryReversed(
-  entry: NegotiationWalletEntry,
-  occurredAt: string,
-): NegotiationWalletEntry {
-  return {
-    ...entry,
-    reversedEntryId: `reversed-${entry.id}-${occurredAt}`,
-  };
-}
-
-function isSameExpenseType(left: ExpenseItem["type"], right: ExpenseItem["type"]) {
-  const normalizedLeft = normalizeExpenseType(left);
-  const normalizedRight = normalizeExpenseType(right);
-
-  if (normalizedLeft === normalizedRight) return true;
-  if (normalizedRight === "frete") return FREIGHT_EXPENSE_ALIASES.has(normalizedLeft);
-
-  return false;
-}
-
-function normalizeExpenseType(value: string) {
-  return value
-    .trim()
-    .toLocaleLowerCase("pt-BR")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function roundMoney(value: number) {
-  return Math.round(value * 100) / 100;
-}
-
-function formatMoneyForDescription(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+export function roundCurrency(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }

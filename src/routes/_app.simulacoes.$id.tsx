@@ -97,7 +97,10 @@ import {
 import { filterSimulationsForUser } from "@/lib/visibility";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
-import { createNegotiationWallet } from "@/features/negotiation-wallets";
+import {
+  getSimulationAdjustmentReason,
+  isSimulationAdjustmentRequested,
+} from "@/lib/simulationStatus";
 
 export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
@@ -401,7 +404,6 @@ function SimulationDetailPage() {
     orders,
     clients,
     suppliers,
-    products,
     upsertSimulation,
     upsertOrder,
     upsertNegotiationWallet,
@@ -634,7 +636,13 @@ function SimulationDetailPage() {
     const next = { ...draft, orderId, convertedAt: new Date().toISOString() };
     upsertSimulation(next);
     upsertOrder(order);
-    upsertNegotiationWallet(createNegotiationWallet(order, draft));
+    upsertNegotiationWallet(
+      createWalletFromSimulationOrder({
+        simulation: draft,
+        order,
+        organizationId: draft.unit,
+      }),
+    );
     clearSavedSimulationFormDraft(draftStorageKey);
     addNotification({
       id: `not-${Date.now()}`,

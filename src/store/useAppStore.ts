@@ -4,13 +4,13 @@ import { negotiations } from "@/data/negotiations";
 import { orders } from "@/data/orders";
 import { financialTitles } from "@/data/financialTitles";
 import { freights } from "@/data/freights";
-import { negotiationWallets } from "@/data/negotiationWallets";
 import { deliveries } from "@/data/deliveries";
 import { notifications } from "@/data/notifications";
 import { appUser } from "@/data/users";
 import { clients } from "@/data/clients";
 import { suppliers } from "@/data/suppliers";
 import { products } from "@/data/products";
+import { isSupabaseProvider } from "@/lib/dataProvider";
 import type { AuditEvent, AppStoreState } from "@/store/types";
 import type {
   Client,
@@ -18,7 +18,6 @@ import type {
   FinancialTitle,
   FreightRecord,
   Negotiation,
-  NegotiationWallet,
   NotificationItem,
   Order,
   Product,
@@ -42,14 +41,12 @@ export type AppStore = AppStoreState & {
   selectedApprovalId: string | null;
   selectedOrderId: string | null;
   setSimulations: (value: Simulation[]) => void;
-  setNegotiations: (value: Negotiation[]) => void;
   setOrders: (value: Order[]) => void;
   setFinancialTitles: (value: FinancialTitle[]) => void;
   setRealizedResults: (value: RealizedResultRecord[]) => void;
   setNegotiationWallets: (value: NegotiationWallet[]) => void;
   setOpportunityPools: (value: OpportunityPool[]) => void;
   setFreights: (value: FreightRecord[]) => void;
-  setNegotiationWallets: (value: NegotiationWallet[]) => void;
   setDeliveries: (value: DeliveryRecord[]) => void;
   setClients: (value: Client[]) => void;
   setSuppliers: (value: Supplier[]) => void;
@@ -61,7 +58,6 @@ export type AppStore = AppStoreState & {
   upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
   upsertOpportunityPool: (pool: OpportunityPool) => void;
   upsertFreight: (freight: FreightRecord, audit?: AuditEvent) => void;
-  upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
   upsertDelivery: (delivery: DeliveryRecord, audit?: AuditEvent) => void;
   upsertClient: (client: Client) => void;
   upsertSupplier: (supplier: Supplier) => void;
@@ -77,14 +73,12 @@ export type AppStore = AppStoreState & {
 type PersistedState = Omit<
   AppStore,
   | "setSimulations"
-  | "setNegotiations"
   | "setOrders"
   | "setFinancialTitles"
   | "setRealizedResults"
   | "setNegotiationWallets"
   | "setOpportunityPools"
   | "setFreights"
-  | "setNegotiationWallets"
   | "setDeliveries"
   | "setClients"
   | "setSuppliers"
@@ -96,7 +90,6 @@ type PersistedState = Omit<
   | "upsertNegotiationWallet"
   | "upsertOpportunityPool"
   | "upsertFreight"
-  | "upsertNegotiationWallet"
   | "upsertDelivery"
   | "upsertClient"
   | "upsertSupplier"
@@ -119,7 +112,6 @@ function baseState(): PersistedState {
     negotiationWallets: [],
     opportunityPools: [],
     freights,
-    negotiationWallets,
     deliveries,
     clients,
     suppliers,
@@ -152,6 +144,15 @@ function mergeSeedSimulations(persisted: PersistedState): PersistedState {
 
 function readPersisted(): PersistedState {
   if (typeof window === "undefined") return baseState();
+  if (isSupabaseProvider()) {
+    try {
+      window.localStorage.removeItem(STORE_KEY);
+    } catch (error) {
+      console.warn("Falha ao limpar cache local do estado global.", error);
+    }
+    return baseState();
+  }
+
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
     if (!raw) {
@@ -181,6 +182,15 @@ const listeners = new Set<Listener>();
 
 function persistState() {
   if (typeof window === "undefined") return;
+  if (isSupabaseProvider()) {
+    try {
+      window.localStorage.removeItem(STORE_KEY);
+    } catch (error) {
+      console.warn("Falha ao limpar cache local do estado global.", error);
+    }
+    return;
+  }
+
   try {
     window.localStorage.setItem(STORE_KEY, JSON.stringify(state));
   } catch (error) {
@@ -203,8 +213,6 @@ function subscribe(listener: Listener) {
 const storeActions = {
   setSimulations: (value: Simulation[]) =>
     setState((current) => ({ ...current, simulations: value })),
-  setNegotiations: (value: Negotiation[]) =>
-    setState((current) => ({ ...current, negotiations: value })),
   setOrders: (value: Order[]) => setState((current) => ({ ...current, orders: value })),
   setFinancialTitles: (value: FinancialTitle[]) =>
     setState((current) => ({ ...current, financialTitles: value })),
@@ -215,8 +223,6 @@ const storeActions = {
   setOpportunityPools: (value: OpportunityPool[]) =>
     setState((current) => ({ ...current, opportunityPools: value })),
   setFreights: (value: FreightRecord[]) => setState((current) => ({ ...current, freights: value })),
-  setNegotiationWallets: (value: NegotiationWallet[]) =>
-    setState((current) => ({ ...current, negotiationWallets: value })),
   setDeliveries: (value: DeliveryRecord[]) =>
     setState((current) => ({ ...current, deliveries: value })),
   setClients: (value: Client[]) => setState((current) => ({ ...current, clients: value })),
@@ -275,13 +281,6 @@ const storeActions = {
         ? current.freights.map((item) => (item.id === freight.id ? freight : item))
         : [freight, ...current.freights],
       auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
-    })),
-  upsertNegotiationWallet: (wallet: NegotiationWallet) =>
-    setState((current) => ({
-      ...current,
-      negotiationWallets: current.negotiationWallets.some((item) => item.id === wallet.id)
-        ? current.negotiationWallets.map((item) => (item.id === wallet.id ? wallet : item))
-        : [wallet, ...current.negotiationWallets],
     })),
   upsertDelivery: (delivery: DeliveryRecord, audit?: AuditEvent) =>
     setState((current) => ({

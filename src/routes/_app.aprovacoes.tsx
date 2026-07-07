@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -21,7 +20,7 @@ import { ClipboardCheck, FileWarning, ThumbsDown, ThumbsUp } from "lucide-react"
 import { toast } from "sonner";
 import type { ApprovalStage, Simulation, User } from "@/data/types";
 import { convertSimulationToOrder } from "@/features/simulations/services/simulationService";
-import { createNegotiationWallet } from "@/features/negotiation-wallets";
+import { createWalletFromSimulationOrder } from "@/features/negotiation-wallets";
 import { useAppStore } from "@/store/useAppStore";
 import { canReviewApprovals, isPendingApprovalStatus } from "@/lib/permissions";
 import {
@@ -246,7 +245,13 @@ function ApprovalsPage() {
         );
         upsertSimulation(conversion.simulation);
         upsertOrder(conversion.order);
-        upsertNegotiationWallet(createNegotiationWallet(conversion.order, nextSimulation));
+        upsertNegotiationWallet(
+          createWalletFromSimulationOrder({
+            simulation: nextSimulation,
+            order: conversion.order,
+            organizationId: nextSimulation.unit,
+          }),
+        );
         addNotification({
           id: `not-${Date.now()}`,
           title: "Simulação aprovada",
@@ -316,7 +321,7 @@ function ApprovalsPage() {
           title="Central de aprovações"
           description="Acesso restrito a perfis responsáveis por aprovar simulações."
         />
-        <Card>
+        <Card className="shadow-card">
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">
               Seu perfil pode consultar as áreas liberadas no menu, mas não pode aprovar, reprovar
@@ -335,7 +340,7 @@ function ApprovalsPage() {
         description="Analise simulações em fila e aprove primeiro no financeiro, depois na etapa final."
       />
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3">
         <StatCard
           label="Aguardando sua ação"
           value={String(pending.length)}
@@ -356,17 +361,14 @@ function ApprovalsPage() {
         />
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <Card className="overflow-hidden xl:sticky xl:top-24">
-          <CardHeader className="border-b border-border">
+      <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+        <Card className="shadow-card">
+          <CardHeader>
             <CardTitle>Fila de aprovação</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {pending.length} {pending.length === 1 ? "item pendente" : "itens pendentes"}
-            </p>
           </CardHeader>
           <CardContent className="p-0">
-            <ScrollArea className="h-[560px]">
-              <div className="divide-y divide-border">
+            <ScrollArea className="h-[520px]">
+              <div className="space-y-1 p-3">
                 {pending.length === 0 && (
                   <p className="p-4 text-sm text-muted-foreground">
                     Sem simulações pendentes para o seu perfil.
@@ -380,8 +382,7 @@ function ApprovalsPage() {
                     <button
                       key={sim.id}
                       onClick={() => setSelectedApprovalId(sim.id)}
-                      aria-pressed={active}
-                      className={`relative w-full px-4 py-4 text-left transition-colors before:absolute before:inset-y-0 before:left-0 before:w-0.5 ${active ? "bg-primary-soft/70 before:bg-primary-hover" : "hover:bg-muted/45 before:bg-transparent"}`}
+                      className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${active ? "border-primary bg-primary-soft" : "border-transparent hover:bg-muted/50"}`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-foreground">{sim.number}</span>
@@ -391,11 +392,9 @@ function ApprovalsPage() {
                       <p className="mt-1 text-xs font-medium text-primary">
                         {stage ? APPROVAL_STAGE_LABELS[stage] : "Sem etapa pendente"}
                       </p>
-                      <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                         <StatusBadge status={sim.status} />
-                        <span className="tabular-nums font-semibold text-foreground">
-                          {formatCurrency(totals.revenue)}
-                        </span>
+                        <span>{formatCurrency(totals.revenue)}</span>
                       </div>
                     </button>
                   );
@@ -416,7 +415,7 @@ function ApprovalsPage() {
             onDecide={decide}
           />
         ) : (
-          <Card className="grid min-h-80 place-items-center border-dashed p-12">
+          <Card className="grid place-items-center p-12 shadow-card">
             <p className="text-muted-foreground">
               Selecione uma simulação na fila para iniciar a análise.
             </p>
@@ -456,8 +455,8 @@ function ApprovalDetails({
   const currentStage = getCurrentApprovalStage(simulation);
 
   return (
-    <Card>
-      <CardHeader className="border-b border-border">
+    <Card className="shadow-card">
+      <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <CardTitle>{simulation.number}</CardTitle>
@@ -472,26 +471,18 @@ function ApprovalDetails({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <section aria-labelledby="approval-financial-summary" className="space-y-3">
-          <h3
-            id="approval-financial-summary"
-            className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground"
-          >
-            Resumo financeiro
-          </h3>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <KV label="Receita" value={formatCurrency(totals.revenue)} />
-            <KV label="Custo" value={formatCurrency(totals.merchandiseCost)} />
-            <KV label="Despesas" value={formatCurrency(totals.expenses)} />
-            <KV label="Lucro líquido" value={formatCurrency(totals.netProfit)} highlight />
-          </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          <KV label="Receita" value={formatCurrency(totals.revenue)} />
+          <KV label="Custo" value={formatCurrency(totals.merchandiseCost)} />
+          <KV label="Despesas" value={formatCurrency(totals.expenses)} />
+          <KV label="Lucro líquido" value={formatCurrency(totals.netProfit)} highlight />
+        </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <KV label="Margem" value={formatPercent(totals.marginPercent)} highlight />
-            <KV label="Condição" value={simulation.paymentCondition} />
-            <KV label="Prazo de entrega" value={formatDateTime(simulation.deliveryDate)} />
-          </div>
-        </section>
+        <div className="grid gap-3 md:grid-cols-3">
+          <KV label="Margem" value={formatPercent(totals.marginPercent)} highlight />
+          <KV label="Condição" value={simulation.paymentCondition} />
+          <KV label="Prazo de entrega" value={formatDateTime(simulation.deliveryDate)} />
+        </div>
 
         <Separator />
 
@@ -510,9 +501,8 @@ function ApprovalDetails({
 
         {currentStage === "financial" ? (
           <div className="space-y-2">
-            <Label htmlFor="approval-bank-account">Conta bancária de saída</Label>
+            <h3 className="text-sm font-semibold text-foreground">Conta bancária de saída</h3>
             <Input
-              id="approval-bank-account"
               value={bankAccount}
               onChange={(event) => setBankAccount(event.target.value)}
               placeholder="Informe a conta usada para o pagamento"
@@ -521,14 +511,12 @@ function ApprovalDetails({
         ) : null}
 
         <div className="space-y-3">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-            Checklist da etapa
-          </h3>
+          <h3 className="text-sm font-semibold text-foreground">Checklist da etapa</h3>
           <div className="grid gap-2 md:grid-cols-2">
             {CHECKLIST.map((item) => (
               <label
                 key={item.key}
-                className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-background/35 p-3 transition-colors hover:bg-muted/45"
+                className="flex items-center gap-3 rounded-xl border border-border p-3"
               >
                 <Checkbox
                   checked={checklist[item.key]}
@@ -541,9 +529,8 @@ function ApprovalDetails({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="approval-internal-comment">Comentário interno</Label>
+          <h3 className="text-sm font-semibold text-foreground">Motivo do reajuste / observação</h3>
           <Textarea
-            id="approval-internal-comment"
             rows={3}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
@@ -554,7 +541,7 @@ function ApprovalDetails({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-5">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <ConfirmDialog
             trigger={
               <Button variant="outline">
@@ -600,7 +587,7 @@ function ApprovalDetails({
         </div>
 
         {simulation.approvalNotes ? (
-          <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+          <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3 text-sm">
             <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
             <p className="text-muted-foreground">
               <strong className="text-foreground">Histórico: </strong>
@@ -631,7 +618,7 @@ function ApprovalStepCard({
 
   return (
     <div
-      className={`rounded-md border p-3 ${active ? "border-primary-hover/50 bg-primary-soft/70" : "border-border bg-background/35"}`}
+      className={`rounded-xl border p-3 ${active ? "border-primary bg-primary-soft" : "border-border"}`}
     >
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 font-semibold text-foreground">{statusLabel}</p>
@@ -650,13 +637,10 @@ function ApprovalStepCard({
 
 function KV({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="rounded-md border border-border bg-background/35 p-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </p>
+    <div className="rounded-xl border border-border bg-card p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
       <p
-        data-metric
-        className={`mt-1 tabular-nums ${highlight ? "text-lg font-bold text-foreground" : "font-semibold text-foreground"}`}
+        className={`mt-1 ${highlight ? "text-lg font-semibold text-foreground" : "font-medium text-foreground"}`}
       >
         {value}
       </p>

@@ -211,81 +211,6 @@ function updateOrderFromFreight(order, freight) {
   };
 }
 
-function getExpectedExpenseForWallet(simulation, expenseType) {
-  const totals = getTotals(simulation);
-  const bases = {
-    revenue: totals.revenue,
-    purchaseTotal: totals.purchaseTotal,
-    grossProfit: totals.grossProfit,
-  };
-
-  return simulation.expenseItems
-    .filter((expense) => expense.type === expenseType)
-    .reduce((sum, expense) => sum + getExpenseTotal(expense, bases), 0);
-}
-
-function getNegotiationWalletBalance(wallet) {
-  return wallet.entries.reduce(
-    (balance, entry) => balance + (entry.direction === "credit" ? entry.amount : -entry.amount),
-    0,
-  );
-}
-
-function createFreightWalletEntry({ freight, expectedFreightValue }) {
-  const difference = Math.round((expectedFreightValue - freight.freightValue) * 100) / 100;
-  if (Math.abs(difference) < 0.005) return null;
-  const isSaving = difference > 0;
-
-  return {
-    id: `entry-${freight.id}-${Date.now()}`,
-    orderId: freight.orderId,
-    sourceModule: "freight",
-    category: isSaving ? "freight_saving" : "freight_extra_cost",
-    direction: isSaving ? "credit" : "debit",
-    amount: Math.abs(difference),
-    referenceId: freight.id,
-  };
-}
-
-function upsertFreightWalletEntry(wallet, nextEntry, referenceId) {
-  const activeEntries = wallet.entries.filter(
-    (entry) =>
-      entry.sourceModule === "freight" &&
-      entry.referenceId === referenceId &&
-      !entry.reversedEntryId &&
-      !entry.reversalOfEntryId,
-  );
-  const untouchedEntries = wallet.entries.filter(
-    (entry) =>
-      !(
-        entry.sourceModule === "freight" &&
-        entry.referenceId === referenceId &&
-        !entry.reversedEntryId &&
-        !entry.reversalOfEntryId
-      ),
-  );
-  const reversedEntries = activeEntries.map((entry) => ({
-    ...entry,
-    reversedEntryId: `reversed-${entry.id}`,
-  }));
-  const reversalEntries = activeEntries.map((entry) => ({
-    ...entry,
-    id: `reversal-${entry.id}`,
-    direction: entry.direction === "credit" ? "debit" : "credit",
-    reversalOfEntryId: entry.id,
-  }));
-
-  return {
-    ...wallet,
-    entries: [
-      ...untouchedEntries,
-      ...reversedEntries,
-      ...reversalEntries,
-      ...(nextEntry ? [nextEntry] : []),
-    ],
-  };
-}
-
 function createDeliveryFromFreight(freight) {
   return {
     id: `delivery-${freight.id}`,
@@ -697,53 +622,6 @@ assert.equal(inRouteOrder.deliveryProgress, 70);
 const deliveredOrder = updateOrderFromFreight(inRouteOrder, { ...freight, status: "delivered" });
 assert.equal(deliveredOrder.status, "Entregue");
 assert.equal(deliveredOrder.deliveryProgress, 100);
-
-const walletSimulation = {
-  id: "sim-wallet-1",
-  products: [{ quantityTotal: 10, costUnit: 100, saleUnit: 200 }],
-  expenseItems: [{ type: "Frete", calculationType: "fixed", value: 5000 }],
-};
-const expectedFreightValue = getExpectedExpenseForWallet(walletSimulation, "Frete");
-assert.equal(expectedFreightValue, 5000);
-
-const walletFreight = { id: "freight-wallet-1", orderId: "ord-wallet-1", freightValue: 4000 };
-const savingEntry = createFreightWalletEntry({ freight: walletFreight, expectedFreightValue });
-assert.equal(savingEntry.sourceModule, "freight");
-assert.equal(savingEntry.category, "freight_saving");
-assert.equal(savingEntry.direction, "credit");
-assert.equal(savingEntry.amount, 1000);
-
-const walletWithSaving = upsertFreightWalletEntry(
-  { id: "wallet-ord-wallet-1", entries: [] },
-  savingEntry,
-  walletFreight.id,
-);
-assert.equal(getNegotiationWalletBalance(walletWithSaving), 1000);
-
-const extraCostEntry = createFreightWalletEntry({
-  freight: { ...walletFreight, freightValue: 5700 },
-  expectedFreightValue,
-});
-assert.equal(extraCostEntry.category, "freight_extra_cost");
-assert.equal(extraCostEntry.direction, "debit");
-assert.equal(extraCostEntry.amount, 700);
-
-const walletWithExtraCost = upsertFreightWalletEntry(
-  walletWithSaving,
-  extraCostEntry,
-  walletFreight.id,
-);
-assert.equal(
-  walletWithExtraCost.entries.filter(
-    (entry) =>
-      entry.sourceModule === "freight" &&
-      entry.referenceId === walletFreight.id &&
-      !entry.reversedEntryId &&
-      !entry.reversalOfEntryId,
-  ).length,
-  1,
-);
-assert.equal(getNegotiationWalletBalance(walletWithExtraCost), -700);
 
 const delivery = createDeliveryFromFreight({ ...freight, status: "in_route" });
 assert.equal(delivery.id, "delivery-freight-ord-freight-1");

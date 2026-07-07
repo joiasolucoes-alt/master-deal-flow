@@ -38,10 +38,7 @@ export function StatusBadge({ status }: { status: string }) {
   const label = status === "Em separação" ? "Aguardando frete" : status;
   return (
     <Badge
-      className={cn(
-        "rounded-md px-2.5 py-1 text-[11px] font-semibold tracking-[0.02em]",
-        statusTone[status] ?? statusTone.Rascunho,
-      )}
+      className={cn("rounded-full px-3 py-1 font-medium", statusTone[label] ?? statusTone.Rascunho)}
     >
       {label}
     </Badge>

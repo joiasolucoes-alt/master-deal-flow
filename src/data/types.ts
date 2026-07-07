@@ -329,36 +329,6 @@ export interface FreightRecord {
   deliveredAt?: string;
 }
 
-export type NegotiationWalletSourceModule = "freight";
-export type NegotiationWalletEntryCategory = "freight_saving" | "freight_extra_cost";
-export type NegotiationWalletEntryDirection = "credit" | "debit";
-
-export interface NegotiationWalletEntry {
-  id: string;
-  orderId: string;
-  sourceModule: NegotiationWalletSourceModule;
-  category: NegotiationWalletEntryCategory;
-  direction: NegotiationWalletEntryDirection;
-  amount: number;
-  description: string;
-  referenceId: string;
-  occurredAt: string;
-  reversalOfEntryId?: string;
-  reversedEntryId?: string;
-  metadata?: Record<string, string | number | boolean | null>;
-}
-
-export interface NegotiationWallet {
-  id: string;
-  orderId: string;
-  simulationId: string;
-  orderNumber: string;
-  client: string;
-  createdAt: string;
-  updatedAt: string;
-  entries: NegotiationWalletEntry[];
-}
-
 export type DeliveryStatus =
   "pending" | "loading" | "loaded" | "in_route" | "arrived" | "delivered" | "issue" | "cancelled";
 

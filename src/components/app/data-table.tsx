@@ -8,7 +8,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/app/empty-state";
-import { cn } from "@/lib/utils";
 
 export interface DataColumn<T> {
   key: string;
@@ -23,26 +22,19 @@ export function DataTable<T>({
   onRowClick,
   emptyTitle,
   emptyDescription,
-  className,
 }: {
   columns: DataColumn<T>[];
   data: T[];
   onRowClick?: (row: T) => void;
   emptyTitle: string;
   emptyDescription: string;
-  className?: string;
 }) {
   if (!data.length) {
     return <EmptyState title={emptyTitle} description={emptyDescription} />;
   }
 
   return (
-    <div
-      className={cn(
-        "overflow-x-auto rounded-lg border border-border bg-card shadow-card",
-        className,
-      )}
-    >
+    <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
       <Table>
         <TableHeader>
           <TableRow>

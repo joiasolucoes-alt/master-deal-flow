@@ -2,15 +2,14 @@ import type { FreightRecord } from "@/data/types";
 import { getSupabaseClient, getSupabaseConfigStatus } from "@/lib/supabaseClient";
 
 export type DriverEventType =
-  "arrived_pickup" | "loaded" | "in_transit" | "delivered" | "proof_uploaded";
+  | "arrived_loading"
+  | "in_transit"
+  | "arrived_delivery_location"
+  | "unloaded"
+  | "proof_uploaded"
+  | "completed";
 export type FreightTrackingStatus =
-  | "quoted"
-  | "hired"
-  | "loading"
-  | "in_route"
-  | "delivered"
-  | "cancelled"
-  | DriverEventType;
+  "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled" | DriverEventType;
 
 export interface DriverTrackingEvent {
   id: string;

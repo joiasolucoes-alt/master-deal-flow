@@ -33,6 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCompactCurrency, formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { downloadTextFile, notifyActionUnavailable } from "@/lib/actions";
 import { useAppContext } from "@/features/app/app-context";
+import { useAppStore } from "@/store/useAppStore";
 import { getSimulationTotals } from "@/lib/calculations";
 import {
   approveCommissionForRealizedResult,
@@ -82,7 +83,17 @@ const pieColors = [
 ];
 
 function ReportsPage() {
-  const { auth, negotiations, simulations, orders } = useAppContext();
+  const {
+    auth,
+    simulations,
+    orders,
+    financialTitles,
+    realizedResults: closedRealizedResults,
+    freights,
+    deliveries,
+    upsertRealizedResult,
+  } = useAppContext();
+  const negotiations = useAppStore((store) => store.negotiations);
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, auth.user),
     [auth.user, simulations],

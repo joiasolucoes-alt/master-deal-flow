@@ -40,7 +40,15 @@ import {
   getNextFreightStatus,
   updateOrderFromFreight,
 } from "@/features/freights/freightHelpers";
-import { applyFreightWalletEntry, ensureNegotiationWallet } from "@/features/negotiation-wallets";
+import {
+  FREIGHT_DOCUMENT_TYPE_LABEL,
+  getFreightDocumentSignedUrl,
+  listFreightDocuments,
+  saveFreightDocument,
+  validateFreightDocumentFile,
+  type FreightDocumentRecord,
+  type FreightDocumentType,
+} from "@/features/freights/freightDocumentStorage";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import {
   DRIVER_EVENT_FLOW,
@@ -228,18 +236,21 @@ function FreightsPage() {
     };
 
     upsertFreight(nextFreight);
+
+    const wallet = negotiationWallets.find((item) => item.orderId === nextFreight.orderId);
     const order = orders.find((item) => item.id === nextFreight.orderId);
     const simulation = simulations.find((item) => item.id === order?.simulationId);
-    if (order && simulation) {
-      const wallet =
-        applyFreightWalletEntry({
-          wallets: negotiationWallets,
-          order,
-          simulation,
-          freight: nextFreight,
-        }) ?? ensureNegotiationWallet(negotiationWallets, order, simulation);
-      if (wallet) upsertNegotiationWallet(wallet);
+    if (wallet) {
+      const reversedWallet = reverseEntriesByReference(wallet, nextFreight.id, auth.user);
+      const entry = createFreightWalletEntry({
+        wallet: reversedWallet,
+        simulation,
+        freight: nextFreight,
+        user: auth.user,
+      });
+      upsertNegotiationWallet(entry ? upsertWalletEntry(reversedWallet, entry) : reversedWallet);
     }
+
     toast.success("Dados do frete salvos.");
   };
 

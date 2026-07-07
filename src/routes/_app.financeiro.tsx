@@ -333,7 +333,7 @@ function FinancialPage() {
         description="Fluxo de caixa, contas a receber, contas a pagar e impactos financeiros das negociações."
       />
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Contas a receber"
           value={formatCurrency(totalReceive)}
@@ -360,12 +360,9 @@ function FinancialPage() {
         />
       </div>
 
-      <Card>
-        <CardHeader className="border-b border-border">
+      <Card className="shadow-card">
+        <CardHeader>
           <CardTitle>Fluxo de caixa</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Comparativo mensal entre entradas previstas e saídas operacionais.
-          </p>
         </CardHeader>
         <CardContent className="h-72">
           <ResponsiveContainer width="100%" height="100%">
@@ -408,82 +405,148 @@ function FinancialPage() {
               <Bar
                 dataKey="entradas"
                 name="Entradas"
-                radius={[3, 3, 0, 0]}
-                fill="var(--color-success)"
-                animationDuration={500}
+                radius={[8, 8, 0, 0]}
+                fill="var(--color-primary)"
+                animationDuration={800}
               />
               <Bar
                 dataKey="saidas"
                 name="Saídas"
-                radius={[3, 3, 0, 0]}
+                radius={[8, 8, 0, 0]}
                 fill="var(--color-chart-2)"
-                animationDuration={500}
+                animationDuration={800}
               />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden">
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0 border-b border-border">
+      <Card className="shadow-card">
+        <CardHeader className="flex-row items-center justify-between space-y-0">
           <div>
-            <CardTitle>Contas a receber</CardTitle>
+            <CardTitle>Faturamento de pedidos</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Acompanhe vencimentos, baixas e valores em aberto.
+              Registre a NF, vencimento e valor faturado antes de liberar o pedido para separação.
             </p>
           </div>
-          <Button size="sm" variant="soft" onClick={handleGenerateReceivables}>
-            <Plus />
-            Gerar contas dos pedidos
-          </Button>
+          <ReceiptText className="h-5 w-5 text-primary" />
         </CardHeader>
-        <CardContent className="p-0">
-          <Tabs defaultValue="all">
-            <TabsList className="px-5">
-              <TabsTrigger value="all">Todos</TabsTrigger>
-              <TabsTrigger value="pending">A vencer</TabsTrigger>
-              <TabsTrigger value="overdue">Vencidos</TabsTrigger>
-              <TabsTrigger value="paid">Pagos</TabsTrigger>
-            </TabsList>
-            <TabsContent value="all" className="mt-0">
-              <DataTable
-                columns={columns}
-                data={visibleReceivables}
-                emptyTitle="Sem registros"
-                emptyDescription="Não há contas para exibir."
-                className="rounded-none border-x-0 border-b-0 shadow-none"
-              />
-            </TabsContent>
-            <TabsContent value="pending" className="mt-0">
-              <DataTable
-                columns={columns}
-                data={visibleReceivables.filter(
-                  (r) => r.status === "open" || r.status === "partial",
-                )}
-                emptyTitle="Sem registros"
-                emptyDescription="Não há contas a vencer."
-                className="rounded-none border-x-0 border-b-0 shadow-none"
-              />
-            </TabsContent>
-            <TabsContent value="overdue" className="mt-0">
-              <DataTable
-                columns={columns}
-                data={visibleReceivables.filter((r) => r.status === "overdue")}
-                emptyTitle="Sem vencidos"
-                emptyDescription="Sem contas vencidas."
-                className="rounded-none border-x-0 border-b-0 shadow-none"
-              />
-            </TabsContent>
-            <TabsContent value="paid" className="mt-0">
-              <DataTable
-                columns={columns}
-                data={visibleReceivables.filter((r) => r.status === "paid")}
-                emptyTitle="Sem pagamentos"
-                emptyDescription="Sem contas pagas."
-                className="rounded-none border-x-0 border-b-0 shadow-none"
-              />
-            </TabsContent>
-          </Tabs>
+        <CardContent className="space-y-4">
+          <DataTable
+            columns={buildBillingOrderColumns(handleSelectBillingOrder)}
+            data={billableOrders}
+            emptyTitle="Sem pedidos para faturar"
+            emptyDescription="Pedidos faturados ou entregues não aparecem nesta fila."
+          />
+
+          {selectedBillingOrder ? (
+            <div className="rounded-md border border-border bg-card/60 p-4">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">Pedido selecionado</p>
+                  <p className="text-base font-semibold text-foreground">
+                    {selectedBillingOrder.number} • {selectedBillingOrder.client}
+                  </p>
+                </div>
+                <StatusBadge status={selectedBillingOrder.status} />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <label className="space-y-1 text-sm font-medium">
+                  <span>NF</span>
+                  <Input
+                    value={billingForm.invoiceNumber}
+                    onChange={(event) =>
+                      setBillingForm((current) => ({
+                        ...current,
+                        invoiceNumber: event.target.value,
+                      }))
+                    }
+                    placeholder="Ex: NF 587102"
+                  />
+                </label>
+                <label className="space-y-1 text-sm font-medium">
+                  <span>Valor faturado</span>
+                  <Input
+                    value={billingForm.invoiceAmount}
+                    onChange={(event) =>
+                      setBillingForm((current) => ({
+                        ...current,
+                        invoiceAmount: event.target.value,
+                      }))
+                    }
+                    placeholder="0,00"
+                  />
+                </label>
+                <label className="space-y-1 text-sm font-medium">
+                  <span>Emissão</span>
+                  <Input
+                    type="date"
+                    value={billingForm.invoiceIssuedAt}
+                    onChange={(event) =>
+                      setBillingForm((current) => ({
+                        ...current,
+                        invoiceIssuedAt: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="space-y-1 text-sm font-medium">
+                  <span>Vencimento</span>
+                  <Input
+                    type="date"
+                    value={billingForm.billingDueDate}
+                    onChange={(event) =>
+                      setBillingForm((current) => ({
+                        ...current,
+                        billingDueDate: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <label className="mt-4 block space-y-1 text-sm font-medium">
+                <span>Observação do faturamento</span>
+                <Textarea
+                  value={billingForm.billingNotes}
+                  onChange={(event) =>
+                    setBillingForm((current) => ({
+                      ...current,
+                      billingNotes: event.target.value,
+                    }))
+                  }
+                  placeholder="Notas internas, condição especial ou orientação para o pedido."
+                />
+              </label>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+                <span>
+                  Restante a faturar:{" "}
+                  <strong className="text-foreground">
+                    {formatCurrency(
+                      getRemainingBillingAmount(selectedBillingOrder, financialTitles),
+                    )}
+                  </strong>
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedBillingOrderId(null);
+                      setBillingForm(createEmptyBillingForm());
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleRegisterBilling}>
+                    <FileCheck2 />
+                    Registrar faturamento
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
