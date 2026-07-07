@@ -342,29 +342,6 @@ function getAccessStatus(row: DriverAccessLinkRow): DriverAccessSummary["status"
   return "active";
 }
 
-function isDriverAuthBusinessReason(reason?: string) {
-  return (
-    reason === "invalid_pin" ||
-    reason === "invalid_link" ||
-    reason === "expired" ||
-    reason === "revoked" ||
-    reason === "locked" ||
-    reason === "completed" ||
-    reason === "unauthorized" ||
-    reason === "missing_credentials"
-  );
-}
-
-async function invokeDriverFunction<T>(
-  functionName: string,
-  body: Record<string, unknown> | FormData,
-) {
-  const client = getClientOrThrow();
-  const { data, error } = await client.functions.invoke<T>(functionName, { body });
-  if (error) throw error;
-  return data;
-}
-
 async function rpcJson(functionName: string, args: Record<string, unknown>) {
   const client = getClientOrThrow();
   const { data, error } = await client.rpc(functionName, args);
@@ -394,6 +371,10 @@ async function rpcJson(functionName: string, args: Record<string, unknown>) {
     throw error;
   }
   return data;
+}
+
+function safeStorageName(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "comprovante";
 }
 
 export async function createDriverAccessLink(freight: FreightRecord, expiresAt?: string) {
@@ -524,46 +505,23 @@ export async function authenticateDriverLink(token: string, pin: string) {
     return { ok: false as const, reason: "invalid_pin" };
   }
 
-  try {
-    const payload = await invokeDriverFunction<{ ok: boolean; reason?: string; trip?: unknown }>(
-      "driver-link-auth",
-      { token, pin },
-    );
-    if (!payload?.ok) {
-      if (isDriverAuthBusinessReason(payload?.reason)) {
-        return { ok: false as const, reason: payload?.reason ?? "invalid_pin" };
-      }
-      throw new Error(payload?.reason ?? "driver_link_auth_failed");
-    }
-    return { ok: true as const, trip: toDriverTrip(payload.trip) };
-  } catch {
-    const payload = (await rpcJson("driver_link_auth", {
-      p_token: token,
-      p_pin: pin,
-      p_user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-    })) as { ok: boolean; reason?: string; trip?: unknown };
-    if (!payload.ok) return { ok: false as const, reason: payload.reason ?? "invalid_pin" };
-    return { ok: true as const, trip: toDriverTrip(payload.trip) };
-  }
+  const payload = (await rpcJson("driver_link_auth", {
+    p_token: token,
+    p_pin: pin,
+    p_user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+  })) as { ok: boolean; reason?: string; trip?: unknown };
+  if (!payload.ok) return { ok: false as const, reason: payload.reason ?? "invalid_pin" };
+  return { ok: true as const, trip: toDriverTrip(payload.trip) };
 }
 
 export async function fetchDriverTrip(token: string, pin: string) {
   if (!getSupabaseConfigStatus().configured) return token === "demo" ? mockTrip : null;
 
-  try {
-    const payload = await invokeDriverFunction<{ ok: boolean; reason?: string; trip?: unknown }>(
-      "driver-trip-status",
-      { token, pin },
-    );
-    if (!payload?.ok) return null;
-    return toDriverTrip(payload.trip);
-  } catch {
-    const payload = (await rpcJson("driver_trip_status", {
-      p_token: token,
-      p_pin: pin,
-    })) as { ok: boolean; trip?: unknown };
-    return payload.ok ? toDriverTrip(payload.trip) : null;
-  }
+  const payload = (await rpcJson("driver_trip_status", {
+    p_token: token,
+    p_pin: pin,
+  })) as { ok: boolean; trip?: unknown };
+  return payload.ok ? toDriverTrip(payload.trip) : null;
 }
 
 export async function registerDriverEvent(
@@ -587,30 +545,15 @@ export async function registerDriverEvent(
     return mockTrip;
   }
 
-  try {
-    const payload = await invokeDriverFunction<{ ok: boolean; trip?: unknown }>(
-      "driver-trip-event",
-      {
-        token,
-        pin,
-        eventType,
-        latitude: coords?.latitude ?? null,
-        longitude: coords?.longitude ?? null,
-      },
-    );
-    if (!payload?.ok) throw new Error("Evento recusado.");
-    return toDriverTrip(payload.trip);
-  } catch {
-    const payload = (await rpcJson("driver_trip_event", {
-      p_token: token,
-      p_pin: pin,
-      p_event_type: eventType,
-      p_latitude: coords?.latitude ?? null,
-      p_longitude: coords?.longitude ?? null,
-    })) as { ok: boolean; trip?: unknown };
-    if (!payload.ok) throw new Error("Evento recusado.");
-    return toDriverTrip(payload.trip);
-  }
+  const payload = (await rpcJson("driver_trip_event", {
+    p_token: token,
+    p_pin: pin,
+    p_event_type: eventType,
+    p_latitude: coords?.latitude ?? null,
+    p_longitude: coords?.longitude ?? null,
+  })) as { ok: boolean; trip?: unknown };
+  if (!payload.ok) throw new Error("Evento recusado.");
+  return toDriverTrip(payload.trip);
 }
 
 export async function uploadDeliveryProof(
@@ -642,17 +585,31 @@ export async function uploadDeliveryProof(
     return mockTrip;
   }
 
-  const formData = new FormData();
-  formData.set("token", token);
-  formData.set("pin", pin);
-  formData.set("file", file);
-  if (coords?.latitude != null) formData.set("latitude", String(coords.latitude));
-  if (coords?.longitude != null) formData.set("longitude", String(coords.longitude));
+  const currentTrip = await fetchDriverTrip(token, pin);
+  if (!currentTrip || currentTrip.nextEvent !== "proof_uploaded") {
+    throw new Error("Comprovante fora da etapa esperada.");
+  }
 
-  const payload = await invokeDriverFunction<{ ok: boolean; trip?: unknown }>(
-    "driver-proof-upload",
-    formData,
-  );
-  if (!payload?.ok) throw new Error("Comprovante recusado.");
+  const client = getClientOrThrow();
+  const filePath = `driver/${crypto.randomUUID()}-${safeStorageName(file.name)}`;
+  const { error: uploadError } = await client.storage
+    .from("delivery-proofs")
+    .upload(filePath, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+  if (uploadError) throw uploadError;
+
+  const payload = (await rpcJson("driver_proof_record", {
+    p_token: token,
+    p_pin: pin,
+    p_file_path: filePath,
+    p_file_name: file.name,
+    p_mime_type: file.type,
+    p_file_size: file.size,
+    p_latitude: coords?.latitude ?? null,
+    p_longitude: coords?.longitude ?? null,
+  })) as { ok: boolean; trip?: unknown };
+  if (!payload.ok) throw new Error("Comprovante recusado.");
   return toDriverTrip(payload.trip);
 }
