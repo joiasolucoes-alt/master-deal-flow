@@ -45,6 +45,7 @@ import { createSupabaseFinancialRepository } from "@/features/finance/repositori
 import { createSupabaseFreightRepository } from "@/features/freights/repositories/supabaseFreightRepository";
 import { createSupabaseDeliveryRepository } from "@/features/deliveries/repositories/supabaseDeliveryRepository";
 import { createSupabaseRealizedResultRepository } from "@/features/results/repositories/supabaseRealizedResultRepository";
+import { createSupabaseNegotiationWalletRepository } from "@/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository";
 import { toast } from "sonner";
 
 type AuthProfile = {
@@ -571,6 +572,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setOrdersStore = useAppStore((store) => store.setOrders);
   const setFinancialTitlesStore = useAppStore((store) => store.setFinancialTitles);
   const setRealizedResultsStore = useAppStore((store) => store.setRealizedResults);
+  const setNegotiationWalletsStore = useAppStore((store) => store.setNegotiationWallets);
+  const setOpportunityPoolsStore = useAppStore((store) => store.setOpportunityPools);
   const setFreightsStore = useAppStore((store) => store.setFreights);
   const setDeliveriesStore = useAppStore((store) => store.setDeliveries);
   const setClientsStore = useAppStore((store) => store.setClients);
@@ -919,6 +922,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const realizedResultRepository = createSupabaseRealizedResultRepository();
     const freightRepository = createSupabaseFreightRepository();
     const deliveryRepository = createSupabaseDeliveryRepository();
+    const negotiationWalletRepository = createSupabaseNegotiationWalletRepository();
 
     async function loadRemoteData() {
       try {
@@ -927,6 +931,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remoteOrders,
           remoteFinancialTitles,
           remoteRealizedResults,
+          remoteNegotiationWallets,
+          remoteOpportunityPools,
           remoteFreights,
           remoteDeliveries,
           remoteClients,
@@ -937,6 +943,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           orderRepository.list(),
           financialRepository.listTitles(),
           realizedResultRepository.list(),
+          negotiationWalletRepository.listWallets(),
+          negotiationWalletRepository.listPools(),
           freightRepository.list(),
           deliveryRepository.list(),
           catalogRepository.listClients(),
@@ -954,6 +962,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setOrdersStore(remoteOrders);
         setFinancialTitlesStore(remoteFinancialTitles);
         setRealizedResultsStore(remoteRealizedResults);
+        setNegotiationWalletsStore(remoteNegotiationWallets);
+        setOpportunityPoolsStore(remoteOpportunityPools);
         setFreightsStore(remoteFreights);
         setDeliveriesStore(remoteDeliveries);
         setClientsStore(remoteClients);
@@ -979,6 +989,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDeliveriesStore,
     setFinancialTitlesStore,
     setRealizedResultsStore,
+    setNegotiationWalletsStore,
+    setOpportunityPoolsStore,
     setFreightsStore,
     setOrdersStore,
     setProductsStore,
@@ -1333,10 +1345,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const upsertNegotiationWallet = (wallet: NegotiationWallet) => {
     upsertNegotiationWalletStore(wallet);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. A carteira ficou salva apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseNegotiationWalletRepository();
+    void repository.saveWallet(wallet).catch((error) => {
+      console.error("Falha ao salvar carteira da negociação no Supabase.", error);
+      setLastDataError(error instanceof Error ? error.message : "Falha ao salvar carteira.");
+      toast.error("Falha ao salvar carteira no Supabase. Dados locais preservados.");
+    });
   };
 
   const upsertOpportunityPool = (pool: OpportunityPool) => {
     upsertOpportunityPoolStore(pool);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. O pool ficou salvo apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseNegotiationWalletRepository();
+    void repository.savePool(pool).catch((error) => {
+      console.error("Falha ao salvar pool de oportunidades no Supabase.", error);
+      setLastDataError(error instanceof Error ? error.message : "Falha ao salvar pool.");
+      toast.error("Falha ao salvar pool no Supabase. Dados locais preservados.");
+    });
   };
 
   const upsertFinancialTitle = (title: FinancialTitle) => {
