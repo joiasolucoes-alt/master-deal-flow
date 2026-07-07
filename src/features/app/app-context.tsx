@@ -24,6 +24,8 @@ import type {
   DeliveryRecord,
   FinancialTitle,
   FreightRecord,
+  Negotiation,
+  NegotiationWallet,
   Order,
   Product,
   Simulation,
@@ -41,6 +43,8 @@ import { createSupabaseCatalogRepository } from "@/features/catalogs/repositorie
 import { createSupabaseFinancialRepository } from "@/features/finance/repositories/supabaseFinancialRepository";
 import { createSupabaseFreightRepository } from "@/features/freights/repositories/supabaseFreightRepository";
 import { createSupabaseDeliveryRepository } from "@/features/deliveries/repositories/supabaseDeliveryRepository";
+import { createSupabaseNegotiationRepository } from "@/features/negotiations/repositories/supabaseNegotiationRepository";
+import { createSupabaseNegotiationWalletRepository } from "@/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository";
 import { toast } from "sonner";
 
 type AuthProfile = {
@@ -108,19 +112,24 @@ interface AppContextValue {
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
   simulations: Simulation[];
+  negotiations: Negotiation[];
   orders: Order[];
   financialTitles: FinancialTitle[];
   freights: FreightRecord[];
+  negotiationWallets: NegotiationWallet[];
   deliveries: DeliveryRecord[];
   clients: Client[];
   suppliers: Supplier[];
   products: Product[];
   lastDataError: string | null;
   setSimulations: (value: Simulation[]) => void;
+  setNegotiations: (value: Negotiation[]) => void;
   upsertSimulation: (simulation: Simulation) => void;
+  upsertNegotiation: (negotiation: Negotiation) => void;
   upsertOrder: (order: Order) => void;
   upsertFinancialTitle: (title: FinancialTitle) => void;
   upsertFreight: (freight: FreightRecord) => void;
+  upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
   upsertDelivery: (delivery: DeliveryRecord) => void;
   upsertClient: (client: Client) => void;
   upsertSupplier: (supplier: Supplier) => void;
@@ -550,25 +559,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>(seedUsers);
   const [lastDataError, setLastDataError] = useState<string | null>(null);
   const simulations = useAppStore((store) => store.simulations);
+  const negotiations = useAppStore((store) => store.negotiations);
   const orders = useAppStore((store) => store.orders);
   const financialTitles = useAppStore((store) => store.financialTitles);
   const freights = useAppStore((store) => store.freights);
+  const negotiationWallets = useAppStore((store) => store.negotiationWallets);
   const deliveries = useAppStore((store) => store.deliveries);
   const clients = useAppStore((store) => store.clients);
   const suppliers = useAppStore((store) => store.suppliers);
   const products = useAppStore((store) => store.products);
   const setSimulationsStore = useAppStore((store) => store.setSimulations);
+  const setNegotiationsStore = useAppStore((store) => store.setNegotiations);
   const setOrdersStore = useAppStore((store) => store.setOrders);
   const setFinancialTitlesStore = useAppStore((store) => store.setFinancialTitles);
   const setFreightsStore = useAppStore((store) => store.setFreights);
+  const setNegotiationWalletsStore = useAppStore((store) => store.setNegotiationWallets);
   const setDeliveriesStore = useAppStore((store) => store.setDeliveries);
   const setClientsStore = useAppStore((store) => store.setClients);
   const setSuppliersStore = useAppStore((store) => store.setSuppliers);
   const setProductsStore = useAppStore((store) => store.setProducts);
   const upsertSimulationStore = useAppStore((store) => store.upsertSimulation);
+  const upsertNegotiationStore = useAppStore((store) => store.upsertNegotiation);
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
   const upsertFinancialTitleStore = useAppStore((store) => store.upsertFinancialTitle);
   const upsertFreightStore = useAppStore((store) => store.upsertFreight);
+  const upsertNegotiationWalletStore = useAppStore((store) => store.upsertNegotiationWallet);
   const upsertDeliveryStore = useAppStore((store) => store.upsertDelivery);
   const upsertClientStore = useAppStore((store) => store.upsertClient);
   const upsertSupplierStore = useAppStore((store) => store.upsertSupplier);
@@ -853,28 +868,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
     const simulationRepository = createSupabaseSimulationRepository();
+    const negotiationRepository = createSupabaseNegotiationRepository();
     const orderRepository = createSupabaseOrderRepository();
     const catalogRepository = createSupabaseCatalogRepository();
     const financialRepository = createSupabaseFinancialRepository();
     const freightRepository = createSupabaseFreightRepository();
+    const negotiationWalletRepository = createSupabaseNegotiationWalletRepository();
     const deliveryRepository = createSupabaseDeliveryRepository();
 
     async function loadRemoteData() {
       try {
         const [
           remoteSimulations,
+          remoteNegotiations,
           remoteOrders,
           remoteFinancialTitles,
           remoteFreights,
+          remoteNegotiationWallets,
           remoteDeliveries,
           remoteClients,
           remoteSuppliers,
           remoteProducts,
         ] = await Promise.all([
           simulationRepository.list(),
+          negotiationRepository.list(),
           orderRepository.list(),
           financialRepository.listTitles(),
           freightRepository.list(),
+          negotiationWalletRepository.list(),
           deliveryRepository.list(),
           catalogRepository.listClients(),
           catalogRepository.listSuppliers(),
@@ -888,9 +909,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             getAppStoreSnapshot().simulations,
           ),
         );
+        setNegotiationsStore(remoteNegotiations);
         setOrdersStore(remoteOrders);
         setFinancialTitlesStore(remoteFinancialTitles);
         setFreightsStore(remoteFreights);
+        setNegotiationWalletsStore(remoteNegotiationWallets);
         setDeliveriesStore(remoteDeliveries);
         setClientsStore(remoteClients);
         setSuppliersStore(remoteSuppliers);
@@ -915,6 +938,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDeliveriesStore,
     setFinancialTitlesStore,
     setFreightsStore,
+    setNegotiationsStore,
+    setNegotiationWalletsStore,
     setOrdersStore,
     setProductsStore,
     setSimulationsStore,
@@ -1137,6 +1162,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     writeLocalStorage(SIMULATION_STORAGE_KEY, value);
   };
 
+  const setNegotiations = (value: Negotiation[]) => {
+    setNegotiationsStore(value);
+  };
+
   const upsertSimulation = (simulation: Simulation) => {
     upsertSimulationStore(simulation);
     if (!isSupabaseProvider()) return;
@@ -1155,6 +1184,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error("Falha ao salvar simulação no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar simulação.");
       toast.error("Falha ao salvar simulação no Supabase. Dados locais preservados.");
+    });
+  };
+
+  const upsertNegotiation = (negotiation: Negotiation) => {
+    upsertNegotiationStore(negotiation);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. A negociação ficou salva apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseNegotiationRepository();
+    void repository.save(negotiation).catch((error) => {
+      console.error("Falha ao salvar negociação no Supabase.", error);
+      setLastDataError(error instanceof Error ? error.message : "Falha ao salvar negociação.");
+      toast.error("Falha ao salvar negociação no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1218,6 +1268,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error("Falha ao salvar frete no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar frete.");
       toast.error("Falha ao salvar frete no Supabase. Dados locais preservados.");
+    });
+  };
+
+  const upsertNegotiationWallet = (wallet: NegotiationWallet) => {
+    upsertNegotiationWalletStore(wallet);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. A carteira ficou salva apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseNegotiationWalletRepository();
+    void repository.save(wallet).catch((error) => {
+      console.error("Falha ao salvar carteira da negociação no Supabase.", error);
+      setLastDataError(error instanceof Error ? error.message : "Falha ao salvar carteira.");
+      toast.error("Falha ao salvar carteira no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1304,19 +1375,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       themeMode,
       setThemeMode,
       simulations,
+      negotiations,
       orders,
       financialTitles,
       freights,
+      negotiationWallets,
       deliveries,
       clients,
       suppliers,
       products,
       lastDataError,
       setSimulations,
+      setNegotiations,
       upsertSimulation,
+      upsertNegotiation,
       upsertOrder,
       upsertFinancialTitle,
       upsertFreight,
+      upsertNegotiationWallet,
       upsertDelivery,
       upsertClient,
       upsertSupplier,
@@ -1332,19 +1408,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       users,
       themeMode,
       simulations,
+      negotiations,
       orders,
       financialTitles,
       freights,
+      negotiationWallets,
       deliveries,
       clients,
       suppliers,
       products,
       lastDataError,
       setSimulations,
+      setNegotiations,
       upsertSimulation,
+      upsertNegotiation,
       upsertOrder,
       upsertFinancialTitle,
       upsertFreight,
+      upsertNegotiationWallet,
       upsertDelivery,
       upsertClient,
       upsertSupplier,

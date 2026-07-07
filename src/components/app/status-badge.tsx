@@ -34,7 +34,7 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <Badge
       className={cn(
-        "rounded-full px-3 py-1 font-medium",
+        "rounded-md px-2.5 py-1 text-[11px] font-semibold tracking-[0.02em]",
         statusTone[status] ?? statusTone.Rascunho,
       )}
     >

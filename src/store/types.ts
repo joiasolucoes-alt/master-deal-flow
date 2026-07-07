@@ -4,6 +4,7 @@ import type {
   FinancialTitle,
   FreightRecord,
   Negotiation,
+  NegotiationWallet,
   NotificationItem,
   Order,
   Product,
@@ -29,6 +30,7 @@ export interface AppStoreState {
   orders: Order[];
   financialTitles: FinancialTitle[];
   freights: FreightRecord[];
+  negotiationWallets: NegotiationWallet[];
   deliveries: DeliveryRecord[];
   clients: Client[];
   suppliers: Supplier[];

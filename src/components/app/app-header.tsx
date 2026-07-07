@@ -31,14 +31,11 @@ type SearchResult = {
 };
 
 export function AppHeader() {
-  const { auth, logout } = useAppContext();
+  const { auth, logout, negotiations, orders, simulations } = useAppContext();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const user = auth.user;
   const notifications = useAppStore((store) => store.notifications);
-  const simulations = useAppStore((store) => store.simulations);
-  const negotiations = useAppStore((store) => store.negotiations);
-  const orders = useAppStore((store) => store.orders);
   const markNotificationRead = useAppStore((store) => store.markNotificationRead);
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, user),

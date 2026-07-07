@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from "react";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { ArrowLeft, Download, FileText, Printer } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -16,6 +17,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppContext } from "@/features/app/app-context";
+import { NegotiationWalletCard } from "@/features/negotiation-wallets-ui";
+import { ensureNegotiationWallet } from "@/features/negotiation-wallets";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { filterOrdersForUser } from "@/lib/visibility";
 
@@ -25,8 +28,21 @@ export const Route = createFileRoute("/_app/pedidos/$id")({
 
 function OrderDetailPage() {
   const { id } = useParams({ from: "/_app/pedidos/$id" });
-  const { auth, orders } = useAppContext();
+  const { auth, orders, simulations, negotiationWallets, upsertNegotiationWallet } =
+    useAppContext();
   const order = filterOrdersForUser(orders, auth.user).find((o) => o.id === id);
+  const simulation = simulations.find((item) => item.id === order?.simulationId);
+  const wallet = useMemo(
+    () => (order ? ensureNegotiationWallet(negotiationWallets, order, simulation) : null),
+    [negotiationWallets, order, simulation],
+  );
+
+  useEffect(() => {
+    if (!wallet) return;
+    if (negotiationWallets.some((item) => item.orderId === wallet.orderId)) return;
+    upsertNegotiationWallet(wallet);
+  }, [negotiationWallets, upsertNegotiationWallet, wallet]);
+
   if (!order) {
     return (
       <div className="space-y-6">
@@ -152,6 +168,8 @@ function OrderDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          <NegotiationWalletCard wallet={wallet} />
         </div>
 
         <div className="space-y-4">

@@ -26,39 +26,39 @@ export function StatCard({
   return (
     <Card className="hover-lift animate-page border-border/90">
       <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-2">
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
             <p className="text-sm text-muted-foreground">{label}</p>
-            <p
-              data-metric
-              className="truncate text-3xl font-bold tracking-[-0.035em] text-foreground"
+            <div
+              className={cn(
+                "grid h-10 w-10 shrink-0 place-items-center rounded-md ring-1 ring-current/10",
+                toneMap[tone],
+              )}
             >
-              {value}
-            </p>
-            {delta ? (
-              <p
-                className={cn(
-                  "inline-flex items-center gap-1 text-sm font-medium",
-                  positive ? "text-success" : "text-danger",
-                )}
-              >
-                {positive ? (
-                  <ArrowUpRight className="h-4 w-4" />
-                ) : (
-                  <ArrowDownRight className="h-4 w-4" />
-                )}
-                {delta}
-              </p>
-            ) : null}
+              <Icon className="h-5 w-5" />
+            </div>
           </div>
-          <div
-            className={cn(
-              "grid h-10 w-10 shrink-0 place-items-center rounded-md ring-1 ring-current/10",
-              toneMap[tone],
-            )}
+          <p
+            data-metric
+            className="text-xl font-bold leading-tight tracking-[-0.035em] text-foreground lg:text-2xl 2xl:text-3xl"
           >
-            <Icon className="h-5 w-5" />
-          </div>
+            {value}
+          </p>
+          {delta ? (
+            <p
+              className={cn(
+                "inline-flex items-center gap-1 text-sm font-medium",
+                positive ? "text-success" : "text-danger",
+              )}
+            >
+              {positive ? (
+                <ArrowUpRight className="h-4 w-4" />
+              ) : (
+                <ArrowDownRight className="h-4 w-4" />
+              )}
+              {delta}
+            </p>
+          ) : null}
         </div>
       </CardContent>
     </Card>

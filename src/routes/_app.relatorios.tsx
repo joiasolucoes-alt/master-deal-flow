@@ -21,7 +21,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCompactCurrency, formatCurrency } from "@/lib/format";
 import { downloadTextFile, notifyActionUnavailable } from "@/lib/actions";
 import { useAppContext } from "@/features/app/app-context";
-import { useAppStore } from "@/store/useAppStore";
 import { getSimulationTotals } from "@/lib/calculations";
 import {
   filterNegotiationsForUser,
@@ -64,8 +63,7 @@ const pieColors = [
 ];
 
 function ReportsPage() {
-  const { auth, simulations, orders } = useAppContext();
-  const negotiations = useAppStore((store) => store.negotiations);
+  const { auth, negotiations, simulations, orders } = useAppContext();
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, auth.user),
     [auth.user, simulations],

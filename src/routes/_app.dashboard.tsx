@@ -40,7 +40,6 @@ import { downloadTextFile } from "@/lib/actions";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { useAppContext } from "@/features/app/app-context";
 import { canCreateSimulation } from "@/lib/permissions";
-import { useAppStore } from "@/store/useAppStore";
 import {
   filterNegotiationsForUser,
   filterOrdersForUser,
@@ -68,8 +67,7 @@ const pieColors = [
 ];
 
 function DashboardPage() {
-  const { auth, simulations, orders } = useAppContext();
-  const negotiations = useAppStore((store) => store.negotiations);
+  const { auth, negotiations, simulations, orders } = useAppContext();
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, auth.user),
     [auth.user, simulations],

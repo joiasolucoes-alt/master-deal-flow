@@ -154,7 +154,7 @@ function FinancialPage() {
         description="Fluxo de caixa, contas a receber e impactos financeiros das negociações."
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Contas a receber"
           value={formatCurrency(totalReceive)}
@@ -181,9 +181,12 @@ function FinancialPage() {
         />
       </div>
 
-      <Card className="shadow-card">
-        <CardHeader>
+      <Card>
+        <CardHeader className="border-b border-border">
           <CardTitle>Fluxo de caixa</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Comparativo mensal entre entradas previstas e saídas operacionais.
+          </p>
         </CardHeader>
         <CardContent className="h-72">
           <ResponsiveContainer width="100%" height="100%">
@@ -226,47 +229,53 @@ function FinancialPage() {
               <Bar
                 dataKey="entradas"
                 name="Entradas"
-                radius={[8, 8, 0, 0]}
-                fill="var(--color-primary)"
-                animationDuration={800}
+                radius={[3, 3, 0, 0]}
+                fill="var(--color-success)"
+                animationDuration={500}
               />
               <Bar
                 dataKey="saidas"
                 name="Saídas"
-                radius={[8, 8, 0, 0]}
+                radius={[3, 3, 0, 0]}
                 fill="var(--color-chart-2)"
-                animationDuration={800}
+                animationDuration={500}
               />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
 
-      <Card className="shadow-card">
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Contas a receber</CardTitle>
+      <Card className="overflow-hidden">
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0 border-b border-border">
+          <div>
+            <CardTitle>Contas a receber</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Acompanhe vencimentos, baixas e valores em aberto.
+            </p>
+          </div>
           <Button size="sm" variant="soft" onClick={handleGenerateReceivables}>
             <Plus />
             Gerar contas dos pedidos
           </Button>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <Tabs defaultValue="all">
-            <TabsList>
+            <TabsList className="px-5">
               <TabsTrigger value="all">Todos</TabsTrigger>
               <TabsTrigger value="pending">A vencer</TabsTrigger>
               <TabsTrigger value="overdue">Vencidos</TabsTrigger>
               <TabsTrigger value="paid">Pagos</TabsTrigger>
             </TabsList>
-            <TabsContent value="all" className="pt-4">
+            <TabsContent value="all" className="mt-0">
               <DataTable
                 columns={columns}
                 data={visibleReceivables}
                 emptyTitle="Sem registros"
                 emptyDescription="Não há contas para exibir."
+                className="rounded-none border-x-0 border-b-0 shadow-none"
               />
             </TabsContent>
-            <TabsContent value="pending" className="pt-4">
+            <TabsContent value="pending" className="mt-0">
               <DataTable
                 columns={columns}
                 data={visibleReceivables.filter(
@@ -274,22 +283,25 @@ function FinancialPage() {
                 )}
                 emptyTitle="Sem registros"
                 emptyDescription="Não há contas a vencer."
+                className="rounded-none border-x-0 border-b-0 shadow-none"
               />
             </TabsContent>
-            <TabsContent value="overdue" className="pt-4">
+            <TabsContent value="overdue" className="mt-0">
               <DataTable
                 columns={columns}
                 data={visibleReceivables.filter((r) => r.status === "overdue")}
                 emptyTitle="Sem vencidos"
                 emptyDescription="Sem contas vencidas."
+                className="rounded-none border-x-0 border-b-0 shadow-none"
               />
             </TabsContent>
-            <TabsContent value="paid" className="pt-4">
+            <TabsContent value="paid" className="mt-0">
               <DataTable
                 columns={columns}
                 data={visibleReceivables.filter((r) => r.status === "paid")}
                 emptyTitle="Sem pagamentos"
                 emptyDescription="Sem contas pagas."
+                className="rounded-none border-x-0 border-b-0 shadow-none"
               />
             </TabsContent>
           </Tabs>

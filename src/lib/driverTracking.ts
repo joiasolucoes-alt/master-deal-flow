@@ -1,11 +1,7 @@
 import { getSupabaseClient, getSupabaseConfigStatus } from "@/lib/supabaseClient";
 
 export type DriverEventType =
-  | "arrived_pickup"
-  | "loaded"
-  | "in_transit"
-  | "delivered"
-  | "proof_uploaded";
+  "arrived_pickup" | "loaded" | "in_transit" | "delivered" | "proof_uploaded";
 export type FreightTrackingStatus =
   | "quoted"
   | "hired"

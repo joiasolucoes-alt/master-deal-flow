@@ -15,7 +15,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useAppStore } from "@/store/useAppStore";
 import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { filterNegotiationsForUser } from "@/lib/visibility";
@@ -26,9 +25,8 @@ export const Route = createFileRoute("/_app/negociacoes")({
 });
 
 function NegotiationsPage() {
-  const { auth } = useAppContext();
+  const { auth, negotiations } = useAppContext();
   const navigate = useNavigate();
-  const negotiations = useAppStore((store) => store.negotiations);
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("Todas");
   const [status, setStatus] = useState("Todos");

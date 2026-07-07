@@ -92,6 +92,7 @@ import {
 import { filterSimulationsForUser } from "@/lib/visibility";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
+import { createNegotiationWallet } from "@/features/negotiation-wallets";
 
 export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
@@ -339,8 +340,17 @@ function saveApprovalRecordWhenEnabled(payload: {
 function SimulationDetailPage() {
   const { id } = useParams({ from: "/_app/simulacoes/$id" });
   const navigate = useNavigate();
-  const { auth, simulations, orders, clients, suppliers, products, upsertSimulation, upsertOrder } =
-    useAppContext();
+  const {
+    auth,
+    simulations,
+    orders,
+    clients,
+    suppliers,
+    products,
+    upsertSimulation,
+    upsertOrder,
+    upsertNegotiationWallet,
+  } = useAppContext();
   const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
   const visibleSimulations = useMemo(
@@ -520,6 +530,7 @@ function SimulationDetailPage() {
     const next = { ...draft, orderId, convertedAt: new Date().toISOString() };
     upsertSimulation(next);
     upsertOrder(order);
+    upsertNegotiationWallet(createNegotiationWallet(order, draft));
     clearSavedSimulationFormDraft(draftStorageKey);
     addNotification({
       id: `not-${Date.now()}`,

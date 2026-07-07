@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/app/page-header";
 import { StatusBadge } from "@/components/app/status-badge";
 import { useAppContext } from "@/features/app/app-context";
-import { useAppStore } from "@/store/useAppStore";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { belongsToUser, canViewAllFlows } from "@/lib/visibility";
 
@@ -16,8 +15,8 @@ export const Route = createFileRoute("/_app/negociacoes/$id")({
 
 function NegotiationDetailPage() {
   const { id } = useParams({ from: "/_app/negociacoes/$id" });
-  const { auth } = useAppContext();
-  const negotiation = useAppStore((store) => store.negotiations.find((item) => item.id === id));
+  const { auth, negotiations } = useAppContext();
+  const negotiation = negotiations.find((item) => item.id === id);
   const canViewNegotiation =
     negotiation && (canViewAllFlows(auth.user) || belongsToUser(negotiation.owner, auth.user));
 
