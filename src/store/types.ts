@@ -8,6 +8,9 @@ import type {
   NotificationItem,
   Order,
   Product,
+  RealizedResultRecord,
+  NegotiationWallet,
+  OpportunityPool,
   Simulation,
   Supplier,
   User,
@@ -29,6 +32,9 @@ export interface AppStoreState {
   negotiations: Negotiation[];
   orders: Order[];
   financialTitles: FinancialTitle[];
+  realizedResults: RealizedResultRecord[];
+  negotiationWallets: NegotiationWallet[];
+  opportunityPools: OpportunityPool[];
   freights: FreightRecord[];
   negotiationWallets: NegotiationWallet[];
   deliveries: DeliveryRecord[];

@@ -6,11 +6,14 @@ export type AppStatus =
   | "Rascunho"
   | "Em análise"
   | "Pendente de aprovação"
+  | "Aguardando financeiro"
+  | "Aguardando aprovação do Gestor"
   | "Aprovada"
   | "Reprovada"
   | "Ajuste solicitado"
   | "Aguardando faturamento"
   | "Em faturamento"
+  | "Aguardando frete"
   | "Em separação"
   | "Em rota"
   | "Entregue";
@@ -80,6 +83,7 @@ export interface NotificationItem {
   targetUserId?: string;
   targetUserEmail?: string;
   targetUserName?: string;
+  targetRole?: UserRole;
 }
 
 export interface SimulationProduct {
@@ -166,7 +170,10 @@ export interface Simulation {
   validUntil: string;
   notes: string;
   financialNotes?: string;
-  status: Exclude<AppStatus, "Em faturamento" | "Em separação" | "Em rota" | "Entregue">;
+  status: Exclude<
+    AppStatus,
+    "Em faturamento" | "Aguardando frete" | "Em separação" | "Em rota" | "Entregue"
+  >;
   priority: Priority;
   products: SimulationProduct[];
   purchaseItems: PurchaseItem[];
@@ -180,6 +187,10 @@ export interface Simulation {
   };
   approvalFlow?: SimulationApprovalFlow;
   approvalNotes?: string;
+  adjustmentReason?: string;
+  adjustmentRequestedAt?: string;
+  adjustmentRequestedBy?: string;
+  adjustmentStage?: ApprovalStage;
   orderId?: string;
   convertedAt?: string;
 }
@@ -206,11 +217,23 @@ export interface Order {
   totalValue: number;
   status: Extract<
     AppStatus,
-    "Aguardando faturamento" | "Em faturamento" | "Em separação" | "Em rota" | "Entregue"
+    | "Aguardando faturamento"
+    | "Em faturamento"
+    | "Aguardando frete"
+    | "Em separação"
+    | "Em rota"
+    | "Entregue"
   >;
   priority: Priority;
   products: SimulationProduct[];
   billingProgress: number;
+  invoiceNumber?: string;
+  invoiceAmount?: number;
+  invoiceIssuedAt?: string;
+  billingDueDate?: string;
+  billingNotes?: string;
+  billedAt?: string;
+  billedBy?: string;
   deliveryProgress: number;
   paymentTerms: string;
   logisticsStatus: string;
@@ -235,11 +258,50 @@ export interface FinancialTitle {
   paidAmount: number;
   paymentMethod: string;
   bankName: string;
+  invoiceNumber?: string;
+  invoiceIssuedAt?: string;
   notes: string;
   owner: string;
   unit: string;
   createdAt: string;
   paidAt?: string;
+}
+
+export type RealizedResultStatus = "draft" | "in_progress" | "closed" | "cancelled";
+export type CommissionApprovalStatus = "pending" | "approved" | "rejected";
+
+export interface RealizedResultRecord {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  client: string;
+  owner: string;
+  unit: string;
+  status: RealizedResultStatus;
+  orderTotal: number;
+  realizedRevenueTotal: number;
+  receivableOpenTotal: number;
+  costBookedTotal: number;
+  costPaidTotal: number;
+  commissionPercent: number;
+  commissionTotal: number;
+  realizedProfit: number;
+  projectedNetResult: number;
+  predictedMarginPercent: number;
+  realizedMarginPercent: number;
+  marginDeltaPercent: number;
+  billingProgress: number;
+  paymentProgress: number;
+  deliveryCompleted: boolean;
+  financialCompleted: boolean;
+  commissionApprovalStatus: CommissionApprovalStatus;
+  commissionApprovedBy?: string;
+  commissionApprovedAt?: string;
+  commissionNotes: string;
+  closedAt?: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type FreightStatus = "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled";
@@ -300,6 +362,15 @@ export interface NegotiationWallet {
 export type DeliveryStatus =
   "pending" | "loading" | "loaded" | "in_route" | "arrived" | "delivered" | "issue" | "cancelled";
 
+export interface DeliveryOccurrence {
+  id: string;
+  type: string;
+  description: string;
+  location?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
 export interface DeliveryRecord {
   id: string;
   orderId?: string;
@@ -313,11 +384,26 @@ export interface DeliveryRecord {
   expectedDeliveryDate: string;
   deliveredAt?: string;
   proofNotes: string;
+  proofDocumentNumber?: string;
+  proofFileName?: string;
+  proofFilePath?: string;
+  proofFileSize?: number;
+  proofMimeType?: string;
+  proofReceivedBy?: string;
+  proofRegisteredAt?: string;
   occurrenceNotes: string;
+  occurrences: DeliveryOccurrence[];
   owner: string;
   unit: string;
   createdAt: string;
 }
+
+export type {
+  NegotiationWallet,
+  NegotiationWalletEntry,
+  OpportunityPool,
+  OpportunityPoolEntry,
+} from "@/features/negotiation-wallets";
 
 export interface Negotiation {
   id: string;

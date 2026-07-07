@@ -1,9 +1,6 @@
 import type { Negotiation, Order, Simulation, User } from "@/data/types";
-import { normalizeRole } from "@/lib/permissions";
-
-function normalize(value?: string | null) {
-  return (value ?? "").trim().toLowerCase();
-}
+import { isPendingApprovalStatus, normalizeRole } from "@/lib/permissions";
+import { matchesUserIdentity } from "@/lib/userIdentity";
 
 export function canViewAllFlows(user: User | null | undefined) {
   return normalizeRole(user?.role ?? "Comercial") === "Admin";
@@ -15,9 +12,7 @@ export function canViewOperationalQueues(user: User | null | undefined) {
 }
 
 export function belongsToUser(owner: string | null | undefined, user: User | null | undefined) {
-  if (!user) return false;
-  const normalizedOwner = normalize(owner);
-  return normalizedOwner === normalize(user.name) || normalizedOwner === normalize(user.email);
+  return matchesUserIdentity(owner, user);
 }
 
 export function filterSimulationsForUser(simulations: Simulation[], user: User | null | undefined) {
@@ -27,7 +22,7 @@ export function filterSimulationsForUser(simulations: Simulation[], user: User |
     if (belongsToUser(simulation.owner, user)) return true;
     if (
       (role === "Financeiro" || role === "Aprovador") &&
-      (simulation.status === "Pendente de aprovação" || simulation.status === "Em análise")
+      isPendingApprovalStatus(simulation.status)
     ) {
       return true;
     }

@@ -5,12 +5,14 @@ import type {
   Simulation,
   SimulationProduct,
   SimulationApprovalFlow,
+  User,
 } from "@/data/types";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { getSimulationTotals } from "@/lib/calculations";
 
 export interface SimulationRepository {
   list(): Promise<Simulation[]>;
+  listAdjustments?(user?: User | null): Promise<Simulation[]>;
   getById(id: string): Promise<Simulation | null>;
   save(simulation: Simulation): Promise<Simulation>;
 }
@@ -43,6 +45,10 @@ export type SimulationRow = {
   approval_checklist?: Simulation["approvalChecklist"] | null;
   approval_flow?: Simulation["approvalFlow"] | null;
   approval_notes?: string | null;
+  adjustment_reason?: string | null;
+  adjustment_requested_at?: string | null;
+  adjustment_requested_by?: string | null;
+  adjustment_stage?: "financial" | "principal" | null;
   converted_order_external_id?: string | null;
   converted_at?: string | null;
   created_at?: string | null;
@@ -165,6 +171,55 @@ function getApprovalFlowFromRows(
   return flow;
 }
 
+function getLatestApprovalRow(approvals: SimulationApprovalRow[] | undefined) {
+  return [...(approvals ?? [])].sort((a, b) =>
+    getApprovalRowTime(b).localeCompare(getApprovalRowTime(a)),
+  )[0];
+}
+
+function getStatusFromApprovalRows(
+  status: string | null | undefined,
+  approvals: SimulationApprovalRow[] | undefined,
+): Simulation["status"] {
+  if (status) return status as Simulation["status"];
+
+  const latest = getLatestApprovalRow(approvals);
+
+  if (latest?.status === "adjustment_requested") return "Ajuste solicitado";
+  if (latest?.status === "rejected") return "Reprovada";
+
+  return "Rascunho";
+}
+
+function getApprovalNotesFromRows(
+  notes: string | null | undefined,
+  approvals: SimulationApprovalRow[] | undefined,
+) {
+  const latest = getLatestApprovalRow(approvals);
+  return notes || latest?.comment || undefined;
+}
+
+function getAdjustmentReasonFromRows(row: SimulationRow) {
+  return row.adjustment_reason || getApprovalNotesFromRows(row.approval_notes, row.approvals);
+}
+
+function getAdjustmentRequestedAtFromRows(row: SimulationRow) {
+  const latest = getLatestApprovalRow(row.approvals);
+  return (
+    row.adjustment_requested_at || latest?.decided_at || latest?.updated_at || latest?.created_at
+  );
+}
+
+function getAdjustmentRequestedByFromRows(row: SimulationRow) {
+  const latest = getLatestApprovalRow(row.approvals);
+  return (
+    row.adjustment_requested_by ||
+    latest?.approver_id ||
+    (latest?.requested_changes?.approverExternalId as string | undefined) ||
+    undefined
+  );
+}
+
 export function simulationToRow(simulation: Simulation): Record<string, unknown> {
   const totals = getSimulationTotals(simulation);
 
@@ -196,6 +251,16 @@ export function simulationToRow(simulation: Simulation): Record<string, unknown>
     approval_checklist: simulation.approvalChecklist ?? null,
     approval_flow: simulation.approvalFlow ?? null,
     approval_notes: simulation.approvalNotes ?? null,
+    adjustment_reason:
+      simulation.status === "Ajuste solicitado"
+        ? (simulation.adjustmentReason ?? simulation.approvalNotes ?? null)
+        : null,
+    adjustment_requested_at:
+      simulation.status === "Ajuste solicitado" ? (simulation.adjustmentRequestedAt ?? null) : null,
+    adjustment_requested_by:
+      simulation.status === "Ajuste solicitado" ? (simulation.adjustmentRequestedBy ?? null) : null,
+    adjustment_stage:
+      simulation.status === "Ajuste solicitado" ? (simulation.adjustmentStage ?? null) : null,
     converted_order_external_id: simulation.orderId ?? null,
     converted_at: simulation.convertedAt ?? null,
     created_at: simulation.createdAt,
@@ -304,7 +369,7 @@ export function rowToSimulation(row: SimulationRow): Simulation {
     validUntil: toDateTime(row.valid_until),
     notes: row.notes || "",
     financialNotes: row.financial_notes || undefined,
-    status: (row.status || "Rascunho") as Simulation["status"],
+    status: getStatusFromApprovalRows(row.status, row.approvals),
     priority: (row.priority || "Média") as Simulation["priority"],
     products: (row.simulation_items ?? []).map(rowToProduct),
     purchaseItems: (row.simulation_purchase_costs ?? []).map(rowToPurchase),
@@ -312,7 +377,11 @@ export function rowToSimulation(row: SimulationRow): Simulation {
     financial,
     approvalChecklist: row.approval_checklist ?? undefined,
     approvalFlow: row.approval_flow ?? getApprovalFlowFromRows(row.approvals),
-    approvalNotes: row.approval_notes ?? undefined,
+    approvalNotes: getApprovalNotesFromRows(row.approval_notes, row.approvals),
+    adjustmentReason: getAdjustmentReasonFromRows(row),
+    adjustmentRequestedAt: getAdjustmentRequestedAtFromRows(row) ?? undefined,
+    adjustmentRequestedBy: getAdjustmentRequestedByFromRows(row) ?? undefined,
+    adjustmentStage: row.adjustment_stage ?? undefined,
     orderId: row.converted_order_external_id ?? undefined,
     convertedAt: row.converted_at ?? undefined,
   };

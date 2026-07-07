@@ -5,10 +5,14 @@ const statusTone: Record<string, string> = {
   Rascunho: "border-transparent bg-muted text-muted-foreground",
   "Em análise": "border-transparent bg-info-soft text-info",
   "Pendente de aprovação": "border-transparent bg-info-soft text-info",
+  "Aguardando financeiro": "border-transparent bg-info-soft text-info",
+  "Aguardando aprovação do Gestor": "border-transparent bg-warning-soft text-warning",
   Aprovada: "border-transparent bg-success-soft text-success",
   Reprovada: "border-transparent bg-danger-soft text-danger",
   "Ajuste solicitado": "border-transparent bg-warning-soft text-warning",
+  "Aguardando faturamento": "border-transparent bg-warning-soft text-warning",
   "Em faturamento": "border-transparent bg-info-soft text-info",
+  "Aguardando frete": "border-transparent bg-warning-soft text-warning",
   "Em separação": "border-transparent bg-warning-soft text-warning",
   "Em rota": "border-transparent bg-primary-soft text-primary",
   Entregue: "border-transparent bg-success-soft text-success",
@@ -31,6 +35,7 @@ const statusTone: Record<string, string> = {
 };
 
 export function StatusBadge({ status }: { status: string }) {
+  const label = status === "Em separação" ? "Aguardando frete" : status;
   return (
     <Badge
       className={cn(
@@ -38,7 +43,7 @@ export function StatusBadge({ status }: { status: string }) {
         statusTone[status] ?? statusTone.Rascunho,
       )}
     >
-      {status}
+      {label}
     </Badge>
   );
 }

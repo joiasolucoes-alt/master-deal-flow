@@ -22,12 +22,20 @@ import type {
   NotificationItem,
   Order,
   Product,
+  RealizedResultRecord,
+  NegotiationWallet,
+  OpportunityPool,
   Simulation,
   Supplier,
 } from "@/data/types";
 
 const STORE_KEY = "master-flow-zustand-app-store";
-const PENDING_APPROVAL_STATUSES = new Set(["Pendente de aprovação", "Em análise"]);
+const PENDING_APPROVAL_STATUSES = new Set([
+  "Pendente de aprovação",
+  "Em análise",
+  "Aguardando financeiro",
+  "Aguardando aprovação do Gestor",
+]);
 
 type Listener = () => void;
 export type AppStore = AppStoreState & {
@@ -37,6 +45,9 @@ export type AppStore = AppStoreState & {
   setNegotiations: (value: Negotiation[]) => void;
   setOrders: (value: Order[]) => void;
   setFinancialTitles: (value: FinancialTitle[]) => void;
+  setRealizedResults: (value: RealizedResultRecord[]) => void;
+  setNegotiationWallets: (value: NegotiationWallet[]) => void;
+  setOpportunityPools: (value: OpportunityPool[]) => void;
   setFreights: (value: FreightRecord[]) => void;
   setNegotiationWallets: (value: NegotiationWallet[]) => void;
   setDeliveries: (value: DeliveryRecord[]) => void;
@@ -46,6 +57,9 @@ export type AppStore = AppStoreState & {
   upsertSimulation: (simulation: Simulation, audit?: AuditEvent) => void;
   upsertOrder: (order: Order, audit?: AuditEvent) => void;
   upsertFinancialTitle: (title: FinancialTitle, audit?: AuditEvent) => void;
+  upsertRealizedResult: (result: RealizedResultRecord, audit?: AuditEvent) => void;
+  upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
+  upsertOpportunityPool: (pool: OpportunityPool) => void;
   upsertFreight: (freight: FreightRecord, audit?: AuditEvent) => void;
   upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
   upsertDelivery: (delivery: DeliveryRecord, audit?: AuditEvent) => void;
@@ -53,6 +67,7 @@ export type AppStore = AppStoreState & {
   upsertSupplier: (supplier: Supplier) => void;
   upsertProduct: (product: Product) => void;
   upsertNegotiation: (negotiation: Negotiation) => void;
+  setNotifications: (value: NotificationItem[]) => void;
   addNotification: (notification: NotificationItem) => void;
   markNotificationRead: (id: string) => void;
   setSelectedApprovalId: (id: string | null) => void;
@@ -65,6 +80,9 @@ type PersistedState = Omit<
   | "setNegotiations"
   | "setOrders"
   | "setFinancialTitles"
+  | "setRealizedResults"
+  | "setNegotiationWallets"
+  | "setOpportunityPools"
   | "setFreights"
   | "setNegotiationWallets"
   | "setDeliveries"
@@ -74,6 +92,9 @@ type PersistedState = Omit<
   | "upsertSimulation"
   | "upsertOrder"
   | "upsertFinancialTitle"
+  | "upsertRealizedResult"
+  | "upsertNegotiationWallet"
+  | "upsertOpportunityPool"
   | "upsertFreight"
   | "upsertNegotiationWallet"
   | "upsertDelivery"
@@ -81,6 +102,7 @@ type PersistedState = Omit<
   | "upsertSupplier"
   | "upsertProduct"
   | "upsertNegotiation"
+  | "setNotifications"
   | "addNotification"
   | "markNotificationRead"
   | "setSelectedApprovalId"
@@ -93,6 +115,9 @@ function baseState(): PersistedState {
     negotiations,
     orders,
     financialTitles,
+    realizedResults: [],
+    negotiationWallets: [],
+    opportunityPools: [],
     freights,
     negotiationWallets,
     deliveries,
@@ -183,6 +208,12 @@ const storeActions = {
   setOrders: (value: Order[]) => setState((current) => ({ ...current, orders: value })),
   setFinancialTitles: (value: FinancialTitle[]) =>
     setState((current) => ({ ...current, financialTitles: value })),
+  setRealizedResults: (value: RealizedResultRecord[]) =>
+    setState((current) => ({ ...current, realizedResults: value })),
+  setNegotiationWallets: (value: NegotiationWallet[]) =>
+    setState((current) => ({ ...current, negotiationWallets: value })),
+  setOpportunityPools: (value: OpportunityPool[]) =>
+    setState((current) => ({ ...current, opportunityPools: value })),
   setFreights: (value: FreightRecord[]) => setState((current) => ({ ...current, freights: value })),
   setNegotiationWallets: (value: NegotiationWallet[]) =>
     setState((current) => ({ ...current, negotiationWallets: value })),
@@ -214,6 +245,28 @@ const storeActions = {
         ? current.financialTitles.map((item) => (item.id === title.id ? title : item))
         : [title, ...current.financialTitles],
       auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
+    })),
+  upsertRealizedResult: (result: RealizedResultRecord, audit?: AuditEvent) =>
+    setState((current) => ({
+      ...current,
+      realizedResults: current.realizedResults.some((item) => item.id === result.id)
+        ? current.realizedResults.map((item) => (item.id === result.id ? result : item))
+        : [result, ...current.realizedResults],
+      auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
+    })),
+  upsertNegotiationWallet: (wallet: NegotiationWallet) =>
+    setState((current) => ({
+      ...current,
+      negotiationWallets: current.negotiationWallets.some((item) => item.id === wallet.id)
+        ? current.negotiationWallets.map((item) => (item.id === wallet.id ? wallet : item))
+        : [wallet, ...current.negotiationWallets],
+    })),
+  upsertOpportunityPool: (pool: OpportunityPool) =>
+    setState((current) => ({
+      ...current,
+      opportunityPools: current.opportunityPools.some((item) => item.id === pool.id)
+        ? current.opportunityPools.map((item) => (item.id === pool.id ? pool : item))
+        : [pool, ...current.opportunityPools],
     })),
   upsertFreight: (freight: FreightRecord, audit?: AuditEvent) =>
     setState((current) => ({
@@ -266,6 +319,8 @@ const storeActions = {
         ? current.negotiations.map((item) => (item.id === negotiation.id ? negotiation : item))
         : [negotiation, ...current.negotiations],
     })),
+  setNotifications: (value: NotificationItem[]) =>
+    setState((current) => ({ ...current, notifications: value })),
   addNotification: (notification: NotificationItem) =>
     setState((current) => ({
       ...current,

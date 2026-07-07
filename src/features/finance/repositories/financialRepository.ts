@@ -19,6 +19,8 @@ export type FinancialTitleRow = {
   paid_amount?: number | null;
   payment_method?: string | null;
   bank_name?: string | null;
+  invoice_number?: string | null;
+  invoice_issued_at?: string | null;
   notes?: string | null;
   owner_name?: string | null;
   unit_name?: string | null;
@@ -44,6 +46,8 @@ export function financialTitleToRow(title: FinancialTitle): Record<string, unkno
     paid_amount: title.paidAmount,
     payment_method: title.paymentMethod || null,
     bank_name: title.bankName || null,
+    invoice_number: title.invoiceNumber ?? null,
+    invoice_issued_at: title.invoiceIssuedAt?.slice(0, 10) ?? null,
     notes: title.notes || null,
     owner_name: title.owner,
     unit_name: title.unit,
@@ -72,6 +76,8 @@ export function rowToFinancialTitle(row: FinancialTitleRow): FinancialTitle {
     paidAmount: toNumber(row.paid_amount),
     paymentMethod: row.payment_method || "",
     bankName: row.bank_name || "",
+    invoiceNumber: row.invoice_number ?? undefined,
+    invoiceIssuedAt: row.invoice_issued_at ?? undefined,
     notes: row.notes || "",
     owner: row.owner_name || "",
     unit: row.unit_name || "",

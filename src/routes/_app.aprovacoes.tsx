@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Check, MessageSquare, RotateCcw, X } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -19,7 +19,7 @@ import { getSimulationTotals } from "@/lib/calculations";
 import { formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { ClipboardCheck, FileWarning, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
-import type { ApprovalStage, Simulation } from "@/data/types";
+import type { ApprovalStage, Simulation, User } from "@/data/types";
 import { convertSimulationToOrder } from "@/features/simulations/services/simulationService";
 import { createNegotiationWallet } from "@/features/negotiation-wallets";
 import { useAppStore } from "@/store/useAppStore";
@@ -33,6 +33,7 @@ import {
   isFinancialApprovalComplete,
 } from "@/features/approvals/approvalFlow";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
+import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
 
@@ -79,16 +80,46 @@ function ApprovalsPage() {
   const {
     auth,
     simulations,
+    setSimulations,
     orders,
     upsertSimulation,
     upsertOrder,
     upsertNegotiationWallet,
     selectedApprovalId,
     setSelectedApprovalId,
+    users,
   } = useAppContext();
   const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
   const canReview = canReviewApprovals(currentUser);
+  const setSimulationsRef = useRef(setSimulations);
+
+  useEffect(() => {
+    setSimulationsRef.current = setSimulations;
+  }, [setSimulations]);
+
+  useEffect(() => {
+    if (!auth.hasAccess || !canReview || !isSupabaseProvider()) return;
+    if (!getSupabaseConfigStatus().configured) return;
+
+    let cancelled = false;
+    const repository = createSupabaseSimulationRepository();
+
+    async function loadLatestSimulations() {
+      try {
+        const remoteSimulations = await repository.list();
+        if (!cancelled) setSimulationsRef.current(remoteSimulations);
+      } catch (error) {
+        console.error("Falha ao atualizar fila de aprovações pelo Supabase.", error);
+      }
+    }
+
+    void loadLatestSimulations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.hasAccess, auth.user?.id, canReview]);
   const pending = useMemo(
     () =>
       simulations.filter((simulation) => {
@@ -190,6 +221,7 @@ function ApprovalsPage() {
       notes: comment || selected.approvalNotes,
       bankAccount: stage === "financial" ? bankAccount : undefined,
     });
+    const ownerUser = findSimulationOwnerUser(users, selected);
 
     saveApprovalDecision({
       simulationId: selected.id,
@@ -205,7 +237,7 @@ function ApprovalsPage() {
       const existingOrder = orders.find((order) => order.simulationId === selected.id);
       if (existingOrder || selected.orderId) {
         upsertSimulation(nextSimulation);
-        toast.success("Aprovação final registrada.");
+        toast.success("Aprovação do Gestor registrada.");
       } else {
         const conversion = convertSimulationToOrder(
           nextSimulation,
@@ -226,7 +258,7 @@ function ApprovalsPage() {
           entityId: conversion.order.id,
           targetUserName: selected.owner,
         });
-        toast.success(`Aprovação final concluída e pedido ${conversion.order.number} criado.`);
+        toast.success(`Aprovação do Gestor concluída e pedido ${conversion.order.number} criado.`);
       }
     } else {
       upsertSimulation(nextSimulation);
@@ -236,24 +268,45 @@ function ApprovalsPage() {
           decision === "approve"
             ? "Etapa financeira aprovada"
             : decision === "adjust"
-              ? "Ajuste solicitado na simulação"
+              ? "Ajuste solicitado para sua simulação"
               : "Simulação reprovada",
-        description: `${selected.number}: ${APPROVAL_STAGE_LABELS[stage]}.`,
+        description:
+          decision === "adjust"
+            ? `${selected.number} voltou para o Comercial: ${comment.trim()}`
+            : `${selected.number}: ${APPROVAL_STAGE_LABELS[stage]}.`,
         type: decision === "adjust" ? "warning" : "info",
         createdAt: new Date().toISOString(),
         unread: true,
         entityType: "simulation",
         entityId: selected.id,
-        targetUserName: selected.owner,
+        targetUserId: ownerUser?.id,
+        targetUserEmail: ownerUser?.email,
+        targetUserName: ownerUser?.name ?? selected.owner,
       });
+      if (decision === "approve" && stage === "financial") {
+        addNotification({
+          id: `not-${Date.now()}-principal`,
+          title: "Simulação aguardando aprovação do Gestor",
+          description: `${selected.number} passou pelo Financeiro e aguarda decisão do Gestor.`,
+          type: "warning",
+          createdAt: new Date().toISOString(),
+          unread: true,
+          entityType: "approval",
+          entityId: selected.id,
+          targetRole: "Aprovador",
+        });
+      }
       toast.success(
         decision === "approve"
-          ? "Etapa financeira aprovada. A simulação segue para aprovação final."
-          : "Decisão registrada.",
+          ? "Etapa financeira aprovada. A simulação segue para aprovação do Gestor."
+          : decision === "adjust"
+            ? "Ajuste solicitado. A simulação voltou para o Comercial."
+            : "Decisão registrada.",
       );
     }
     setComment("");
     setBankAccount("");
+    if (decision !== "approve") setSelectedApprovalId(null);
   }
 
   if (!canReview) {
@@ -449,7 +502,7 @@ function ApprovalDetails({
             active={currentStage === "financial"}
           />
           <ApprovalStepCard
-            label="Aprovação final"
+            label="Gestor"
             step={flow.principal}
             active={currentStage === "principal"}
           />
@@ -494,8 +547,11 @@ function ApprovalDetails({
             rows={3}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Adicione observações para o solicitante..."
+            placeholder="Explique o que o Comercial precisa corrigir antes de reenviar..."
           />
+          <p className="text-xs text-muted-foreground">
+            Obrigatório ao solicitar ajuste. Esse texto aparecerá para o Comercial na aba Reajustes.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-5">
@@ -506,7 +562,7 @@ function ApprovalDetails({
               </Button>
             }
             title="Solicitar ajuste"
-            description="A simulação retornará ao solicitante para revisão."
+            description="A simulação retornará ao solicitante com o motivo informado."
             actionLabel="Confirmar"
             onConfirm={() => onDecide("adjust")}
           />
@@ -527,15 +583,15 @@ function ApprovalDetails({
           <ConfirmDialog
             trigger={
               <Button>
-                <Check /> {currentStage === "financial" ? "Aprovar financeiro" : "Aprovar final"}
+                <Check /> {currentStage === "financial" ? "Aprovar financeiro" : "Aprovar Gestor"}
               </Button>
             }
             title={
-              currentStage === "financial" ? "Aprovar etapa financeira" : "Aprovar etapa final"
+              currentStage === "financial" ? "Aprovar etapa financeira" : "Aprovar etapa Gestor"
             }
             description={
               currentStage === "financial"
-                ? "A simulação seguirá para a aprovação final."
+                ? "A simulação seguirá para a aprovação do Gestor."
                 : "A simulação será aprovada e convertida em pedido."
             }
             actionLabel="Aprovar"
@@ -605,5 +661,12 @@ function KV({ label, value, highlight }: { label: string; value: string; highlig
         {value}
       </p>
     </div>
+  );
+}
+
+function findSimulationOwnerUser(users: User[], simulation: Simulation) {
+  const owner = simulation.owner.trim().toLowerCase();
+  return users.find(
+    (user) => user.name.trim().toLowerCase() === owner || user.email.trim().toLowerCase() === owner,
   );
 }

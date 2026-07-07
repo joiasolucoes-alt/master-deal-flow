@@ -1,4 +1,5 @@
 import type { Simulation, User, UserRole } from "@/data/types";
+import { matchesUserIdentity } from "@/lib/userIdentity";
 
 export type Permission =
   | "dashboard:view"
@@ -8,6 +9,7 @@ export type Permission =
   | "simulations:create"
   | "simulations:edit-own"
   | "simulations:submit"
+  | "adjustments:view"
   | "approvals:view"
   | "approvals:decide"
   | "orders:view"
@@ -26,6 +28,7 @@ const allPermissions: Permission[] = [
   "simulations:create",
   "simulations:edit-own",
   "simulations:submit",
+  "adjustments:view",
   "approvals:view",
   "approvals:decide",
   "orders:view",
@@ -46,6 +49,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "simulations:create",
     "simulations:edit-own",
     "simulations:submit",
+    "adjustments:view",
     "approvals:view",
     "orders:view",
     "deliveries:view",
@@ -58,6 +62,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "simulations:create",
     "simulations:edit-own",
     "simulations:submit",
+    "adjustments:view",
     "orders:view",
   ],
   Aprovador: [
@@ -75,6 +80,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "approvals:decide",
     "orders:view",
     "finance:view",
+    "freights:view",
     "reports:view",
   ],
   Admin: allPermissions,
@@ -84,6 +90,7 @@ const routePermissions: Array<{ prefix: string; permission: Permission }> = [
   { prefix: "/dashboard", permission: "dashboard:view" },
   { prefix: "/negociacoes", permission: "negotiations:view" },
   { prefix: "/simulacoes", permission: "simulations:view" },
+  { prefix: "/reajustes", permission: "adjustments:view" },
   { prefix: "/aprovacoes", permission: "approvals:view" },
   { prefix: "/pedidos", permission: "orders:view" },
   { prefix: "/financeiro", permission: "finance:view" },
@@ -121,11 +128,16 @@ export function canAccessPath(user: User | null | undefined, pathname: string) {
 }
 
 export function isPendingApprovalStatus(status: Simulation["status"]) {
-  return status === "Pendente de aprovação" || status === "Em análise";
+  return (
+    status === "Pendente de aprovação" ||
+    status === "Em análise" ||
+    status === "Aguardando financeiro" ||
+    status === "Aguardando aprovação do Gestor"
+  );
 }
 
 export function isSimulationOwner(user: User | null | undefined, simulation: Simulation) {
-  return Boolean(user && simulation.owner === user.name);
+  return matchesUserIdentity(simulation.owner, user);
 }
 
 export function canCreateSimulation(user: User | null | undefined) {

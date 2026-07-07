@@ -22,6 +22,13 @@ export type OrderRow = {
   total_value?: number | null;
   goods_total?: number | null;
   billing_progress?: number | null;
+  invoice_number?: string | null;
+  invoice_amount?: number | null;
+  invoice_issued_at?: string | null;
+  billing_due_date?: string | null;
+  billing_notes?: string | null;
+  billed_at?: string | null;
+  billed_by?: string | null;
   delivery_progress?: number | null;
   payment_terms?: string | null;
   logistics_status?: string | null;
@@ -71,6 +78,13 @@ export function orderToRow(order: Order): Record<string, unknown> {
     total_value: order.totalValue,
     goods_total: goodsTotal,
     billing_progress: order.billingProgress,
+    invoice_number: order.invoiceNumber ?? null,
+    invoice_amount: order.invoiceAmount ?? null,
+    invoice_issued_at: order.invoiceIssuedAt?.slice(0, 10) ?? null,
+    billing_due_date: order.billingDueDate?.slice(0, 10) ?? null,
+    billing_notes: order.billingNotes ?? null,
+    billed_at: order.billedAt ?? null,
+    billed_by: order.billedBy ?? null,
     delivery_progress: order.deliveryProgress,
     payment_terms: order.paymentTerms,
     logistics_status: order.logisticsStatus,
@@ -116,6 +130,13 @@ export function rowToOrder(row: OrderRow): Order {
     priority: (row.priority || "Média") as Order["priority"],
     products: (row.order_items ?? []).map(rowToProduct),
     billingProgress: toNumber(row.billing_progress),
+    invoiceNumber: row.invoice_number ?? undefined,
+    invoiceAmount: row.invoice_amount ?? undefined,
+    invoiceIssuedAt: row.invoice_issued_at ?? undefined,
+    billingDueDate: row.billing_due_date ?? undefined,
+    billingNotes: row.billing_notes ?? undefined,
+    billedAt: row.billed_at ?? undefined,
+    billedBy: row.billed_by ?? undefined,
     deliveryProgress: toNumber(row.delivery_progress),
     paymentTerms: row.payment_terms || "",
     logisticsStatus: row.logistics_status || "",

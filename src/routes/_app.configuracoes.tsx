@@ -20,6 +20,7 @@ import { useAppContext } from "@/features/app/app-context";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { getDataProvider } from "@/lib/dataProvider";
+import { isPendingApprovalStatus } from "@/lib/permissions";
 import { getSupabaseClient, getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import type { Client, Product, Supplier, UserRole, UserStatus } from "@/data/types";
 import { toast } from "sonner";
@@ -303,11 +304,8 @@ function SettingsPage() {
               auth={auth}
               simulationsCount={simulations.length}
               pendingApprovalsCount={
-                simulations.filter(
-                  (simulation) =>
-                    simulation.status === "Pendente de aprovação" ||
-                    simulation.status === "Em análise",
-                ).length
+                simulations.filter((simulation) => isPendingApprovalStatus(simulation.status))
+                  .length
               }
               ordersCount={orders.length}
               lastDataError={lastDataError}

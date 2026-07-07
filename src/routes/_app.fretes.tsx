@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
   Copy,
+  ExternalLink,
+  FileText,
   Link2,
   MapPin,
   Pencil,
@@ -10,6 +12,7 @@ import {
   RotateCw,
   Save,
   Truck,
+  Upload,
   XCircle,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -21,6 +24,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAppContext } from "@/features/app/app-context";
 import type { FreightRecord } from "@/data/types";
@@ -32,8 +42,22 @@ import {
 } from "@/features/freights/freightHelpers";
 import { applyFreightWalletEntry, ensureNegotiationWallet } from "@/features/negotiation-wallets";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
+import {
+  DRIVER_EVENT_FLOW,
+  createDriverAccessLink,
+  fetchDriverAccessSummary,
+  getDeliveryProofSignedUrl,
+  revokeDriverAccessLink,
+  type DriverAccessSummary,
+  type GeneratedDriverAccess,
+} from "@/lib/driverTracking";
 import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
+import {
+  createFreightWalletEntry,
+  reverseEntriesByReference,
+  upsertWalletEntry,
+} from "@/features/negotiation-wallets";
 
 export const Route = createFileRoute("/_app/fretes")({
   component: FreightsPage,
@@ -89,6 +113,42 @@ function FreightsPage() {
   const value = visibleFreights.reduce((s, f) => s + f.freightValue, 0);
   const selectedFreight = visibleFreights.find((freight) => freight.id === selectedFreightId);
   const [form, setForm] = useState<FreightFormState>(() => createFreightFormState());
+  const [documents, setDocuments] = useState<FreightDocumentRecord[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
+  const [driverAccess, setDriverAccess] = useState<DriverAccessSummary | null>(null);
+  const [driverAccessLoading, setDriverAccessLoading] = useState(false);
+  const [generatedDriverAccess, setGeneratedDriverAccess] = useState<GeneratedDriverAccess | null>(
+    null,
+  );
+
+  const refreshDriverAccess = useCallback(async (freight: FreightRecord) => {
+    setDriverAccessLoading(true);
+    try {
+      const summary = await fetchDriverAccessSummary(freight);
+      setDriverAccess(summary);
+    } catch {
+      setDriverAccess(null);
+    } finally {
+      setDriverAccessLoading(false);
+    }
+  }, []);
+
+  const refreshFreightDocuments = useCallback(async (freightId: string) => {
+    setDocumentsLoading(true);
+    setDocumentsError(null);
+    try {
+      const nextDocuments = await listFreightDocuments(freightId);
+      setDocuments(nextDocuments);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível carregar os documentos.";
+      setDocumentsError(message);
+      setDocuments([]);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedFreight && visibleFreights.length > 0 && selectedFreightId) {
@@ -103,6 +163,19 @@ function FreightsPage() {
     }
     setForm(createFreightFormState(selectedFreight));
   }, [selectedFreight]);
+
+  useEffect(() => {
+    if (!selectedFreight) {
+      setDocuments([]);
+      setDocumentsError(null);
+      setDriverAccess(null);
+      setGeneratedDriverAccess(null);
+      return;
+    }
+
+    void refreshFreightDocuments(selectedFreight.id);
+    void refreshDriverAccess(selectedFreight);
+  }, [refreshDriverAccess, refreshFreightDocuments, selectedFreight]);
 
   const handleGenerateFreights = () => {
     if (eligibleOrders.length === 0) {
@@ -168,6 +241,75 @@ function FreightsPage() {
       if (wallet) upsertNegotiationWallet(wallet);
     }
     toast.success("Dados do frete salvos.");
+  };
+
+  const handleUploadFreightDocument = async ({
+    type,
+    file,
+    notes,
+  }: {
+    type: FreightDocumentType;
+    file: File;
+    notes: string;
+  }) => {
+    if (!selectedFreight) return;
+    const document = await saveFreightDocument({ freight: selectedFreight, type, file, notes });
+    setDocuments((current) => [document, ...current.filter((item) => item.id !== document.id)]);
+    toast.success("Documento do frete anexado.");
+  };
+
+  const handleOpenFreightDocument = async (document: FreightDocumentRecord) => {
+    if (!document.filePath) {
+      toast.info("Este documento foi registrado localmente, sem arquivo salvo no Supabase.");
+      return;
+    }
+
+    try {
+      const url = await getFreightDocumentSignedUrl(document.filePath);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível abrir o documento.";
+      toast.error(message);
+    }
+  };
+
+  const handleGenerateDriverAccess = async () => {
+    if (!selectedFreight) return;
+    try {
+      const access = await createDriverAccessLink(selectedFreight);
+      setGeneratedDriverAccess(access);
+      await refreshDriverAccess(selectedFreight);
+      toast.success("Acesso do motorista gerado. Copie o link e o PIN.");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível gerar o acesso do motorista.";
+      toast.error(message);
+    }
+  };
+
+  const handleRevokeDriverAccess = async () => {
+    if (!selectedFreight) return;
+    try {
+      await revokeDriverAccessLink(selectedFreight);
+      setGeneratedDriverAccess(null);
+      await refreshDriverAccess(selectedFreight);
+      toast.success("Acesso do motorista revogado.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível revogar o acesso.";
+      toast.error(message);
+    }
+  };
+
+  const handleOpenDriverProof = async (filePath: string) => {
+    try {
+      const url = await getDeliveryProofSignedUrl(filePath);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível abrir o comprovante.";
+      toast.error(message);
+    }
   };
 
   const columns: DataColumn<FreightRecord>[] = [
@@ -258,99 +400,249 @@ function FreightsPage() {
           <FreightDetailsForm
             freight={selectedFreight}
             form={form}
+            documents={documents}
+            documentsLoading={documentsLoading}
+            documentsError={documentsError}
             onChange={updateForm}
             onSave={handleSaveFreightDetails}
             onAdvance={handleAdvanceFreight}
+            onUploadDocument={handleUploadFreightDocument}
+            onOpenDocument={handleOpenFreightDocument}
           />
         </CardContent>
       </Card>
 
-      <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle>Detalhe do rastreamento do motorista</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-          <div className="space-y-3 rounded-2xl border p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Link público</span>
-              <Badge variant="outline">Ativo</Badge>
-            </div>
-            <p className="break-all rounded-xl bg-muted p-3 text-sm">
-              {window.location.origin}/motorista/demo
+      <DriverAccessCard
+        freight={selectedFreight}
+        access={driverAccess}
+        generatedAccess={generatedDriverAccess}
+        loading={driverAccessLoading}
+        onGenerate={handleGenerateDriverAccess}
+        onRevoke={handleRevokeDriverAccess}
+        onOpenProof={handleOpenDriverProof}
+      />
+    </div>
+  );
+}
+
+function DriverAccessCard({
+  freight,
+  access,
+  generatedAccess,
+  loading,
+  onGenerate,
+  onRevoke,
+  onOpenProof,
+}: {
+  freight?: FreightRecord;
+  access: DriverAccessSummary | null;
+  generatedAccess: GeneratedDriverAccess | null;
+  loading: boolean;
+  onGenerate: () => void;
+  onRevoke: () => void;
+  onOpenProof: (filePath: string) => void;
+}) {
+  const [copying, setCopying] = useState<string | null>(null);
+
+  const copyText = async (label: string, value: string) => {
+    setCopying(label);
+    try {
+      await navigator.clipboard?.writeText(value);
+      toast.success(`${label} copiado.`);
+    } finally {
+      setCopying(null);
+    }
+  };
+
+  return (
+    <Card className="shadow-card">
+      <CardHeader>
+        <CardTitle>Acesso temporário do motorista</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+        <div className="space-y-3 rounded-2xl border p-4">
+          {!freight ? (
+            <p className="text-sm text-muted-foreground">
+              Clique em um frete do painel para gerar o link temporário do motorista.
             </p>
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  navigator.clipboard?.writeText(`${window.location.origin}/motorista/demo`)
-                }
-              >
-                <Copy />
-                Copiar
-              </Button>
-              <Button variant="outline" size="sm">
-                <XCircle />
-                Revogar
-              </Button>
-              <Button variant="outline" size="sm">
-                <RotateCw />
-                Novo
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Ao contratar um frete, o backend deve gravar token com hash e expiração em
-              driver_tracking_links; o token puro aparece apenas nesta URL.
-            </p>
-          </div>
-          <div className="space-y-3 rounded-2xl border p-4">
-            <h3 className="font-semibold">Timeline operacional</h3>
-            {[
-              "Chegou para coleta",
-              "Carregado",
-              "Em trânsito",
-              "Entregue",
-              "Comprovante anexado",
-            ].map((label, index) => (
-              <div key={label} className="flex items-start gap-3 text-sm">
-                <div
-                  className={`mt-1 h-3 w-3 rounded-full ${index < 3 ? "bg-primary" : "bg-muted"}`}
-                />
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-medium">{label}</p>
+                  <p className="text-sm font-semibold">{freight.code}</p>
                   <p className="text-xs text-muted-foreground">
-                    {index < 3
-                      ? formatDateTime(new Date(Date.now() - (3 - index) * 3600000).toISOString())
-                      : "Pendente"}
-                    {index === 2 ? " • localização registrada" : ""}
+                    Motorista: {freight.driverName || "não informado"}
+                  </p>
+                </div>
+                <Badge variant="outline">
+                  {loading ? "Carregando" : accessStatusLabel(access)}
+                </Badge>
+              </div>
+
+              {generatedAccess ? (
+                <div className="space-y-3 rounded-xl border border-primary/30 bg-primary-soft p-3">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground">Link do motorista</p>
+                    <p className="break-all text-sm">{generatedAccess.url}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground">PIN temporário</p>
+                    <p className="text-2xl font-bold tracking-widest">{generatedAccess.pin}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={copying === "Link"}
+                      onClick={() => copyText("Link", generatedAccess.url)}
+                    >
+                      <Copy />
+                      Copiar link
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={copying === "PIN"}
+                      onClick={() => copyText("PIN", generatedAccess.pin)}
+                    >
+                      <Copy />
+                      Copiar PIN
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    O PIN aparece somente agora. Se perder, gere um novo acesso.
+                  </p>
+                </div>
+              ) : (
+                <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">
+                  Nenhum PIN visível. Gere um novo acesso para copiar link e senha.
+                </p>
+              )}
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button variant="soft" onClick={onGenerate}>
+                  <RotateCw />
+                  Gerar novo acesso
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={!access || access.status !== "active"}
+                  onClick={onRevoke}
+                >
+                  <XCircle />
+                  Revogar acesso
+                </Button>
+              </div>
+
+              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                <p>Expira: {access?.expiresAt ? formatDateTime(access.expiresAt) : "-"}</p>
+                <p>Tentativas inválidas: {access?.failedAttempts ?? 0}</p>
+                <p>Desbloqueio: {access?.lockedUntil ? formatDateTime(access.lockedUntil) : "-"}</p>
+                <p>Concluído: {access?.completedAt ? formatDateTime(access.completedAt) : "-"}</p>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="space-y-3 rounded-2xl border p-4">
+          <h3 className="font-semibold">Timeline do motorista</h3>
+          {!freight ? (
+            <p className="text-sm text-muted-foreground">Selecione um frete para ver os eventos.</p>
+          ) : access?.events.length ? (
+            access.events.map((event) => (
+              <div key={event.id} className="flex items-start gap-3 text-sm">
+                <div className="mt-1 h-3 w-3 rounded-full bg-primary" />
+                <div>
+                  <p className="font-medium">{event.eventLabel}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(event.occurredAt)} • Motorista via link temporário
+                    {event.latitude ? " • localização registrada" : ""}
                   </p>
                 </div>
               </div>
-            ))}
-            <Button variant="soft" size="sm">
-              <Link2 />
-              Abrir comprovante quando disponível
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+            ))
+          ) : (
+            DRIVER_EVENT_FLOW.map((step) => (
+              <div key={step.type} className="flex items-start gap-3 text-sm">
+                <div className="mt-1 h-3 w-3 rounded-full bg-muted" />
+                <div>
+                  <p className="font-medium">{step.label}</p>
+                  <p className="text-xs text-muted-foreground">Pendente</p>
+                </div>
+              </div>
+            ))
+          )}
+
+          {access?.proofs.length ? (
+            <div className="space-y-2 rounded-xl border bg-muted/30 p-3">
+              <p className="text-sm font-semibold">Comprovante</p>
+              {access.proofs.map((proof) => (
+                <Button
+                  key={proof.id}
+                  variant="outline"
+                  size="sm"
+                  disabled={!proof.filePath}
+                  onClick={() => onOpenProof(proof.filePath)}
+                >
+                  <Link2 />
+                  {proof.fileName || "Abrir comprovante"}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Comprovante ainda não enviado.</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
+}
+
+function accessStatusLabel(access: DriverAccessSummary | null) {
+  if (!access) return "Sem acesso";
+  return (
+    {
+      active: "Ativo",
+      expired: "Expirado",
+      revoked: "Revogado",
+      locked: "Bloqueado",
+      completed: "Concluído",
+    } satisfies Record<DriverAccessSummary["status"], string>
+  )[access.status];
 }
 
 function FreightDetailsForm({
   freight,
   form,
+  documents,
+  documentsLoading,
+  documentsError,
   onChange,
   onSave,
   onAdvance,
+  onUploadDocument,
+  onOpenDocument,
 }: {
   freight?: FreightRecord;
   form: FreightFormState;
+  documents: FreightDocumentRecord[];
+  documentsLoading: boolean;
+  documentsError: string | null;
   onChange: (key: keyof FreightFormState, value: string) => void;
   onSave: () => void;
   onAdvance: (freight: FreightRecord) => void;
+  onUploadDocument: (payload: {
+    type: FreightDocumentType;
+    file: File;
+    notes: string;
+  }) => Promise<void>;
+  onOpenDocument: (document: FreightDocumentRecord) => void;
 }) {
+  const [documentType, setDocumentType] = useState<FreightDocumentType>("contract");
+  const [documentNotes, setDocumentNotes] = useState("");
+  const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
+  const [documentUploading, setDocumentUploading] = useState(false);
+
   if (!freight) {
     return (
       <div className="mt-4 rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
@@ -361,6 +653,46 @@ function FreightDetailsForm({
   }
 
   const canAdvance = freight.status !== "delivered" && freight.status !== "cancelled";
+
+  const handleSelectDocumentFile = (file?: File) => {
+    if (!file) {
+      setSelectedDocumentFile(null);
+      return;
+    }
+
+    const validationMessage = validateFreightDocumentFile(file);
+    if (validationMessage) {
+      toast.error(validationMessage);
+      setSelectedDocumentFile(null);
+      return;
+    }
+
+    setSelectedDocumentFile(file);
+  };
+
+  const handleUploadDocument = async () => {
+    if (!selectedDocumentFile) {
+      toast.info("Selecione um arquivo antes de anexar.");
+      return;
+    }
+
+    setDocumentUploading(true);
+    try {
+      await onUploadDocument({
+        type: documentType,
+        file: selectedDocumentFile,
+        notes: documentNotes,
+      });
+      setSelectedDocumentFile(null);
+      setDocumentNotes("");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível anexar o documento.";
+      toast.error(message);
+    } finally {
+      setDocumentUploading(false);
+    }
+  };
 
   return (
     <div className="mt-4 rounded-2xl border bg-muted/20 p-4">
@@ -447,6 +779,115 @@ function FreightDetailsForm({
         />
       </Field>
 
+      <div className="mt-4 space-y-3 rounded-xl border bg-background/50 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <FileText className="h-4 w-4 text-primary" />
+              Documentos do frete
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Anexe contrato, proposta, nota ou outro documento ligado a este frete.
+            </p>
+          </div>
+          <Badge variant="outline" className="rounded-full">
+            {documents.length} arquivo{documents.length === 1 ? "" : "s"}
+          </Badge>
+        </div>
+
+        {documentsError ? (
+          <p className="rounded-lg border border-warning/30 bg-warning-soft p-3 text-xs text-warning">
+            {documentsError}
+          </p>
+        ) : null}
+
+        <div className="grid gap-3 md:grid-cols-[180px_1fr] xl:grid-cols-[180px_1fr_1.2fr_auto]">
+          <Field label="Tipo">
+            <Select
+              value={documentType}
+              onValueChange={(value) => setDocumentType(value as FreightDocumentType)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(FREIGHT_DOCUMENT_TYPE_LABEL).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Arquivo">
+            <div className="space-y-1">
+              <Input
+                type="file"
+                accept="application/pdf,image/jpeg,image/png"
+                onChange={(event) => handleSelectDocumentFile(event.target.files?.[0])}
+              />
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Upload className="h-3.5 w-3.5" />
+                PDF, JPG ou PNG até 10 MB.
+              </p>
+            </div>
+          </Field>
+          <Field label="Observação">
+            <Input
+              value={documentNotes}
+              onChange={(event) => setDocumentNotes(event.target.value)}
+              placeholder="Ex.: proposta aprovada pela transportadora"
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button disabled={documentUploading} onClick={handleUploadDocument}>
+              <Upload />
+              {documentUploading ? "Anexando..." : "Anexar"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {documentsLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando documentos...</p>
+          ) : null}
+          {!documentsLoading && documents.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              Nenhum documento anexado neste frete.
+            </p>
+          ) : null}
+          {documents.map((document) => (
+            <div
+              key={document.id}
+              className="flex flex-col gap-3 rounded-lg border p-3 text-sm md:flex-row md:items-center md:justify-between"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="rounded-full">
+                    {FREIGHT_DOCUMENT_TYPE_LABEL[document.type]}
+                  </Badge>
+                  <span className="truncate font-medium">{document.fileName}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatDateTime(document.createdAt)}
+                  {document.fileSize ? ` • ${formatBytes(document.fileSize)}` : ""}
+                  {document.notes ? ` • ${document.notes}` : ""}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!document.filePath}
+                onClick={() => onOpenDocument(document)}
+              >
+                <ExternalLink />
+                Abrir
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
         <Button variant="outline" onClick={onSave}>
           <Save />
@@ -510,4 +951,10 @@ function fromDateTimeInput(value: string, fallback: string) {
 function parseDecimalInput(value: string) {
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }

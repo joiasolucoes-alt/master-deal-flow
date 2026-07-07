@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Bell, ChevronDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,13 @@ import { useAppContext } from "@/features/app/app-context";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { useAppStore } from "@/store/useAppStore";
+import type { NotificationItem, UserRole } from "@/data/types";
+import { isSupabaseProvider } from "@/lib/dataProvider";
+import {
+  ensureSupabaseSession,
+  getSupabaseClient,
+  getSupabaseConfigStatus,
+} from "@/lib/supabaseClient";
 import {
   filterNegotiationsForUser,
   filterOrdersForUser,
@@ -46,6 +53,56 @@ export function AppHeader() {
     [negotiations, user],
   );
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, user), [orders, user]);
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
+
+  useEffect(() => {
+    if (!auth.hasAccess || !isSupabaseProvider() || !getSupabaseConfigStatus().configured) return;
+
+    let cancelled = false;
+
+    async function loadRemoteNotifications() {
+      try {
+        const client = getSupabaseClient();
+        if (!client) return;
+        await ensureSupabaseSession();
+
+        const { data, error } = await client
+          .from("notifications")
+          .select(
+            "id, external_id, title, message, type, read, entity_type, entity_id, entity_external_id, created_at",
+          )
+          .order("created_at", { ascending: false })
+          .limit(80);
+
+        if (error) throw error;
+        if (cancelled) return;
+
+        const remoteNotifications = (data ?? []).map(rowToNotification);
+        const remoteIds = new Set(remoteNotifications.map((item) => item.id));
+        const localOnly = notificationsRef.current.filter((item) => !remoteIds.has(item.id));
+        const nextNotifications = [...remoteNotifications, ...localOnly];
+        if (!sameNotificationIds(nextNotifications, notificationsRef.current)) {
+          setNotifications(nextNotifications);
+        }
+      } catch (error) {
+        console.warn("Não foi possível carregar notificações do Supabase.", error);
+      }
+    }
+
+    void loadRemoteNotifications();
+    const intervalId = window.setInterval(loadRemoteNotifications, 20000);
+    window.addEventListener("focus", loadRemoteNotifications);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", loadRemoteNotifications);
+    };
+  }, [auth.hasAccess, setNotifications]);
+
   const visibleNotifications = useMemo(() => {
     if (user?.role === "Admin") return notifications;
     const userEmail = user?.email?.trim().toLowerCase();
@@ -59,6 +116,7 @@ export function AppHeader() {
       if (item.targetUserName && item.targetUserName.trim().toLowerCase() === userName) {
         return true;
       }
+      if (item.targetRole && item.targetRole === user?.role) return true;
       return false;
     });
   }, [notifications, user?.email, user?.id, user?.name, user?.role]);
@@ -124,7 +182,7 @@ export function AppHeader() {
     markNotificationRead(item.id);
     window.setTimeout(() => {
       if (item.entityType === "approval" && item.entityId) {
-        if (user?.role === "Admin" || user?.role === "Aprovador") {
+        if (user?.role === "Admin" || user?.role === "Aprovador" || user?.role === "Financeiro") {
           navigate({ to: "/aprovacoes" });
         } else {
           navigate({ to: "/simulacoes/$id", params: { id: item.entityId } });
@@ -294,4 +352,81 @@ export function AppHeader() {
       </div>
     </header>
   );
+}
+
+type NotificationRow = {
+  id: string;
+  external_id?: string | null;
+  title: string;
+  message: string;
+  type: string;
+  read: boolean;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  entity_external_id?: string | null;
+  created_at: string;
+};
+
+function rowToNotification(row: NotificationRow): NotificationItem {
+  const targetRole = inferTargetRole(row);
+  const entityType = normalizeEntityType(row.entity_type, targetRole);
+
+  return {
+    id: row.external_id ?? `remote-${row.id}`,
+    title: row.title,
+    description: row.message,
+    type: normalizeNotificationType(row.type),
+    createdAt: row.created_at,
+    unread: !row.read,
+    entityType,
+    entityId: row.entity_external_id ?? row.entity_id ?? undefined,
+    targetRole,
+  };
+}
+
+function normalizeNotificationType(type: string): NotificationItem["type"] {
+  if (type === "success" || type === "warning" || type === "info") return type;
+  return "info";
+}
+
+function normalizeEntityType(
+  entityType: string | null | undefined,
+  targetRole?: UserRole,
+): NotificationItem["entityType"] | undefined {
+  if (targetRole === "Financeiro" && entityType === "simulation") return "approval";
+  if (
+    entityType === "approval" ||
+    entityType === "delivery" ||
+    entityType === "simulation" ||
+    entityType === "order" ||
+    entityType === "negotiation"
+  ) {
+    return entityType;
+  }
+  return undefined;
+}
+
+function inferTargetRole(row: NotificationRow): UserRole | undefined {
+  const text = `${row.title} ${row.message}`.toLowerCase();
+  if (
+    text.includes("pendente de aprovação") ||
+    text.includes("enviada para aprovação") ||
+    text.includes("aguardando aprovação financeira") ||
+    text.includes("aguardando financeiro")
+  ) {
+    return "Financeiro";
+  }
+  if (
+    text.includes("aprovação final") ||
+    text.includes("aguarda decisão final") ||
+    text.includes("aguardando aprovação do gestor")
+  ) {
+    return "Aprovador";
+  }
+  return undefined;
+}
+
+function sameNotificationIds(left: NotificationItem[], right: NotificationItem[]) {
+  if (left.length !== right.length) return false;
+  return left.every((item, index) => item.id === right[index]?.id);
 }

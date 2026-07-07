@@ -36,7 +36,8 @@ function OrdersPage() {
   const filtered = useMemo(
     () =>
       visibleOrders.filter((o) => {
-        if (status !== "Todos" && o.status !== status) return false;
+        const effectiveStatus = o.status === "Em separação" ? "Aguardando frete" : o.status;
+        if (status !== "Todos" && effectiveStatus !== status) return false;
         if (search && !`${o.number} ${o.client}`.toLowerCase().includes(search.toLowerCase()))
           return false;
         return true;
@@ -48,7 +49,9 @@ function OrdersPage() {
     () => ({
       total: visibleOrders.length,
       transit: visibleOrders.filter((o) => o.status === "Em rota").length,
-      separation: visibleOrders.filter((o) => o.status === "Em separação").length,
+      awaitingFreight: visibleOrders.filter(
+        (o) => o.status === "Aguardando frete" || o.status === "Em separação",
+      ).length,
       delivered: visibleOrders.filter((o) => o.status === "Entregue").length,
       value: visibleOrders.reduce((sum, o) => sum + o.totalValue, 0),
     }),
@@ -126,8 +129,8 @@ function OrdersPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Pedidos ativos" value={String(summary.total)} icon={Boxes} tone="info" />
         <StatCard
-          label="Em separação"
-          value={String(summary.separation)}
+          label="Aguardando frete"
+          value={String(summary.awaitingFreight)}
           icon={Truck}
           tone="warning"
         />
@@ -169,7 +172,7 @@ function OrdersPage() {
                 "Todos",
                 "Aguardando faturamento",
                 "Em faturamento",
-                "Em separação",
+                "Aguardando frete",
                 "Em rota",
                 "Entregue",
               ].map((o) => (

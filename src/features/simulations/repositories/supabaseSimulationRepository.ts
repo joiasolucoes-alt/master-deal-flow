@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureSupabaseSession, getSupabaseClient } from "@/lib/supabaseClient";
-import type { Simulation } from "@/data/types";
+import type { Simulation, User } from "@/data/types";
 import {
   expenseToSimulationCostRow,
   installmentToRow,
@@ -12,6 +12,9 @@ import {
   type SimulationRow,
 } from "@/features/simulations/repositories/simulationRepository";
 import { getSimulationTotals } from "@/lib/calculations";
+import { normalizeRole } from "@/lib/permissions";
+import { isSimulationAdjustmentRequested } from "@/lib/simulationStatus";
+import { matchesUserIdentity } from "@/lib/userIdentity";
 
 const SIMULATION_SELECT = `
   *,
@@ -26,6 +29,47 @@ function requireClient(): SupabaseClient {
   const client = getSupabaseClient();
   if (!client) throw new Error("Supabase não está configurado.");
   return client;
+}
+
+function isMissingSchemaColumnError(error: unknown, column: string) {
+  if (!error || typeof error !== "object") return false;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+  return code === "PGRST204" && message.includes(column);
+}
+
+function getMissingSchemaColumn(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+  if (code !== "PGRST204") return null;
+  return message.match(/'([^']+)'/)?.[1] ?? null;
+}
+
+async function upsertSimulationRowWithSchemaFallback(
+  client: SupabaseClient,
+  row: Record<string, unknown>,
+) {
+  const compatibleRow = { ...row };
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await client
+      .from("simulations")
+      .upsert(compatibleRow, { onConflict: "external_id" })
+      .select("id")
+      .single();
+
+    const missingColumn = getMissingSchemaColumn(result.error);
+    if (!result.error || !missingColumn || !(missingColumn in compatibleRow)) return result;
+
+    delete compatibleRow[missingColumn];
+  }
+
+  return client
+    .from("simulations")
+    .upsert(compatibleRow, { onConflict: "external_id" })
+    .select("id")
+    .single();
 }
 
 async function fetchSimulationInternal(client: SupabaseClient, id: string) {
@@ -53,6 +97,43 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
       return ((data ?? []) as SimulationRow[]).map(rowToSimulation);
     },
 
+    async listAdjustments(user?: User | null) {
+      await ensureSupabaseSession();
+      const client = requireClient();
+      let { data, error } = await client
+        .from("simulations")
+        .select(SIMULATION_SELECT)
+        .eq("status", "Ajuste solicitado")
+        .order("adjustment_requested_at", { ascending: false, nullsFirst: false });
+
+      if (error && isMissingSchemaColumnError(error, "adjustment_requested_at")) {
+        const retry = await client
+          .from("simulations")
+          .select(SIMULATION_SELECT)
+          .eq("status", "Ajuste solicitado")
+          .order("created_at", { ascending: false });
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) {
+        const retry = await client
+          .from("simulations")
+          .select(SIMULATION_SELECT)
+          .order("created_at", { ascending: false });
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) throw error;
+
+      const simulations = ((data ?? []) as SimulationRow[])
+        .map(rowToSimulation)
+        .filter(isSimulationAdjustmentRequested);
+      if (!user || normalizeRole(user.role) === "Admin") return simulations;
+      return simulations.filter((simulation) => matchesUserIdentity(simulation.owner, user));
+    },
+
     async getById(id: string) {
       await ensureSupabaseSession();
       const client = requireClient();
@@ -64,13 +145,10 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
       await ensureSupabaseSession();
       const client = requireClient();
       const row = simulationToRow(simulation);
-      const { data, error } = await client
-        .from("simulations")
-        .upsert(row, { onConflict: "external_id" })
-        .select("id")
-        .single();
+      const { data, error } = await upsertSimulationRowWithSchemaFallback(client, row);
 
       if (error) throw error;
+      if (!data?.id) throw new Error("Simulação não retornou identificador no Supabase.");
       const simulationUuid = data.id as string;
       const totals = getSimulationTotals(simulation);
       const installmentAmount =
@@ -118,8 +196,14 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
       await insertAuditEvent(client, "simulation", simulationUuid, simulation.id, "saved", {
         number: simulation.number,
         status: simulation.status,
+      }).catch((auditError) => {
+        console.warn("Simulação salva, mas auditoria não foi registrada.", auditError);
       });
-      await insertNotification(client, simulation.id, simulation.status, simulation.number);
+      await insertNotification(client, simulation.id, simulation.status, simulation.number).catch(
+        (notificationError) => {
+          console.warn("Simulação salva, mas notificação não foi registrada.", notificationError);
+        },
+      );
 
       const saved = await fetchSimulationInternal(client, simulation.id);
       return saved ? rowToSimulation(saved) : simulation;
@@ -168,6 +252,8 @@ async function insertNotification(
 ) {
   const importantStatuses = new Set<Simulation["status"]>([
     "Pendente de aprovação",
+    "Aguardando financeiro",
+    "Aguardando aprovação do Gestor",
     "Aprovada",
     "Ajuste solicitado",
     "Reprovada",

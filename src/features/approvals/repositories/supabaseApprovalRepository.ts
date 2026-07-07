@@ -14,6 +14,18 @@ function requireClient(): SupabaseClient {
   return client;
 }
 
+function isMissingSchemaColumnError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+  return (
+    code === "PGRST204" &&
+    (message.includes("stage") ||
+      message.includes("bank_account") ||
+      message.includes("decided_at"))
+  );
+}
+
 export function createSupabaseApprovalRepository(): ApprovalRepository {
   return {
     async listPending() {
@@ -52,23 +64,40 @@ export function createSupabaseApprovalRepository(): ApprovalRepository {
             .maybeSingle()
         : { data: null };
 
-      const { data, error } = await client
+      const row: Record<string, unknown> = {
+        ...approvalToRow(record),
+        simulation_id: simulation.id,
+        approver_id: approverProfile?.id ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
+      let { data, error } = await client
         .from("approvals")
-        .upsert(
-          {
-            ...approvalToRow(record),
-            simulation_id: simulation.id,
-            approver_id: approverProfile?.id ?? null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "external_id" },
-        )
+        .upsert(row, { onConflict: "external_id" })
         .select("*")
         .single();
 
+      if (error && isMissingSchemaColumnError(error)) {
+        const compatibleRow = { ...row };
+        delete compatibleRow.stage;
+        delete compatibleRow.bank_account;
+        delete compatibleRow.decided_at;
+        const retry = await client
+          .from("approvals")
+          .upsert(compatibleRow, { onConflict: "external_id" })
+          .select("*")
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
+
       if (error) throw error;
-      await insertAuditEvent(client, record);
-      await insertNotification(client, record);
+      await insertAuditEvent(client, record).catch((auditError) => {
+        console.warn("Aprovação salva, mas auditoria não foi registrada.", auditError);
+      });
+      await insertNotification(client, record).catch((notificationError) => {
+        console.warn("Aprovação salva, mas notificação não foi registrada.", notificationError);
+      });
       return rowToApproval(data as ApprovalRow);
     },
   };

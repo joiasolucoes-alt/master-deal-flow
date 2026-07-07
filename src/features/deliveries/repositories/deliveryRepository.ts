@@ -1,4 +1,4 @@
-import type { DeliveryRecord, DeliveryStatus } from "@/data/types";
+import type { DeliveryOccurrence, DeliveryRecord, DeliveryStatus } from "@/data/types";
 
 export interface DeliveryRepository {
   list(): Promise<DeliveryRecord[]>;
@@ -19,7 +19,15 @@ export type DeliveryRow = {
   expected_delivery_date?: string | null;
   delivered_at?: string | null;
   proof_notes?: string | null;
+  proof_document_number?: string | null;
+  proof_file_name?: string | null;
+  proof_file_path?: string | null;
+  proof_file_size?: number | null;
+  proof_mime_type?: string | null;
+  proof_received_by?: string | null;
+  proof_registered_at?: string | null;
   occurrence_notes?: string | null;
+  occurrence_history?: unknown;
   owner_name?: string | null;
   unit_name?: string | null;
   created_at?: string | null;
@@ -54,11 +62,40 @@ export function deliveryToRow(delivery: DeliveryRecord): Record<string, unknown>
     expected_delivery_date: delivery.expectedDeliveryDate,
     delivered_at: delivery.deliveredAt ?? null,
     proof_notes: delivery.proofNotes || null,
+    proof_document_number: delivery.proofDocumentNumber || null,
+    proof_file_name: delivery.proofFileName || null,
+    proof_file_path: delivery.proofFilePath || null,
+    proof_file_size: delivery.proofFileSize ?? null,
+    proof_mime_type: delivery.proofMimeType || null,
+    proof_received_by: delivery.proofReceivedBy || null,
+    proof_registered_at: delivery.proofRegisteredAt ?? null,
     occurrence_notes: delivery.occurrenceNotes || null,
+    occurrence_history: delivery.occurrences ?? [],
     owner_name: delivery.owner,
     unit_name: delivery.unit,
     created_at: delivery.createdAt,
   };
+}
+
+export function deliveryToLegacyRow(delivery: DeliveryRecord): Record<string, unknown> {
+  const row = deliveryToRow(delivery);
+  delete row.proof_document_number;
+  delete row.proof_file_name;
+  delete row.proof_file_path;
+  delete row.proof_file_size;
+  delete row.proof_mime_type;
+  delete row.proof_received_by;
+  delete row.proof_registered_at;
+  delete row.occurrence_history;
+  return row;
+}
+
+export function deliveryToProofUploadLegacyRow(delivery: DeliveryRecord): Record<string, unknown> {
+  const row = deliveryToRow(delivery);
+  delete row.proof_file_path;
+  delete row.proof_file_size;
+  delete row.proof_mime_type;
+  return row;
 }
 
 export function rowToDelivery(row: DeliveryRow): DeliveryRecord {
@@ -75,9 +112,41 @@ export function rowToDelivery(row: DeliveryRow): DeliveryRecord {
     expectedDeliveryDate: row.expected_delivery_date || new Date().toISOString(),
     deliveredAt: row.delivered_at ?? undefined,
     proofNotes: row.proof_notes || "",
+    proofDocumentNumber: row.proof_document_number || "",
+    proofFileName: row.proof_file_name || "",
+    proofFilePath: row.proof_file_path || "",
+    proofFileSize: typeof row.proof_file_size === "number" ? row.proof_file_size : undefined,
+    proofMimeType: row.proof_mime_type || "",
+    proofReceivedBy: row.proof_received_by || "",
+    proofRegisteredAt: row.proof_registered_at ?? undefined,
     occurrenceNotes: row.occurrence_notes || "",
+    occurrences: normalizeOccurrences(row.occurrence_history),
     owner: row.owner_name || "",
     unit: row.unit_name || "",
     createdAt: row.created_at || new Date().toISOString(),
   };
+}
+
+function normalizeOccurrences(value: unknown): DeliveryOccurrence[] {
+  if (!Array.isArray(value)) return [];
+  const occurrences: DeliveryOccurrence[] = [];
+
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const record = item as Record<string, unknown>;
+    const occurrence: DeliveryOccurrence = {
+      id: String(record.id || crypto.randomUUID()),
+      type: String(record.type || "Ocorrência"),
+      description: String(record.description || ""),
+      location: record.location ? String(record.location) : undefined,
+      createdAt: String(record.createdAt || new Date().toISOString()),
+      createdBy: String(record.createdBy || "Sistema"),
+    };
+
+    if (occurrence.description.trim()) {
+      occurrences.push(occurrence);
+    }
+  });
+
+  return occurrences;
 }

@@ -33,7 +33,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { simulationEvolution } from "@/data/dashboard";
 import { formatCompactCurrency, formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { getSimulationTotals } from "@/lib/calculations";
 import { downloadTextFile } from "@/lib/actions";
@@ -77,9 +76,8 @@ function DashboardPage() {
     () => filterNegotiationsForUser(negotiations, auth.user),
     [auth.user, negotiations],
   );
-  const pendingApprovals = visibleSimulations.filter(
-    (simulation) =>
-      simulation.status === "Pendente de aprovação" || simulation.status === "Em análise",
+  const pendingApprovals = visibleSimulations.filter((simulation) =>
+    isPendingApprovalStatus(simulation.status),
   ).length;
   const revenue = visibleSimulations.reduce(
     (sum, simulation) => sum + getSimulationTotals(simulation).revenue,
@@ -146,6 +144,11 @@ function DashboardPage() {
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
+  const simulationEvolutionData = useMemo(
+    () => buildSimulationEvolution(visibleSimulations),
+    [visibleSimulations],
+  );
+  const evolutionDelta = getEvolutionDelta(simulationEvolutionData.map((item) => item.value));
 
   function exportDashboardReport() {
     downloadTextFile(
@@ -210,13 +213,13 @@ function DashboardPage() {
               <p className="text-sm text-muted-foreground">Últimos 7 dias</p>
             </div>
             <Badge variant="secondary" className="rounded-full">
-              +31,4%
+              {formatPercent(evolutionDelta, 1)}
             </Badge>
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
-                data={simulationEvolution}
+                data={simulationEvolutionData}
                 margin={{ left: 8, right: 12, top: 12, bottom: 4 }}
               >
                 <defs>
@@ -439,4 +442,40 @@ function DashboardPage() {
       </Card>
     </div>
   );
+}
+
+function buildSimulationEvolution(simulations: ReturnType<typeof filterSimulationsForUser>) {
+  const today = new Date();
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+    date.setHours(0, 0, 0, 0);
+    return date;
+  });
+  const valuesByDate = new Map(days.map((date) => [toDateKey(date), 0]));
+
+  for (const simulation of simulations) {
+    const createdAt = new Date(simulation.createdAt);
+    createdAt.setHours(0, 0, 0, 0);
+    const key = toDateKey(createdAt);
+    if (!valuesByDate.has(key)) continue;
+    valuesByDate.set(key, (valuesByDate.get(key) ?? 0) + getSimulationTotals(simulation).revenue);
+  }
+
+  return days.map((date) => ({
+    day: date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", ""),
+    value: valuesByDate.get(toDateKey(date)) ?? 0,
+  }));
+}
+
+function getEvolutionDelta(values: number[]) {
+  const first = values.find((value) => value > 0) ?? 0;
+  const last = [...values].reverse().find((value) => value > 0) ?? 0;
+  if (first <= 0 && last <= 0) return 0;
+  if (first <= 0) return 100;
+  return ((last - first) / first) * 100;
+}
+
+function toDateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
 }

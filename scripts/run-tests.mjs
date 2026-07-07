@@ -121,6 +121,42 @@ function createFinancialTitlesFromOrder(order) {
   }));
 }
 
+function createPayableTitlesFromOrder(order, freights = []) {
+  const goodsTotal = order.products.reduce((sum, product) => {
+    const costTotal = product.costTotal ?? product.quantityTotal * product.costUnit;
+    return sum + costTotal;
+  }, 0);
+  const titles = [];
+
+  if (goodsTotal > 0) {
+    titles.push({
+      id: `pay-${order.id}-goods`,
+      orderId: order.id,
+      titleNumber: `${order.number}-PAG-MERC`,
+      type: "payable",
+      status: "open",
+      amount: Math.round(goodsTotal * 100) / 100,
+      paidAmount: 0,
+    });
+  }
+
+  freights
+    .filter((freight) => freight.orderId === order.id && freight.freightValue > 0)
+    .forEach((freight) => {
+      titles.push({
+        id: `pay-${order.id}-freight-${freight.id}`,
+        orderId: order.id,
+        titleNumber: `${order.number}-PAG-FRETE`,
+        type: "payable",
+        status: "open",
+        amount: Math.round(freight.freightValue * 100) / 100,
+        paidAmount: 0,
+      });
+    });
+
+  return titles;
+}
+
 function calculateBillingProgress(titles) {
   const total = titles.reduce((sum, title) => sum + title.amount, 0);
   const paid = titles.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0);
@@ -262,7 +298,16 @@ function createDeliveryFromFreight(freight) {
           ? "delivered"
           : "pending",
     currentLocation: freight.status === "in_route" ? "Em trânsito" : "Aguardando expedição",
+    proofNotes: "",
+    proofDocumentNumber: "",
+    proofFileName: "",
+    proofFilePath: "",
+    proofFileSize: undefined,
+    proofMimeType: "",
+    proofReceivedBy: "",
+    proofRegisteredAt: undefined,
     occurrenceNotes: "",
+    occurrences: [],
   };
 }
 
@@ -299,6 +344,110 @@ function updateOrderFromDelivery(order, delivery) {
           ? "Em rota"
           : order.status,
     deliveryProgress: Math.max(order.deliveryProgress, progressByStatus[delivery.status]),
+  };
+}
+
+function registerDeliveryProof(delivery, proof) {
+  return {
+    ...delivery,
+    ...proof,
+    status: "delivered",
+    currentLocation: "Entrega concluída",
+    deliveredAt: delivery.deliveredAt ?? "2026-07-04T12:00:00-03:00",
+    proofRegisteredAt: delivery.proofRegisteredAt ?? "2026-07-04T12:00:00-03:00",
+  };
+}
+
+function registerDeliveryOccurrence(delivery, occurrence) {
+  const nextOccurrence = {
+    id: "occ-test-1",
+    type: occurrence.type || "Ocorrência operacional",
+    description: occurrence.description,
+    location: occurrence.location,
+    createdAt: "2026-07-05T12:00:00-03:00",
+    createdBy: occurrence.createdBy || "Sistema",
+  };
+
+  return {
+    ...delivery,
+    status: "issue",
+    currentLocation: nextOccurrence.location || delivery.currentLocation,
+    occurrenceNotes: nextOccurrence.description,
+    occurrences: [...(delivery.occurrences ?? []), nextOccurrence],
+  };
+}
+
+function buildRealizedResult({ order, simulation, financialTitles = [], freights = [] }) {
+  const receivables = financialTitles.filter((title) => title.type === "receivable");
+  const payables = financialTitles.filter((title) => title.type === "payable");
+  const receivableAmount = receivables.length
+    ? receivables.reduce((sum, title) => sum + title.amount, 0)
+    : order.totalValue;
+  const realizedRevenueTotal = receivables.length
+    ? receivables.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0)
+    : (order.totalValue * order.billingProgress) / 100;
+  const goodsCostTotal = order.products.reduce(
+    (sum, product) => sum + (product.costTotal ?? product.quantityTotal * product.costUnit),
+    0,
+  );
+  const freightCostTotal = freights.reduce((sum, freight) => sum + freight.freightValue, 0);
+  const payableBookedTotal = payables.reduce((sum, title) => sum + title.amount, 0);
+  const costBookedTotal =
+    payableBookedTotal > 0 ? payableBookedTotal : goodsCostTotal + freightCostTotal;
+  const costPaidTotal = payables.reduce(
+    (sum, title) => sum + Math.min(title.paidAmount, title.amount),
+    0,
+  );
+  const commissionExpense = simulation?.expenseItems?.find(
+    (expense) => expense.type === "Comissão",
+  );
+  const commissionPercent =
+    commissionExpense?.calculationType === "percentage" ? commissionExpense.value : 2.5;
+  const commissionTotal = Math.round(realizedRevenueTotal * (commissionPercent / 100) * 100) / 100;
+  const realizedProfit =
+    Math.round((realizedRevenueTotal - costPaidTotal - commissionTotal) * 100) / 100;
+  const predictedMarginPercent = simulation ? getTotals(simulation).marginPercent : 0;
+  const realizedMarginPercent =
+    realizedRevenueTotal > 0 ? (realizedProfit / realizedRevenueTotal) * 100 : 0;
+
+  return {
+    realizedRevenueTotal,
+    receivableOpenTotal: Math.max(0, receivableAmount - realizedRevenueTotal),
+    costBookedTotal,
+    costPaidTotal,
+    commissionPercent,
+    commissionTotal,
+    realizedProfit,
+    predictedMarginPercent,
+    realizedMarginPercent,
+    marginDeltaPercent: realizedMarginPercent - predictedMarginPercent,
+  };
+}
+
+function createClosedRealizedResultRecord(result, closedBy = "Sistema") {
+  return {
+    id: `realized-${result.orderId}`,
+    orderId: result.orderId,
+    orderNumber: result.orderNumber,
+    status: "closed",
+    realizedRevenueTotal: result.realizedRevenueTotal,
+    realizedProfit: result.realizedProfit,
+    realizedMarginPercent: result.realizedMarginPercent,
+    commissionApprovalStatus: "pending",
+    commissionApprovedBy: undefined,
+    commissionApprovedAt: undefined,
+    commissionNotes: "",
+    notes: `Fechamento registrado por ${closedBy}.`,
+  };
+}
+
+function approveCommissionForRealizedResult(result, approvedBy = "Sistema") {
+  return {
+    ...result,
+    commissionApprovalStatus: "approved",
+    commissionApprovedBy: approvedBy,
+    commissionApprovedAt: "2026-07-05T12:00:00-03:00",
+    commissionNotes: `Comissão aprovada por ${approvedBy}.`,
   };
 }
 
@@ -499,6 +648,20 @@ assert.equal(financialTitles.length, 2);
 assert.equal(financialTitles[0].amount, 500);
 assert.equal(financialTitles[1].titleNumber, "PED FIN 1-PARC-2");
 assert.equal(calculateBillingProgress(financialTitles), 0);
+
+const payableTitles = createPayableTitlesFromOrder(
+  {
+    id: "ord-pay-1",
+    number: "PED PAY 1",
+    products: [{ quantityTotal: 10, costUnit: 25, saleUnit: 30 }],
+  },
+  [{ id: "fr-pay-1", orderId: "ord-pay-1", freightValue: 120 }],
+);
+assert.equal(payableTitles.length, 2);
+assert.equal(payableTitles[0].type, "payable");
+assert.equal(payableTitles[0].amount, 250);
+assert.equal(payableTitles[1].titleNumber, "PED PAY 1-PAG-FRETE");
+assert.equal(payableTitles[1].amount, 120);
 assert.equal(
   calculateBillingProgress([
     { amount: 500, paidAmount: 500 },
@@ -597,6 +760,72 @@ const issueOrder = updateOrderFromDelivery(freightOrder, {
 });
 assert.equal(issueOrder.status, "Em rota");
 assert.equal(issueOrder.deliveryProgress, 70);
+const proofDelivery = registerDeliveryProof(
+  { ...delivery, status: "delivered" },
+  {
+    proofReceivedBy: "Maria Cliente",
+    proofDocumentNumber: "NF 587102",
+    proofFileName: "canhoto-ped-frete-1.pdf",
+    proofFilePath: "delivery-freight-ord-freight-1/file.pdf",
+    proofFileSize: 2048,
+    proofMimeType: "application/pdf",
+    proofNotes: "Entrega conferida sem ressalva.",
+  },
+);
+assert.equal(proofDelivery.status, "delivered");
+assert.equal(proofDelivery.proofReceivedBy, "Maria Cliente");
+assert.equal(proofDelivery.proofFilePath, "delivery-freight-ord-freight-1/file.pdf");
+assert.equal(proofDelivery.proofRegisteredAt, "2026-07-04T12:00:00-03:00");
+const occurrenceDelivery = registerDeliveryOccurrence(delivery, {
+  type: "Cliente ausente",
+  description: "Motorista aguardou 30 minutos e cliente não estava no local.",
+  location: "Destino",
+  createdBy: "Djalma",
+});
+assert.equal(occurrenceDelivery.status, "issue");
+assert.equal(
+  occurrenceDelivery.occurrenceNotes,
+  "Motorista aguardou 30 minutos e cliente não estava no local.",
+);
+assert.equal(occurrenceDelivery.occurrences.length, 1);
+assert.equal(occurrenceDelivery.occurrences[0].type, "Cliente ausente");
+
+const realizedResult = buildRealizedResult({
+  order: {
+    id: "ord-realized-1",
+    totalValue: 1000,
+    billingProgress: 0,
+    products: [{ quantityTotal: 10, costUnit: 60, saleUnit: 100 }],
+  },
+  simulation: {
+    products: [{ quantityTotal: 10, costUnit: 60, saleUnit: 100 }],
+    expenseItems: [{ type: "Comissão", calculationType: "percentage", value: 2.5 }],
+  },
+  financialTitles: [
+    { orderId: "ord-realized-1", type: "receivable", amount: 1000, paidAmount: 1000 },
+    { orderId: "ord-realized-1", type: "payable", amount: 600, paidAmount: 600 },
+  ],
+});
+assert.equal(realizedResult.realizedRevenueTotal, 1000);
+assert.equal(realizedResult.costPaidTotal, 600);
+assert.equal(realizedResult.commissionTotal, 25);
+assert.equal(realizedResult.realizedProfit, 375);
+assert.equal(Math.round(realizedResult.realizedMarginPercent * 100), 3750);
+const closedRealizedResult = createClosedRealizedResultRecord(
+  { ...realizedResult, orderId: "ord-realized-1", orderNumber: "PED REAL 1" },
+  "Financeiro",
+);
+assert.equal(closedRealizedResult.id, "realized-ord-realized-1");
+assert.equal(closedRealizedResult.status, "closed");
+assert.equal(closedRealizedResult.orderNumber, "PED REAL 1");
+assert.equal(closedRealizedResult.commissionApprovalStatus, "pending");
+const approvedCommissionResult = approveCommissionForRealizedResult(
+  closedRealizedResult,
+  "Financeiro",
+);
+assert.equal(approvedCommissionResult.commissionApprovalStatus, "approved");
+assert.equal(approvedCommissionResult.commissionApprovedBy, "Financeiro");
+assert.match(approvedCommissionResult.commissionNotes, /Comissão aprovada/);
 
 function requireSupabaseConfig(configured) {
   if (!configured) throw new Error("Supabase não está configurado.");

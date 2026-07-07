@@ -9,16 +9,21 @@ import type {
 import { normalizeRole, isSimulationOwner } from "@/lib/permissions";
 
 const pendingStep: ApprovalStepState = { status: "pending" };
+const pendingApprovalStatuses = new Set<Simulation["status"]>([
+  "Pendente de aprovação",
+  "Em análise",
+  "Aguardando financeiro",
+  "Aguardando aprovação do Gestor",
+]);
 
 export const APPROVAL_STAGE_LABELS: Record<ApprovalStage, string> = {
   financial: "Financeiro",
-  principal: "Aprovação final",
+  principal: "Gestor",
 };
 
 export function getApprovalFlow(simulation: Simulation): SimulationApprovalFlow {
   const inferredApproved = simulation.status === "Aprovada";
-
-  return {
+  const flow: SimulationApprovalFlow = {
     financial: {
       ...pendingStep,
       ...(inferredApproved ? { status: "approved" as const } : {}),
@@ -30,10 +35,27 @@ export function getApprovalFlow(simulation: Simulation): SimulationApprovalFlow 
       ...(simulation.approvalFlow?.principal ?? {}),
     },
   };
+
+  if (!pendingApprovalStatuses.has(simulation.status)) {
+    return flow;
+  }
+
+  const hasStaleAdjustment =
+    flow.financial.status === "adjustment_requested" ||
+    flow.financial.status === "rejected" ||
+    flow.principal.status === "adjustment_requested" ||
+    flow.principal.status === "rejected";
+
+  if (!hasStaleAdjustment) return flow;
+
+  return {
+    financial: { status: "pending" },
+    principal: { status: "pending" },
+  };
 }
 
 export function getCurrentApprovalStage(simulation: Simulation): ApprovalStage | null {
-  if (simulation.status !== "Pendente de aprovação" && simulation.status !== "Em análise") {
+  if (!pendingApprovalStatuses.has(simulation.status)) {
     return null;
   }
 
@@ -74,6 +96,7 @@ export function canConvertApprovedSimulation(simulation: Simulation) {
 export function initializeApprovalFlow(simulation: Simulation): Simulation {
   return {
     ...simulation,
+    status: "Aguardando financeiro",
     approvalFlow: {
       financial: { status: "pending" },
       principal: { status: "pending" },
@@ -111,7 +134,12 @@ export function applyApprovalDecision(
       ...simulation,
       status: "Ajuste solicitado",
       approvalFlow: nextFlow,
+      approvalChecklist: undefined,
       approvalNotes: payload.notes || simulation.approvalNotes,
+      adjustmentReason: payload.notes || simulation.adjustmentReason || simulation.approvalNotes,
+      adjustmentRequestedAt: decidedAt,
+      adjustmentRequestedBy: payload.approverName || payload.approverId,
+      adjustmentStage: stage,
     };
   }
 
@@ -121,6 +149,10 @@ export function applyApprovalDecision(
       status: "Reprovada",
       approvalFlow: nextFlow,
       approvalNotes: payload.notes || simulation.approvalNotes,
+      adjustmentReason: undefined,
+      adjustmentRequestedAt: undefined,
+      adjustmentRequestedBy: undefined,
+      adjustmentStage: undefined,
     };
   }
 
@@ -129,8 +161,14 @@ export function applyApprovalDecision(
     status:
       nextFlow.financial.status === "approved" && nextFlow.principal.status === "approved"
         ? "Aprovada"
-        : "Pendente de aprovação",
+        : nextFlow.financial.status === "approved"
+          ? "Aguardando aprovação do Gestor"
+          : "Aguardando financeiro",
     approvalFlow: nextFlow,
     approvalNotes: payload.notes || simulation.approvalNotes,
+    adjustmentReason: undefined,
+    adjustmentRequestedAt: undefined,
+    adjustmentRequestedBy: undefined,
+    adjustmentStage: undefined,
   };
 }

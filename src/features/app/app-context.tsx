@@ -28,6 +28,9 @@ import type {
   NegotiationWallet,
   Order,
   Product,
+  RealizedResultRecord,
+  NegotiationWallet,
+  OpportunityPool,
   Simulation,
   Supplier,
   ThemeMode,
@@ -99,10 +102,10 @@ interface AppContextValue {
   users: User[];
   login: (email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
   refreshUserContext: (session?: Session | null) => Promise<void>;
-  registerUser: (payload: { name: string; email: string; password: string }) => {
+  registerUser: (payload: { email: string; password: string }) => Promise<{
     ok: boolean;
-    message: string;
-  };
+    message?: string;
+  }>;
   updateCurrentProfile: (payload: { name: string }) => Promise<{ ok: boolean; message?: string }>;
   updateUserAccess: (
     id: string,
@@ -115,6 +118,9 @@ interface AppContextValue {
   negotiations: Negotiation[];
   orders: Order[];
   financialTitles: FinancialTitle[];
+  realizedResults: RealizedResultRecord[];
+  negotiationWallets: NegotiationWallet[];
+  opportunityPools: OpportunityPool[];
   freights: FreightRecord[];
   negotiationWallets: NegotiationWallet[];
   deliveries: DeliveryRecord[];
@@ -128,6 +134,9 @@ interface AppContextValue {
   upsertNegotiation: (negotiation: Negotiation) => void;
   upsertOrder: (order: Order) => void;
   upsertFinancialTitle: (title: FinancialTitle) => void;
+  upsertRealizedResult: (result: RealizedResultRecord) => void;
+  upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
+  upsertOpportunityPool: (pool: OpportunityPool) => void;
   upsertFreight: (freight: FreightRecord) => void;
   upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
   upsertDelivery: (delivery: DeliveryRecord) => void;
@@ -154,6 +163,7 @@ const DATABASE_ROLE_BY_APP_ROLE: Record<UserRole, string> = {
   Financeiro: "financeiro",
   Admin: "admin",
 };
+const DEFAULT_SIGNUP_ROLE = "comercial";
 
 function getInitials(name: string, email: string) {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -321,6 +331,8 @@ function normalizeStoredUser(user: User): User {
 const PENDING_APPROVAL_STATUSES = new Set<Simulation["status"]>([
   "Pendente de aprovação",
   "Em análise",
+  "Aguardando financeiro",
+  "Aguardando aprovação do Gestor",
 ]);
 
 function mergeRemoteSimulationsWithLocalPending(
@@ -344,12 +356,7 @@ function mergeRemoteSimulationsWithLocalPending(
       continue;
     }
 
-    if (
-      remoteSimulation.status !== localSimulation.status ||
-      !remoteSimulation.approvalFlow ||
-      remoteSimulation.approvalFlow.financial.status !==
-        localSimulation.approvalFlow?.financial.status
-    ) {
+    if (!remoteSimulation.approvalFlow && remoteSimulation.status === "Rascunho") {
       const index = merged.findIndex((simulation) => simulation.id === localSimulation.id);
       if (index >= 0) merged[index] = localSimulation;
     }
@@ -538,6 +545,11 @@ async function loadUserMemberships(
   );
 }
 
+async function registerCurrentUserAsCommercial(client: SupabaseClient) {
+  const { error } = await client.rpc("register_current_user_as_comercial");
+  if (error) throw error;
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const authBootstrapStartedRef = useRef(false);
@@ -562,6 +574,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const negotiations = useAppStore((store) => store.negotiations);
   const orders = useAppStore((store) => store.orders);
   const financialTitles = useAppStore((store) => store.financialTitles);
+  const realizedResults = useAppStore((store) => store.realizedResults);
   const freights = useAppStore((store) => store.freights);
   const negotiationWallets = useAppStore((store) => store.negotiationWallets);
   const deliveries = useAppStore((store) => store.deliveries);
@@ -572,6 +585,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setNegotiationsStore = useAppStore((store) => store.setNegotiations);
   const setOrdersStore = useAppStore((store) => store.setOrders);
   const setFinancialTitlesStore = useAppStore((store) => store.setFinancialTitles);
+  const setRealizedResultsStore = useAppStore((store) => store.setRealizedResults);
   const setFreightsStore = useAppStore((store) => store.setFreights);
   const setNegotiationWalletsStore = useAppStore((store) => store.setNegotiationWallets);
   const setDeliveriesStore = useAppStore((store) => store.setDeliveries);
@@ -581,7 +595,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const upsertSimulationStore = useAppStore((store) => store.upsertSimulation);
   const upsertNegotiationStore = useAppStore((store) => store.upsertNegotiation);
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
+  const negotiationWallets = useAppStore((store) => store.negotiationWallets);
+  const opportunityPools = useAppStore((store) => store.opportunityPools);
+  const upsertNegotiationWalletStore = useAppStore((store) => store.upsertNegotiationWallet);
+  const upsertOpportunityPoolStore = useAppStore((store) => store.upsertOpportunityPool);
   const upsertFinancialTitleStore = useAppStore((store) => store.upsertFinancialTitle);
+  const upsertRealizedResultStore = useAppStore((store) => store.upsertRealizedResult);
   const upsertFreightStore = useAppStore((store) => store.upsertFreight);
   const upsertNegotiationWalletStore = useAppStore((store) => store.upsertNegotiationWallet);
   const upsertDeliveryStore = useAppStore((store) => store.upsertDelivery);
@@ -701,14 +720,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
           profile = loadedProfile;
 
           if (!profile) {
+            try {
+              await withTimeout(
+                registerCurrentUserAsCommercial(client),
+                "Não foi possível preparar o perfil Comercial no tempo esperado.",
+              );
+
+              const { data: registeredProfile, error: registeredProfileError } = await withTimeout(
+                client
+                  .from("profiles")
+                  .select(
+                    "id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id",
+                  )
+                  .eq("auth_user_id", supabaseUser.id)
+                  .maybeSingle(),
+                "Não foi possível carregar o perfil Comercial no tempo esperado.",
+              );
+
+              if (registeredProfileError) throw registeredProfileError;
+              profile = registeredProfile;
+            } catch (error) {
+              console.warn("Auto cadastro Comercial ainda não está disponível no Supabase.", error);
+            }
+          }
+
+          if (!profile) {
+            const displayName =
+              supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário";
             const { data: insertedProfile, error: insertError } = await withTimeout(
               client
                 .from("profiles")
                 .insert({
                   auth_user_id: supabaseUser.id,
-                  full_name:
-                    supabaseUser.user_metadata?.full_name ?? supabaseUser.email ?? "Usuário",
+                  full_name: displayName,
+                  name: displayName,
                   email: supabaseUser.email,
+                  role: "Comercial",
                 })
                 .select("id, auth_user_id, full_name, name, email, role, unit_id, default_unit_id")
                 .maybeSingle(),
@@ -732,12 +779,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        const activeMemberships = rpcContext?.memberships.length
+        let activeMemberships = rpcContext?.memberships.length
           ? rpcContext.memberships
           : await withTimeout(
               loadUserMemberships(client, supabaseUser, profile as AuthProfile | null),
               "Não foi possível carregar suas permissões no tempo esperado.",
             );
+
+        if (activeMemberships.length === 0) {
+          try {
+            await withTimeout(
+              registerCurrentUserAsCommercial(client),
+              "Não foi possível criar o acesso Comercial no tempo esperado.",
+            );
+            activeMemberships = await withTimeout(
+              loadUserMemberships(client, supabaseUser, profile as AuthProfile | null),
+              "Não foi possível carregar suas permissões após o cadastro.",
+            );
+          } catch (error) {
+            console.error("Falha ao vincular usuário como Comercial.", error);
+          }
+        }
+
         if (
           activeMemberships.some((membership) => normalizeDatabaseRole(membership.role) === "admin")
         ) {
@@ -786,7 +849,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           role,
           accessError: activeMemberships.length
             ? null
-            : "Seu usuário foi autenticado, mas ainda não possui acesso a nenhuma organização no Master Flow.",
+            : "Seu usuário foi autenticado, mas o acesso Comercial ainda não foi criado. Rode o SQL 014 no Supabase e tente entrar novamente.",
         });
       } catch (error) {
         console.error("Falha ao carregar contexto de autenticação.", error);
@@ -872,6 +935,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const orderRepository = createSupabaseOrderRepository();
     const catalogRepository = createSupabaseCatalogRepository();
     const financialRepository = createSupabaseFinancialRepository();
+    const realizedResultRepository = createSupabaseRealizedResultRepository();
     const freightRepository = createSupabaseFreightRepository();
     const negotiationWalletRepository = createSupabaseNegotiationWalletRepository();
     const deliveryRepository = createSupabaseDeliveryRepository();
@@ -883,6 +947,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remoteNegotiations,
           remoteOrders,
           remoteFinancialTitles,
+          remoteRealizedResults,
           remoteFreights,
           remoteNegotiationWallets,
           remoteDeliveries,
@@ -894,6 +959,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           negotiationRepository.list(),
           orderRepository.list(),
           financialRepository.listTitles(),
+          realizedResultRepository.list(),
           freightRepository.list(),
           negotiationWalletRepository.list(),
           deliveryRepository.list(),
@@ -912,6 +978,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setNegotiationsStore(remoteNegotiations);
         setOrdersStore(remoteOrders);
         setFinancialTitlesStore(remoteFinancialTitles);
+        setRealizedResultsStore(remoteRealizedResults);
         setFreightsStore(remoteFreights);
         setNegotiationWalletsStore(remoteNegotiationWallets);
         setDeliveriesStore(remoteDeliveries);
@@ -937,6 +1004,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setClientsStore,
     setDeliveriesStore,
     setFinancialTitlesStore,
+    setRealizedResultsStore,
     setFreightsStore,
     setNegotiationsStore,
     setNegotiationWalletsStore,
@@ -1045,11 +1113,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: false, message: "Erro de conexão com Supabase." };
   };
 
-  const registerUser = (_payload: { name: string; email: string; password: string }) => ({
-    ok: false,
-    message:
-      "Cadastro local desativado. Solicite a criação do usuário no Supabase Auth ao administrador.",
-  });
+  const registerUser = async (payload: { email: string; password: string }) => {
+    const normalizedEmail = payload.email.trim().toLowerCase();
+    const password = payload.password.trim();
+
+    if (!normalizedEmail || !password) {
+      return { ok: false, message: "E-mail e senha são obrigatórios." };
+    }
+
+    if (password.length < 6) {
+      return { ok: false, message: "A senha precisa ter pelo menos 6 caracteres." };
+    }
+
+    const config = getSupabaseConfigStatus();
+    const client = config.configured ? getSupabaseClient() : null;
+    if (!client) {
+      return { ok: false, message: "Supabase não configurado para criar conta." };
+    }
+
+    setAuth((current) => ({ ...current, isLoading: true, accessError: null }));
+    const displayName = normalizedEmail.split("@")[0] || "Usuário";
+
+    try {
+      const { data, error } = await withTimeout(
+        client.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: {
+              full_name: displayName,
+              role: DEFAULT_SIGNUP_ROLE,
+            },
+          },
+        }),
+        "O cadastro demorou mais que o esperado. Verifique a conexão e tente novamente.",
+      );
+
+      if (error) {
+        clearAuthContext();
+        return { ok: false, message: error.message || "Não foi possível criar a conta." };
+      }
+
+      if (!data.session) {
+        clearAuthContext();
+        return {
+          ok: false,
+          message:
+            "Conta criada, mas o Supabase está exigindo confirmação de e-mail antes do primeiro acesso.",
+        };
+      }
+
+      await registerCurrentUserAsCommercial(client);
+      await refreshUserContext(data.session);
+      return { ok: true };
+    } catch (error) {
+      console.error("Falha ao cadastrar usuário no Supabase.", error);
+      clearAuthContext();
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Não foi possível criar a conta.",
+      };
+    }
+  };
 
   const updateUserAccess = async (
     id: string,
@@ -1075,15 +1200,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
 
         if (organizationIds.length) {
-          const { error: membershipError } = await client
-            .from("organization_members")
-            .update({ role: DATABASE_ROLE_BY_APP_ROLE[payload.role], updated_at: now })
-            .eq("user_id", id)
-            .in("organization_id", organizationIds);
+          const databaseRole = DATABASE_ROLE_BY_APP_ROLE[payload.role];
 
-          if (membershipError) {
-            console.error("Falha ao atualizar perfil do usuário no Supabase.", membershipError);
-            return { ok: false, message: "Não foi possível atualizar o perfil no Supabase." };
+          for (const organizationId of organizationIds) {
+            const { data: existingMembership, error: membershipLoadError } = await client
+              .from("organization_members")
+              .select("id")
+              .eq("user_id", id)
+              .eq("organization_id", organizationId)
+              .maybeSingle();
+
+            if (membershipLoadError) {
+              console.error(
+                "Falha ao consultar perfil do usuário no Supabase.",
+                membershipLoadError,
+              );
+              return { ok: false, message: "Não foi possível consultar o perfil no Supabase." };
+            }
+
+            const membershipResult = existingMembership?.id
+              ? await client
+                  .from("organization_members")
+                  .update({ role: databaseRole, updated_at: now })
+                  .eq("id", existingMembership.id)
+              : await client.from("organization_members").insert({
+                  organization_id: organizationId,
+                  user_id: id,
+                  role: databaseRole,
+                  unit_id: null,
+                  updated_at: now,
+                });
+
+            if (membershipResult.error) {
+              console.error(
+                "Falha ao atualizar perfil do usuário no Supabase.",
+                membershipResult.error,
+              );
+              return { ok: false, message: "Não foi possível atualizar o perfil no Supabase." };
+            }
           }
         }
       }
@@ -1229,6 +1383,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const upsertNegotiationWallet = (wallet: NegotiationWallet) => {
+    upsertNegotiationWalletStore(wallet);
+  };
+
+  const upsertOpportunityPool = (pool: OpportunityPool) => {
+    upsertOpportunityPoolStore(pool);
+  };
+
   const upsertFinancialTitle = (title: FinancialTitle) => {
     upsertFinancialTitleStore(title);
     if (!isSupabaseProvider()) return;
@@ -1247,6 +1409,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error("Falha ao salvar título financeiro no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar financeiro.");
       toast.error("Falha ao salvar financeiro no Supabase. Dados locais preservados.");
+    });
+  };
+
+  const upsertRealizedResult = (result: RealizedResultRecord) => {
+    upsertRealizedResultStore(result);
+    if (!isSupabaseProvider()) return;
+
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      console.error(
+        "VITE_DATA_PROVIDER=supabase, mas VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não foram configuradas.",
+      );
+      toast.error("Supabase não configurado. O fechamento ficou salvo apenas localmente.");
+      return;
+    }
+
+    const repository = createSupabaseRealizedResultRepository();
+    void repository.save(result).catch((error) => {
+      console.error("Falha ao salvar resultado realizado no Supabase.", error);
+      setLastDataError(
+        error instanceof Error ? error.message : "Falha ao salvar resultado realizado.",
+      );
+      toast.error("Falha ao salvar fechamento no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1378,6 +1563,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       negotiations,
       orders,
       financialTitles,
+      realizedResults,
+      negotiationWallets,
+      opportunityPools,
       freights,
       negotiationWallets,
       deliveries,
@@ -1391,6 +1579,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertNegotiation,
       upsertOrder,
       upsertFinancialTitle,
+      upsertRealizedResult,
+      upsertNegotiationWallet,
+      upsertOpportunityPool,
       upsertFreight,
       upsertNegotiationWallet,
       upsertDelivery,
@@ -1411,6 +1602,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       negotiations,
       orders,
       financialTitles,
+      realizedResults,
+      negotiationWallets,
+      opportunityPools,
       freights,
       negotiationWallets,
       deliveries,
@@ -1424,6 +1618,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertNegotiation,
       upsertOrder,
       upsertFinancialTitle,
+      upsertRealizedResult,
+      upsertNegotiationWallet,
+      upsertOpportunityPool,
       upsertFreight,
       upsertNegotiationWallet,
       upsertDelivery,
