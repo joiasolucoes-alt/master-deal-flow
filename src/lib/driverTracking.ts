@@ -13,13 +13,7 @@ export type DriverEventType =
   | "proof_uploaded"
   | "completed";
 export type FreightTrackingStatus =
-  | "quoted"
-  | "hired"
-  | "loading"
-  | "in_route"
-  | "delivered"
-  | "cancelled"
-  | DriverEventType;
+  "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled" | DriverEventType;
 
 export interface DriverTrackingEvent {
   id: string;
@@ -348,6 +342,19 @@ function getAccessStatus(row: DriverAccessLinkRow): DriverAccessSummary["status"
   return "active";
 }
 
+function isDriverAuthBusinessReason(reason?: string) {
+  return (
+    reason === "invalid_pin" ||
+    reason === "invalid_link" ||
+    reason === "expired" ||
+    reason === "revoked" ||
+    reason === "locked" ||
+    reason === "completed" ||
+    reason === "unauthorized" ||
+    reason === "missing_credentials"
+  );
+}
+
 async function invokeDriverFunction<T>(
   functionName: string,
   body: Record<string, unknown> | FormData,
@@ -522,7 +529,12 @@ export async function authenticateDriverLink(token: string, pin: string) {
       "driver-link-auth",
       { token, pin },
     );
-    if (!payload?.ok) return { ok: false as const, reason: payload?.reason ?? "invalid_pin" };
+    if (!payload?.ok) {
+      if (isDriverAuthBusinessReason(payload?.reason)) {
+        return { ok: false as const, reason: payload?.reason ?? "invalid_pin" };
+      }
+      throw new Error(payload?.reason ?? "driver_link_auth_failed");
+    }
     return { ok: true as const, trip: toDriverTrip(payload.trip) };
   } catch {
     const payload = (await rpcJson("driver_link_auth", {

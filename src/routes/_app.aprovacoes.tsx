@@ -35,6 +35,7 @@ import { createSupabaseApprovalRepository } from "@/features/approvals/repositor
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
+import { isSimulationAdjustmentRequested } from "@/lib/simulationStatus";
 
 export const Route = createFileRoute("/_app/aprovacoes")({
   component: ApprovalsPage,
@@ -119,26 +120,33 @@ function ApprovalsPage() {
       cancelled = true;
     };
   }, [auth.hasAccess, auth.user?.id, canReview]);
-  const pending = useMemo(
+  const approvalQueue = useMemo(
     () =>
       simulations.filter((simulation) => {
-        if (!isPendingApprovalStatus(simulation.status)) return false;
-        const stage = getCurrentApprovalStage(simulation);
-        return canUserDecideApprovalStage(currentUser, simulation, stage);
+        if (
+          !isPendingApprovalStatus(simulation.status) &&
+          !isSimulationAdjustmentRequested(simulation)
+        ) {
+          return false;
+        }
+        if (!currentUser || currentUser.status !== "Ativo") return false;
+        if (currentUser.role === "Admin") return true;
+        return currentUser.role === "Financeiro" || currentUser.role === "Aprovador";
       }),
     [currentUser, simulations],
   );
-  const selected = pending.find((s) => s.id === selectedApprovalId) ?? pending[0] ?? null;
+  const selected =
+    approvalQueue.find((s) => s.id === selectedApprovalId) ?? approvalQueue[0] ?? null;
   const [comment, setComment] = useState("");
   const [bankAccount, setBankAccount] = useState("");
 
   const summary = useMemo(() => {
-    const totalValue = pending.reduce((sum, s) => sum + getSimulationTotals(s).revenue, 0);
-    const critical = pending.filter(
+    const totalValue = approvalQueue.reduce((sum, s) => sum + getSimulationTotals(s).revenue, 0);
+    const critical = approvalQueue.filter(
       (s) => s.priority === "Alta" || s.priority === "Crítica",
     ).length;
     return { totalValue, critical };
-  }, [pending]);
+  }, [approvalQueue]);
 
   function updateChecklist(
     key: keyof NonNullable<Simulation["approvalChecklist"]>,
@@ -273,7 +281,7 @@ function ApprovalsPage() {
           decision === "approve"
             ? "Etapa financeira aprovada"
             : decision === "adjust"
-              ? "Ajuste solicitado para sua simulação"
+              ? "Aguardando reajuste para sua simulação"
               : "Simulação reprovada",
         description:
           decision === "adjust"
@@ -305,7 +313,7 @@ function ApprovalsPage() {
         decision === "approve"
           ? "Etapa financeira aprovada. A simulação segue para aprovação do Gestor."
           : decision === "adjust"
-            ? "Ajuste solicitado. A simulação voltou para o Comercial."
+            ? "Aguardando reajuste. A simulação permanece visível no fluxo."
             : "Decisão registrada.",
       );
     }
@@ -343,7 +351,7 @@ function ApprovalsPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard
           label="Aguardando sua ação"
-          value={String(pending.length)}
+          value={String(approvalQueue.length)}
           icon={ClipboardCheck}
           tone="info"
         />
@@ -369,15 +377,16 @@ function ApprovalsPage() {
           <CardContent className="p-0">
             <ScrollArea className="h-[280px] lg:h-[520px]">
               <div className="space-y-1 p-3">
-                {pending.length === 0 && (
+                {approvalQueue.length === 0 && (
                   <p className="p-4 text-sm text-muted-foreground">
-                    Sem simulações pendentes para o seu perfil.
+                    Sem simulações em acompanhamento para o seu perfil.
                   </p>
                 )}
-                {pending.map((sim) => {
+                {approvalQueue.map((sim) => {
                   const totals = getSimulationTotals(sim);
                   const active = sim.id === selected?.id;
                   const stage = getCurrentApprovalStage(sim);
+                  const canDecide = canUserDecideApprovalStage(currentUser, sim, stage);
                   return (
                     <button
                       key={sim.id}
@@ -390,7 +399,8 @@ function ApprovalsPage() {
                       </div>
                       <p className="mt-1 truncate text-sm text-muted-foreground">{sim.client}</p>
                       <p className="mt-1 text-xs font-medium text-primary">
-                        {stage ? APPROVAL_STAGE_LABELS[stage] : "Sem etapa pendente"}
+                        {stage ? APPROVAL_STAGE_LABELS[stage] : "Aguardando reajuste"}
+                        {!canDecide && stage ? " • acompanhamento" : ""}
                       </p>
                       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                         <StatusBadge status={sim.status} />
@@ -413,6 +423,11 @@ function ApprovalsPage() {
             setBankAccount={setBankAccount}
             onUpdate={updateChecklist}
             onDecide={decide}
+            canDecide={canUserDecideApprovalStage(
+              currentUser,
+              selected,
+              getCurrentApprovalStage(selected),
+            )}
           />
         ) : (
           <Card className="grid place-items-center p-12 shadow-card">
@@ -434,6 +449,7 @@ function ApprovalDetails({
   setBankAccount,
   onUpdate,
   onDecide,
+  canDecide,
 }: {
   simulation: Simulation;
   comment: string;
@@ -442,6 +458,7 @@ function ApprovalDetails({
   setBankAccount: (v: string) => void;
   onUpdate: (key: keyof NonNullable<Simulation["approvalChecklist"]>, value: boolean) => void;
   onDecide: (decision: "approve" | "reject" | "adjust") => void;
+  canDecide: boolean;
 }) {
   const totals = getSimulationTotals(simulation);
   const checklist = {
@@ -519,6 +536,7 @@ function ApprovalDetails({
                 className="flex items-center gap-3 rounded-xl border border-border p-3"
               >
                 <Checkbox
+                  disabled={!canDecide}
                   checked={checklist[item.key]}
                   onCheckedChange={(v) => onUpdate(item.key, Boolean(v))}
                 />
@@ -544,7 +562,7 @@ function ApprovalDetails({
         <div className="flex flex-wrap items-center justify-end gap-2">
           <ConfirmDialog
             trigger={
-              <Button variant="outline">
+              <Button variant="outline" disabled={!canDecide}>
                 <RotateCcw /> Solicitar ajuste
               </Button>
             }
@@ -558,6 +576,7 @@ function ApprovalDetails({
               <Button
                 variant="outline"
                 className="border-danger/30 text-danger hover:bg-danger-soft"
+                disabled={!canDecide}
               >
                 <X /> Reprovar
               </Button>
@@ -569,7 +588,7 @@ function ApprovalDetails({
           />
           <ConfirmDialog
             trigger={
-              <Button>
+              <Button disabled={!canDecide}>
                 <Check /> {currentStage === "financial" ? "Aprovar financeiro" : "Aprovar Gestor"}
               </Button>
             }
@@ -612,7 +631,7 @@ function ApprovalStepCard({
   const statusLabel = {
     pending: "Pendente",
     approved: "Aprovada",
-    adjustment_requested: "Ajuste solicitado",
+    adjustment_requested: "Aguardando reajuste",
     rejected: "Reprovada",
   }[step.status];
 

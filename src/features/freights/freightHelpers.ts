@@ -39,7 +39,7 @@ export function createFreightFromOrder(order: Order): FreightRecord {
 
 export function getFreightStatusLabel(status: FreightStatus) {
   const labels: Record<FreightStatus, string> = {
-    quoted: "Cotação",
+    quoted: "Em contratação",
     hired: "Contratado",
     loading: "Carregando",
     in_route: "Em rota",
@@ -87,7 +87,6 @@ export function updateOrderFromFreight(order: Order, freight: FreightRecord): Or
 function getInitialFreightStatus(order: Order): FreightStatus {
   if (order.status === "Entregue") return "delivered";
   if (order.status === "Em rota") return "in_route";
-  if (order.status === "Aguardando frete" || order.status === "Em separação") return "hired";
   return "quoted";
 }
 
@@ -97,7 +96,7 @@ function getOrderLogisticsStatus(freight: FreightRecord) {
   if (freight.status === "loading") return "Frete em carregamento.";
   if (freight.status === "hired") return "Frete contratado e aguardando carregamento.";
   if (freight.status === "cancelled") return "Frete cancelado.";
-  return "Frete em cotação.";
+  return "Frete em contratação.";
 }
 
 function upsertTimeline(order: Order, freight: FreightRecord) {

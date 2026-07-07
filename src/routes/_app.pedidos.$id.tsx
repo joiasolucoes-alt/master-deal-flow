@@ -214,7 +214,7 @@ function OrderDetailPage() {
               <Download /> Exportar PDF
             </Button>
             <Button onClick={handleOpenBilling}>
-              <FileText /> Gerar nota fiscal
+              <FileText /> Faturar pedido
             </Button>
           </>
         }
@@ -223,7 +223,7 @@ function OrderDetailPage() {
       <Dialog open={billingOpen} onOpenChange={setBillingOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Gerar nota fiscal</DialogTitle>
+            <DialogTitle>Faturar pedido</DialogTitle>
             <DialogDescription>
               Registre os dados da NF para liberar o pedido para a próxima etapa.
             </DialogDescription>
