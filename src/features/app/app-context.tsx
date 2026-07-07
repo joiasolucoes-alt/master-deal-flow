@@ -408,10 +408,6 @@ async function loadUserContextFromRpc(client: SupabaseClient): Promise<AuthConte
   const { data, error } = await client.rpc("get_my_master_flow_context");
 
   if (error) {
-    console.warn(
-      "Função get_my_master_flow_context indisponível; usando consultas diretas.",
-      error,
-    );
     return null;
   }
 
@@ -1289,6 +1285,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setSimulations = (value: Simulation[]) => {
     setSimulationsStore(value);
+    if (isSupabaseProvider()) return;
     writeLocalStorage(SIMULATION_STORAGE_KEY, value);
   };
 

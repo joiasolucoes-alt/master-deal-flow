@@ -10,6 +10,7 @@ import { appUser } from "@/data/users";
 import { clients } from "@/data/clients";
 import { suppliers } from "@/data/suppliers";
 import { products } from "@/data/products";
+import { isSupabaseProvider } from "@/lib/dataProvider";
 import type { AuditEvent, AppStoreState } from "@/store/types";
 import type {
   Client,
@@ -143,6 +144,15 @@ function mergeSeedSimulations(persisted: PersistedState): PersistedState {
 
 function readPersisted(): PersistedState {
   if (typeof window === "undefined") return baseState();
+  if (isSupabaseProvider()) {
+    try {
+      window.localStorage.removeItem(STORE_KEY);
+    } catch (error) {
+      console.warn("Falha ao limpar cache local do estado global.", error);
+    }
+    return baseState();
+  }
+
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
     if (!raw) {
@@ -172,6 +182,15 @@ const listeners = new Set<Listener>();
 
 function persistState() {
   if (typeof window === "undefined") return;
+  if (isSupabaseProvider()) {
+    try {
+      window.localStorage.removeItem(STORE_KEY);
+    } catch (error) {
+      console.warn("Falha ao limpar cache local do estado global.", error);
+    }
+    return;
+  }
+
   try {
     window.localStorage.setItem(STORE_KEY, JSON.stringify(state));
   } catch (error) {
