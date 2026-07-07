@@ -35,6 +35,8 @@ import {
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
+import { createWalletEntry, upsertWalletEntry } from "@/features/negotiation-wallets";
+import { NegotiationWalletSection } from "@/features/negotiation-wallets-ui";
 
 export const Route = createFileRoute("/_app/pedidos/$id")({
   component: OrderDetailPage,
@@ -42,7 +44,15 @@ export const Route = createFileRoute("/_app/pedidos/$id")({
 
 function OrderDetailPage() {
   const { id } = useParams({ from: "/_app/pedidos/$id" });
-  const { auth, orders, financialTitles, upsertFinancialTitle, upsertOrder } = useAppContext();
+  const {
+    auth,
+    orders,
+    financialTitles,
+    negotiationWallets,
+    upsertFinancialTitle,
+    upsertOrder,
+    upsertNegotiationWallet,
+  } = useAppContext();
   const [billingOpen, setBillingOpen] = useState(false);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
   const order = filterOrdersForUser(orders, auth.user).find((o) => o.id === id);
@@ -67,6 +77,7 @@ function OrderDetailPage() {
   const receivedAmount = orderReceivables.reduce((sum, title) => sum + title.paidAmount, 0);
   const canBillOrder =
     order.status === "Aguardando faturamento" || order.status === "Em faturamento";
+  const wallet = negotiationWallets.find((item) => item.orderId === order.id);
 
   const handleOpenBilling = () => {
     if (!canBillOrder || order.billingProgress >= 100) {
@@ -149,6 +160,31 @@ function OrderDetailPage() {
 
     upsertFinancialTitle(title);
     upsertOrder(updatedOrder);
+    const discount = roundCurrency(
+      getRemainingBillingAmount(order, financialTitles) - invoiceAmount,
+    );
+    if (wallet && discount > 0) {
+      upsertNegotiationWallet(
+        upsertWalletEntry(
+          wallet,
+          createWalletEntry({
+            walletId: wallet.id,
+            organizationId: wallet.organizationId,
+            simulationId: wallet.simulationId,
+            orderId: wallet.orderId,
+            entryType: "automatic",
+            category: "discount_given",
+            sourceModule: "financial",
+            amount: discount,
+            direction: "debit",
+            description: "Desconto comercial ou faturamento abaixo do saldo previsto",
+            referenceId: title.id,
+            createdBy: auth.user?.id ?? auth.user?.email,
+            metadata: { invoiceNumber, invoiceAmount },
+          }),
+        ),
+      );
+    }
     setBillingOpen(false);
     setBillingForm(createEmptyBillingForm());
     toast.success(
@@ -290,6 +326,12 @@ function OrderDetailPage() {
           Pagamento: {order.paymentTerms}
         </Badge>
       </div>
+
+      <NegotiationWalletSection
+        wallet={wallet}
+        user={auth.user}
+        onChange={upsertNegotiationWallet}
+      />
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">

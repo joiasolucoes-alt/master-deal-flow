@@ -8,6 +8,8 @@ import type {
   Order,
   Product,
   RealizedResultRecord,
+  NegotiationWallet,
+  OpportunityPool,
   Simulation,
   Supplier,
   User,
@@ -30,6 +32,8 @@ export interface AppStoreState {
   orders: Order[];
   financialTitles: FinancialTitle[];
   realizedResults: RealizedResultRecord[];
+  negotiationWallets: NegotiationWallet[];
+  opportunityPools: OpportunityPool[];
   freights: FreightRecord[];
   deliveries: DeliveryRecord[];
   clients: Client[];

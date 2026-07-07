@@ -53,6 +53,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/app/empty-state";
 import { useAppContext } from "@/features/app/app-context";
+import { createWalletFromSimulationOrder } from "@/features/negotiation-wallets";
 import { businessUnits } from "@/data/users";
 import type {
   Client,
@@ -397,8 +398,16 @@ function saveApprovalRecordWhenEnabled(payload: {
 function SimulationDetailPage() {
   const { id } = useParams({ from: "/_app/simulacoes/$id" });
   const navigate = useNavigate();
-  const { auth, simulations, orders, clients, suppliers, upsertSimulation, upsertOrder } =
-    useAppContext();
+  const {
+    auth,
+    simulations,
+    orders,
+    clients,
+    suppliers,
+    upsertSimulation,
+    upsertOrder,
+    upsertNegotiationWallet,
+  } = useAppContext();
   const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
   const visibleSimulations = useMemo(
@@ -627,6 +636,13 @@ function SimulationDetailPage() {
     const next = { ...draft, orderId, convertedAt: new Date().toISOString() };
     upsertSimulation(next);
     upsertOrder(order);
+    upsertNegotiationWallet(
+      createWalletFromSimulationOrder({
+        simulation: draft,
+        order,
+        organizationId: draft.unit,
+      }),
+    );
     clearSavedSimulationFormDraft(draftStorageKey);
     addNotification({
       id: `not-${Date.now()}`,

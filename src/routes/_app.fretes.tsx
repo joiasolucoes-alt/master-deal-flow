@@ -52,6 +52,11 @@ import {
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
+import {
+  createFreightWalletEntry,
+  reverseEntriesByReference,
+  upsertWalletEntry,
+} from "@/features/negotiation-wallets";
 
 export const Route = createFileRoute("/_app/fretes")({
   component: FreightsPage,
@@ -70,7 +75,16 @@ type FreightFormState = {
 };
 
 function FreightsPage() {
-  const { auth, orders, freights, upsertFreight, upsertOrder } = useAppContext();
+  const {
+    auth,
+    orders,
+    simulations,
+    freights,
+    negotiationWallets,
+    upsertFreight,
+    upsertOrder,
+    upsertNegotiationWallet,
+  } = useAppContext();
   const [selectedFreightId, setSelectedFreightId] = useState<string | null>(null);
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
   const visibleOrderIds = useMemo(
@@ -193,6 +207,21 @@ function FreightsPage() {
     };
 
     upsertFreight(nextFreight);
+
+    const wallet = negotiationWallets.find((item) => item.orderId === nextFreight.orderId);
+    const order = orders.find((item) => item.id === nextFreight.orderId);
+    const simulation = simulations.find((item) => item.id === order?.simulationId);
+    if (wallet) {
+      const reversedWallet = reverseEntriesByReference(wallet, nextFreight.id, auth.user);
+      const entry = createFreightWalletEntry({
+        wallet: reversedWallet,
+        simulation,
+        freight: nextFreight,
+        user: auth.user,
+      });
+      upsertNegotiationWallet(entry ? upsertWalletEntry(reversedWallet, entry) : reversedWallet);
+    }
+
     toast.success("Dados do frete salvos.");
   };
 

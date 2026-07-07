@@ -41,14 +41,23 @@ import {
 import { formatCompactCurrency, formatCurrency, formatDate } from "@/lib/format";
 import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
+import { createWalletEntry, upsertWalletEntry } from "@/features/negotiation-wallets";
 
 export const Route = createFileRoute("/_app/financeiro")({
   component: FinancialPage,
 });
 
 function FinancialPage() {
-  const { auth, orders, financialTitles, freights, upsertFinancialTitle, upsertOrder } =
-    useAppContext();
+  const {
+    auth,
+    orders,
+    financialTitles,
+    freights,
+    negotiationWallets,
+    upsertFinancialTitle,
+    upsertOrder,
+    upsertNegotiationWallet,
+  } = useAppContext();
   const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
@@ -208,6 +217,31 @@ function FinancialPage() {
 
     upsertFinancialTitle(title);
     upsertOrder(updatedOrder);
+    const wallet = negotiationWallets.find((item) => item.orderId === selectedBillingOrder.id);
+    const remainingBeforeBilling = getRemainingBillingAmount(selectedBillingOrder, financialTitles);
+    const discount = roundCurrency(remainingBeforeBilling - invoiceAmount);
+    if (wallet && discount > 0) {
+      upsertNegotiationWallet(
+        upsertWalletEntry(
+          wallet,
+          createWalletEntry({
+            walletId: wallet.id,
+            organizationId: wallet.organizationId,
+            simulationId: wallet.simulationId,
+            orderId: wallet.orderId,
+            entryType: "automatic",
+            category: "discount_given",
+            sourceModule: "financial",
+            amount: discount,
+            direction: "debit",
+            description: "Desconto comercial ou faturamento abaixo do saldo previsto",
+            referenceId: title.id,
+            createdBy: auth.user?.id ?? auth.user?.email,
+            metadata: { invoiceNumber, remainingBeforeBilling, invoiceAmount },
+          }),
+        ),
+      );
+    }
     setSelectedBillingOrderId(null);
     setBillingForm(createEmptyBillingForm());
     toast.success(
