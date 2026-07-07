@@ -50,6 +50,15 @@ import {
   type FreightDocumentType,
 } from "@/features/freights/freightDocumentStorage";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
+import {
+  DRIVER_EVENT_FLOW,
+  createDriverAccessLink,
+  fetchDriverAccessSummary,
+  getDeliveryProofSignedUrl,
+  revokeDriverAccessLink,
+  type DriverAccessSummary,
+  type GeneratedDriverAccess,
+} from "@/lib/driverTracking";
 import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
 import {
@@ -115,6 +124,23 @@ function FreightsPage() {
   const [documents, setDocuments] = useState<FreightDocumentRecord[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
+  const [driverAccess, setDriverAccess] = useState<DriverAccessSummary | null>(null);
+  const [driverAccessLoading, setDriverAccessLoading] = useState(false);
+  const [generatedDriverAccess, setGeneratedDriverAccess] = useState<GeneratedDriverAccess | null>(
+    null,
+  );
+
+  const refreshDriverAccess = useCallback(async (freight: FreightRecord) => {
+    setDriverAccessLoading(true);
+    try {
+      const summary = await fetchDriverAccessSummary(freight);
+      setDriverAccess(summary);
+    } catch {
+      setDriverAccess(null);
+    } finally {
+      setDriverAccessLoading(false);
+    }
+  }, []);
 
   const refreshFreightDocuments = useCallback(async (freightId: string) => {
     setDocumentsLoading(true);
@@ -150,11 +176,14 @@ function FreightsPage() {
     if (!selectedFreight) {
       setDocuments([]);
       setDocumentsError(null);
+      setDriverAccess(null);
+      setGeneratedDriverAccess(null);
       return;
     }
 
     void refreshFreightDocuments(selectedFreight.id);
-  }, [refreshFreightDocuments, selectedFreight]);
+    void refreshDriverAccess(selectedFreight);
+  }, [refreshDriverAccess, refreshFreightDocuments, selectedFreight]);
 
   const handleGenerateFreights = () => {
     if (eligibleOrders.length === 0) {
@@ -252,6 +281,44 @@ function FreightsPage() {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Não foi possível abrir o documento.";
+      toast.error(message);
+    }
+  };
+
+  const handleGenerateDriverAccess = async () => {
+    if (!selectedFreight) return;
+    try {
+      const access = await createDriverAccessLink(selectedFreight);
+      setGeneratedDriverAccess(access);
+      await refreshDriverAccess(selectedFreight);
+      toast.success("Acesso do motorista gerado. Copie o link e o PIN.");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível gerar o acesso do motorista.";
+      toast.error(message);
+    }
+  };
+
+  const handleRevokeDriverAccess = async () => {
+    if (!selectedFreight) return;
+    try {
+      await revokeDriverAccessLink(selectedFreight);
+      setGeneratedDriverAccess(null);
+      await refreshDriverAccess(selectedFreight);
+      toast.success("Acesso do motorista revogado.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível revogar o acesso.";
+      toast.error(message);
+    }
+  };
+
+  const handleOpenDriverProof = async (filePath: string) => {
+    try {
+      const url = await getDeliveryProofSignedUrl(filePath);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível abrir o comprovante.";
       toast.error(message);
     }
   };
@@ -356,77 +423,203 @@ function FreightsPage() {
         </CardContent>
       </Card>
 
-      <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle>Detalhe do rastreamento do motorista</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-          <div className="space-y-3 rounded-2xl border p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Link público</span>
-              <Badge variant="outline">Ativo</Badge>
-            </div>
-            <p className="break-all rounded-xl bg-muted p-3 text-sm">
-              {window.location.origin}/motorista/demo
+      <DriverAccessCard
+        freight={selectedFreight}
+        access={driverAccess}
+        generatedAccess={generatedDriverAccess}
+        loading={driverAccessLoading}
+        onGenerate={handleGenerateDriverAccess}
+        onRevoke={handleRevokeDriverAccess}
+        onOpenProof={handleOpenDriverProof}
+      />
+    </div>
+  );
+}
+
+function DriverAccessCard({
+  freight,
+  access,
+  generatedAccess,
+  loading,
+  onGenerate,
+  onRevoke,
+  onOpenProof,
+}: {
+  freight?: FreightRecord;
+  access: DriverAccessSummary | null;
+  generatedAccess: GeneratedDriverAccess | null;
+  loading: boolean;
+  onGenerate: () => void;
+  onRevoke: () => void;
+  onOpenProof: (filePath: string) => void;
+}) {
+  const [copying, setCopying] = useState<string | null>(null);
+
+  const copyText = async (label: string, value: string) => {
+    setCopying(label);
+    try {
+      await navigator.clipboard?.writeText(value);
+      toast.success(`${label} copiado.`);
+    } finally {
+      setCopying(null);
+    }
+  };
+
+  return (
+    <Card className="shadow-card">
+      <CardHeader>
+        <CardTitle>Acesso temporário do motorista</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+        <div className="space-y-3 rounded-2xl border p-4">
+          {!freight ? (
+            <p className="text-sm text-muted-foreground">
+              Clique em um frete do painel para gerar o link temporário do motorista.
             </p>
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  navigator.clipboard?.writeText(`${window.location.origin}/motorista/demo`)
-                }
-              >
-                <Copy />
-                Copiar
-              </Button>
-              <Button variant="outline" size="sm">
-                <XCircle />
-                Revogar
-              </Button>
-              <Button variant="outline" size="sm">
-                <RotateCw />
-                Novo
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Ao contratar um frete, o backend deve gravar token com hash e expiração em
-              driver_tracking_links; o token puro aparece apenas nesta URL.
-            </p>
-          </div>
-          <div className="space-y-3 rounded-2xl border p-4">
-            <h3 className="font-semibold">Timeline operacional</h3>
-            {[
-              "Chegou para coleta",
-              "Carregado",
-              "Em trânsito",
-              "Entregue",
-              "Comprovante anexado",
-            ].map((label, index) => (
-              <div key={label} className="flex items-start gap-3 text-sm">
-                <div
-                  className={`mt-1 h-3 w-3 rounded-full ${index < 3 ? "bg-primary" : "bg-muted"}`}
-                />
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-medium">{label}</p>
+                  <p className="text-sm font-semibold">{freight.code}</p>
                   <p className="text-xs text-muted-foreground">
-                    {index < 3
-                      ? formatDateTime(new Date(Date.now() - (3 - index) * 3600000).toISOString())
-                      : "Pendente"}
-                    {index === 2 ? " • localização registrada" : ""}
+                    Motorista: {freight.driverName || "não informado"}
+                  </p>
+                </div>
+                <Badge variant="outline">
+                  {loading ? "Carregando" : accessStatusLabel(access)}
+                </Badge>
+              </div>
+
+              {generatedAccess ? (
+                <div className="space-y-3 rounded-xl border border-primary/30 bg-primary-soft p-3">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground">Link do motorista</p>
+                    <p className="break-all text-sm">{generatedAccess.url}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground">PIN temporário</p>
+                    <p className="text-2xl font-bold tracking-widest">{generatedAccess.pin}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={copying === "Link"}
+                      onClick={() => copyText("Link", generatedAccess.url)}
+                    >
+                      <Copy />
+                      Copiar link
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={copying === "PIN"}
+                      onClick={() => copyText("PIN", generatedAccess.pin)}
+                    >
+                      <Copy />
+                      Copiar PIN
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    O PIN aparece somente agora. Se perder, gere um novo acesso.
+                  </p>
+                </div>
+              ) : (
+                <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">
+                  Nenhum PIN visível. Gere um novo acesso para copiar link e senha.
+                </p>
+              )}
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button variant="soft" onClick={onGenerate}>
+                  <RotateCw />
+                  Gerar novo acesso
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={!access || access.status !== "active"}
+                  onClick={onRevoke}
+                >
+                  <XCircle />
+                  Revogar acesso
+                </Button>
+              </div>
+
+              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                <p>Expira: {access?.expiresAt ? formatDateTime(access.expiresAt) : "-"}</p>
+                <p>Tentativas inválidas: {access?.failedAttempts ?? 0}</p>
+                <p>Desbloqueio: {access?.lockedUntil ? formatDateTime(access.lockedUntil) : "-"}</p>
+                <p>Concluído: {access?.completedAt ? formatDateTime(access.completedAt) : "-"}</p>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="space-y-3 rounded-2xl border p-4">
+          <h3 className="font-semibold">Timeline do motorista</h3>
+          {!freight ? (
+            <p className="text-sm text-muted-foreground">Selecione um frete para ver os eventos.</p>
+          ) : access?.events.length ? (
+            access.events.map((event) => (
+              <div key={event.id} className="flex items-start gap-3 text-sm">
+                <div className="mt-1 h-3 w-3 rounded-full bg-primary" />
+                <div>
+                  <p className="font-medium">{event.eventLabel}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(event.occurredAt)} • Motorista via link temporário
+                    {event.latitude ? " • localização registrada" : ""}
                   </p>
                 </div>
               </div>
-            ))}
-            <Button variant="soft" size="sm">
-              <Link2 />
-              Abrir comprovante quando disponível
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+            ))
+          ) : (
+            DRIVER_EVENT_FLOW.map((step) => (
+              <div key={step.type} className="flex items-start gap-3 text-sm">
+                <div className="mt-1 h-3 w-3 rounded-full bg-muted" />
+                <div>
+                  <p className="font-medium">{step.label}</p>
+                  <p className="text-xs text-muted-foreground">Pendente</p>
+                </div>
+              </div>
+            ))
+          )}
+
+          {access?.proofs.length ? (
+            <div className="space-y-2 rounded-xl border bg-muted/30 p-3">
+              <p className="text-sm font-semibold">Comprovante</p>
+              {access.proofs.map((proof) => (
+                <Button
+                  key={proof.id}
+                  variant="outline"
+                  size="sm"
+                  disabled={!proof.filePath}
+                  onClick={() => onOpenProof(proof.filePath)}
+                >
+                  <Link2 />
+                  {proof.fileName || "Abrir comprovante"}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Comprovante ainda não enviado.</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
+}
+
+function accessStatusLabel(access: DriverAccessSummary | null) {
+  if (!access) return "Sem acesso";
+  return (
+    {
+      active: "Ativo",
+      expired: "Expirado",
+      revoked: "Revogado",
+      locked: "Bloqueado",
+      completed: "Concluído",
+    } satisfies Record<DriverAccessSummary["status"], string>
+  )[access.status];
 }
 
 function FreightDetailsForm({
