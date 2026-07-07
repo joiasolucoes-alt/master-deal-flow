@@ -123,15 +123,8 @@ function ApprovalsPage() {
   const approvalQueue = useMemo(
     () =>
       simulations.filter((simulation) => {
-        if (
-          !isPendingApprovalStatus(simulation.status) &&
-          !isSimulationAdjustmentRequested(simulation)
-        ) {
-          return false;
-        }
-        if (!currentUser || currentUser.status !== "Ativo") return false;
-        if (currentUser.role === "Admin") return true;
-        return currentUser.role === "Financeiro" || currentUser.role === "Aprovador";
+        if (!canReviewApprovals(currentUser)) return false;
+        return isApprovalQueueStatus(simulation);
       }),
     [currentUser, simulations],
   );
@@ -350,7 +343,7 @@ function ApprovalsPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard
-          label="Aguardando sua ação"
+          label="Em acompanhamento"
           value={String(approvalQueue.length)}
           icon={ClipboardCheck}
           tone="info"
@@ -399,8 +392,11 @@ function ApprovalsPage() {
                       </div>
                       <p className="mt-1 truncate text-sm text-muted-foreground">{sim.client}</p>
                       <p className="mt-1 text-xs font-medium text-primary">
-                        {stage ? APPROVAL_STAGE_LABELS[stage] : "Aguardando reajuste"}
-                        {!canDecide && stage ? " • acompanhamento" : ""}
+                        {canDecide
+                          ? stage
+                            ? APPROVAL_STAGE_LABELS[stage]
+                            : "Sem etapa pendente"
+                          : approvalQueueLabel(sim)}
                       </p>
                       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                         <StatusBadge status={sim.status} />
@@ -421,6 +417,7 @@ function ApprovalsPage() {
             setComment={setComment}
             bankAccount={bankAccount}
             setBankAccount={setBankAccount}
+            currentUser={currentUser}
             onUpdate={updateChecklist}
             onDecide={decide}
             canDecide={canUserDecideApprovalStage(
@@ -447,6 +444,7 @@ function ApprovalDetails({
   setComment,
   bankAccount,
   setBankAccount,
+  currentUser,
   onUpdate,
   onDecide,
   canDecide,
@@ -456,6 +454,7 @@ function ApprovalDetails({
   setComment: (v: string) => void;
   bankAccount: string;
   setBankAccount: (v: string) => void;
+  currentUser: User | null | undefined;
   onUpdate: (key: keyof NonNullable<Simulation["approvalChecklist"]>, value: boolean) => void;
   onDecide: (decision: "approve" | "reject" | "adjust") => void;
   canDecide: boolean;
@@ -470,6 +469,7 @@ function ApprovalDetails({
   };
   const flow = getApprovalFlow(simulation);
   const currentStage = getCurrentApprovalStage(simulation);
+  const canDecideCurrentStage = canUserDecideApprovalStage(currentUser, simulation, currentStage);
 
   return (
     <Card className="shadow-card">
@@ -536,8 +536,8 @@ function ApprovalDetails({
                 className="flex items-center gap-3 rounded-xl border border-border p-3"
               >
                 <Checkbox
-                  disabled={!canDecide}
                   checked={checklist[item.key]}
+                  disabled={!canDecideCurrentStage}
                   onCheckedChange={(v) => onUpdate(item.key, Boolean(v))}
                 />
                 <span className="text-sm">{item.label}</span>
@@ -551,6 +551,7 @@ function ApprovalDetails({
           <Textarea
             rows={3}
             value={comment}
+            disabled={!canDecideCurrentStage}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Explique o que o Comercial precisa corrigir antes de reenviar..."
           />
@@ -569,6 +570,7 @@ function ApprovalDetails({
             title="Solicitar ajuste"
             description="A simulação retornará ao solicitante com o motivo informado."
             actionLabel="Confirmar"
+            disabled={!canDecideCurrentStage}
             onConfirm={() => onDecide("adjust")}
           />
           <ConfirmDialog
@@ -584,6 +586,7 @@ function ApprovalDetails({
             title="Reprovar simulação"
             description="O solicitante será notificado da reprovação."
             actionLabel="Reprovar"
+            disabled={!canDecideCurrentStage}
             onConfirm={() => onDecide("reject")}
           />
           <ConfirmDialog
@@ -601,6 +604,7 @@ function ApprovalDetails({
                 : "A simulação será aprovada e convertida em pedido."
             }
             actionLabel="Aprovar"
+            disabled={!canDecideCurrentStage}
             onConfirm={() => onDecide("approve")}
           />
         </div>
@@ -617,6 +621,17 @@ function ApprovalDetails({
       </CardContent>
     </Card>
   );
+}
+
+function isApprovalQueueStatus(simulation: Simulation) {
+  return isPendingApprovalStatus(simulation.status) || isSimulationAdjustmentRequested(simulation);
+}
+
+function approvalQueueLabel(simulation: Simulation) {
+  if (simulation.status === "Ajuste solicitado") return "Aguardando reajuste do Comercial";
+  if (simulation.status === "Aguardando aprovação do Gestor") return "Aguardando Gestor";
+  if (simulation.status === "Aguardando financeiro") return "Aguardando Financeiro";
+  return "Em acompanhamento";
 }
 
 function ApprovalStepCard({

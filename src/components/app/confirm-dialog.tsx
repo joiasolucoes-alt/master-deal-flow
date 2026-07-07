@@ -16,16 +16,20 @@ export function ConfirmDialog({
   description,
   actionLabel,
   onConfirm,
+  disabled = false,
 }: {
   trigger: React.ReactNode;
   title: string;
   description: string;
   actionLabel: string;
   onConfirm: () => void;
+  disabled?: boolean;
 }) {
   return (
     <AlertDialog>
-      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+      <AlertDialogTrigger asChild disabled={disabled}>
+        {trigger}
+      </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>

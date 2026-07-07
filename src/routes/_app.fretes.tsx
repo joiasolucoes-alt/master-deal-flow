@@ -867,7 +867,11 @@ function FreightDetailsForm({
           <div className="flex items-end">
             <Button disabled={documentUploading} onClick={handleUploadDocument}>
               <Upload />
-              {documentUploading ? "Anexando..." : "Anexar"}
+              {documentUploading
+                ? "Anexando..."
+                : selectedDocumentFile
+                  ? "Anexar"
+                  : "Selecionar arquivo"}
             </Button>
           </div>
         </div>

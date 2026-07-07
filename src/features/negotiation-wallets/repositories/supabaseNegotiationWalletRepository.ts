@@ -84,11 +84,16 @@ const POOL_SELECT = `
   *,
   opportunity_pool_entries(*)
 `;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function requireClient(): SupabaseClient {
   const client = getSupabaseClient();
   if (!client) throw new Error("Supabase não está configurado.");
   return client;
+}
+
+function isDatabaseUuid(value?: string | null) {
+  return Boolean(value && UUID_PATTERN.test(value));
 }
 
 function numberValue(value: number | string | null | undefined) {
@@ -331,6 +336,29 @@ async function saveRowByExternalId(
   return insertResult.data;
 }
 
+async function resolveOrganizationId(client: SupabaseClient, preferredOrganizationId: string) {
+  if (isDatabaseUuid(preferredOrganizationId)) return preferredOrganizationId;
+
+  const { data: authData } = await client.auth.getUser();
+  const userId = authData.user?.id;
+  if (userId) {
+    const membershipResult = await client
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+    const organizationId = membershipResult.data?.organization_id;
+    if (!membershipResult.error && isDatabaseUuid(organizationId)) return organizationId as string;
+  }
+
+  const organizationResult = await client.from("organizations").select("id").limit(1).maybeSingle();
+  const organizationId = organizationResult.data?.id;
+  if (!organizationResult.error && isDatabaseUuid(organizationId)) return organizationId as string;
+
+  throw new Error("Não foi possível identificar a organização para salvar a carteira.");
+}
+
 export function createSupabaseNegotiationWalletRepository() {
   return {
     async listWallets() {
@@ -348,18 +376,24 @@ export function createSupabaseNegotiationWalletRepository() {
     async saveWallet(wallet: NegotiationWallet) {
       await ensureSupabaseSession();
       const client = requireClient();
+      const organizationId = await resolveOrganizationId(client, wallet.organizationId);
+      const normalizedWallet: NegotiationWallet = {
+        ...wallet,
+        organizationId,
+        entries: wallet.entries.map((entry) => ({ ...entry, organizationId })),
+      };
       const data = await saveRowByExternalId(
         client,
         "negotiation_wallets",
-        walletToRow(wallet),
-        wallet.id,
+        walletToRow(normalizedWallet),
+        normalizedWallet.id,
         "Carteira",
       );
 
       if (!data?.id) throw new Error("Carteira não retornou identificador no Supabase.");
 
-      await replaceWalletEntries(client, data.id as string, wallet.entries);
-      return wallet;
+      await replaceWalletEntries(client, data.id as string, normalizedWallet.entries);
+      return normalizedWallet;
     },
 
     async listPools() {
@@ -377,18 +411,24 @@ export function createSupabaseNegotiationWalletRepository() {
     async savePool(pool: OpportunityPool) {
       await ensureSupabaseSession();
       const client = requireClient();
+      const organizationId = await resolveOrganizationId(client, pool.organizationId);
+      const normalizedPool: OpportunityPool = {
+        ...pool,
+        organizationId,
+        entries: pool.entries.map((entry) => ({ ...entry, organizationId })),
+      };
       const data = await saveRowByExternalId(
         client,
         "opportunity_pools",
-        poolToRow(pool),
-        pool.id,
+        poolToRow(normalizedPool),
+        normalizedPool.id,
         "Pool de oportunidades",
       );
 
       if (!data?.id) throw new Error("Pool não retornou identificador no Supabase.");
 
-      await replacePoolEntries(client, data.id as string, pool.entries);
-      return pool;
+      await replacePoolEntries(client, data.id as string, normalizedPool.entries);
+      return normalizedPool;
     },
   };
 }

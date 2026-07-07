@@ -40,7 +40,7 @@ export function createFreightFromOrder(order: Order): FreightRecord {
 export function getFreightStatusLabel(status: FreightStatus) {
   const labels: Record<FreightStatus, string> = {
     quoted: "Em contratação",
-    hired: "Contratado",
+    hired: "Em contratação",
     loading: "Carregando",
     in_route: "Em rota",
     delivered: "Entregue",
@@ -94,7 +94,7 @@ function getOrderLogisticsStatus(freight: FreightRecord) {
   if (freight.status === "delivered") return "Entrega concluída pelo fluxo de frete.";
   if (freight.status === "in_route") return "Frete em rota para entrega.";
   if (freight.status === "loading") return "Frete em carregamento.";
-  if (freight.status === "hired") return "Frete contratado e aguardando carregamento.";
+  if (freight.status === "hired") return "Frete em contratação.";
   if (freight.status === "cancelled") return "Frete cancelado.";
   return "Frete em contratação.";
 }

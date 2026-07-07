@@ -13,7 +13,13 @@ export type DriverEventType =
   | "proof_uploaded"
   | "completed";
 export type FreightTrackingStatus =
-  "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled" | DriverEventType;
+  | "quoted"
+  | "hired"
+  | "loading"
+  | "in_route"
+  | "delivered"
+  | "cancelled"
+  | DriverEventType;
 
 export interface DriverTrackingEvent {
   id: string;
@@ -342,19 +348,6 @@ function getAccessStatus(row: DriverAccessLinkRow): DriverAccessSummary["status"
   return "active";
 }
 
-function isDriverAuthBusinessReason(reason?: string) {
-  return (
-    reason === "invalid_pin" ||
-    reason === "invalid_link" ||
-    reason === "expired" ||
-    reason === "revoked" ||
-    reason === "locked" ||
-    reason === "completed" ||
-    reason === "unauthorized" ||
-    reason === "missing_credentials"
-  );
-}
-
 async function invokeDriverFunction<T>(
   functionName: string,
   body: Record<string, unknown> | FormData,
@@ -462,6 +455,16 @@ export async function fetchDriverAccessSummary(freight: FreightRecord) {
   const client = getClientOrThrow();
   const freightRow = await findFreightAccessRow(freight);
 
+  try {
+    const payload = await rpcJson("get_driver_access_summary", {
+      p_freight_external_id: freight.id,
+    });
+    const summary = toAccessSummary(payload);
+    if (summary) return summary;
+  } catch (error) {
+    console.warn("Resumo do motorista via RPC indisponível; usando consultas diretas.", error);
+  }
+
   const { data: link, error: linkError } = await client
     .from("driver_access_links")
     .select(
@@ -525,24 +528,19 @@ export async function authenticateDriverLink(token: string, pin: string) {
   }
 
   try {
-    const payload = await invokeDriverFunction<{ ok: boolean; reason?: string; trip?: unknown }>(
-      "driver-link-auth",
-      { token, pin },
-    );
-    if (!payload?.ok) {
-      if (isDriverAuthBusinessReason(payload?.reason)) {
-        return { ok: false as const, reason: payload?.reason ?? "invalid_pin" };
-      }
-      throw new Error(payload?.reason ?? "driver_link_auth_failed");
-    }
-    return { ok: true as const, trip: toDriverTrip(payload.trip) };
-  } catch {
     const payload = (await rpcJson("driver_link_auth", {
       p_token: token,
       p_pin: pin,
       p_user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
     })) as { ok: boolean; reason?: string; trip?: unknown };
     if (!payload.ok) return { ok: false as const, reason: payload.reason ?? "invalid_pin" };
+    return { ok: true as const, trip: toDriverTrip(payload.trip) };
+  } catch {
+    const payload = await invokeDriverFunction<{ ok: boolean; reason?: string; trip?: unknown }>(
+      "driver-link-auth",
+      { token, pin },
+    );
+    if (!payload?.ok) return { ok: false as const, reason: payload?.reason ?? "invalid_pin" };
     return { ok: true as const, trip: toDriverTrip(payload.trip) };
   }
 }
@@ -551,18 +549,18 @@ export async function fetchDriverTrip(token: string, pin: string) {
   if (!getSupabaseConfigStatus().configured) return token === "demo" ? mockTrip : null;
 
   try {
+    const payload = (await rpcJson("driver_trip_status", {
+      p_token: token,
+      p_pin: pin,
+    })) as { ok: boolean; trip?: unknown };
+    return payload.ok ? toDriverTrip(payload.trip) : null;
+  } catch {
     const payload = await invokeDriverFunction<{ ok: boolean; reason?: string; trip?: unknown }>(
       "driver-trip-status",
       { token, pin },
     );
     if (!payload?.ok) return null;
     return toDriverTrip(payload.trip);
-  } catch {
-    const payload = (await rpcJson("driver_trip_status", {
-      p_token: token,
-      p_pin: pin,
-    })) as { ok: boolean; trip?: unknown };
-    return payload.ok ? toDriverTrip(payload.trip) : null;
   }
 }
 
@@ -588,6 +586,16 @@ export async function registerDriverEvent(
   }
 
   try {
+    const payload = (await rpcJson("driver_trip_event", {
+      p_token: token,
+      p_pin: pin,
+      p_event_type: eventType,
+      p_latitude: coords?.latitude ?? null,
+      p_longitude: coords?.longitude ?? null,
+    })) as { ok: boolean; trip?: unknown };
+    if (!payload.ok) throw new Error("Evento recusado.");
+    return toDriverTrip(payload.trip);
+  } catch {
     const payload = await invokeDriverFunction<{ ok: boolean; trip?: unknown }>(
       "driver-trip-event",
       {
@@ -599,16 +607,6 @@ export async function registerDriverEvent(
       },
     );
     if (!payload?.ok) throw new Error("Evento recusado.");
-    return toDriverTrip(payload.trip);
-  } catch {
-    const payload = (await rpcJson("driver_trip_event", {
-      p_token: token,
-      p_pin: pin,
-      p_event_type: eventType,
-      p_latitude: coords?.latitude ?? null,
-      p_longitude: coords?.longitude ?? null,
-    })) as { ok: boolean; trip?: unknown };
-    if (!payload.ok) throw new Error("Evento recusado.");
     return toDriverTrip(payload.trip);
   }
 }
