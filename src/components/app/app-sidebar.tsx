@@ -63,6 +63,12 @@ const navigation: Array<{
   },
   { title: "Pedidos", to: "/pedidos", icon: Boxes, permission: "orders:view" },
   { title: "Financeiro", to: "/financeiro", icon: Wallet, permission: "finance:view" },
+  {
+    title: "Pool de Oportunidades",
+    to: "/pool-oportunidades",
+    icon: FileChartColumn,
+    permission: "reports:view",
+  },
   { title: "Fretes", to: "/fretes", icon: Truck, permission: "freights:view" },
   { title: "Entregas", to: "/entregas", icon: PackageSearch, permission: "deliveries:view" },
   { title: "Relatórios", to: "/relatorios", icon: FileChartColumn, permission: "reports:view" },

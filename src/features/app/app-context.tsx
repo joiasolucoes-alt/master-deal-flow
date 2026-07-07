@@ -27,6 +27,8 @@ import type {
   Order,
   Product,
   RealizedResultRecord,
+  NegotiationWallet,
+  OpportunityPool,
   Simulation,
   Supplier,
   ThemeMode,
@@ -113,6 +115,8 @@ interface AppContextValue {
   orders: Order[];
   financialTitles: FinancialTitle[];
   realizedResults: RealizedResultRecord[];
+  negotiationWallets: NegotiationWallet[];
+  opportunityPools: OpportunityPool[];
   freights: FreightRecord[];
   deliveries: DeliveryRecord[];
   clients: Client[];
@@ -124,6 +128,8 @@ interface AppContextValue {
   upsertOrder: (order: Order) => void;
   upsertFinancialTitle: (title: FinancialTitle) => void;
   upsertRealizedResult: (result: RealizedResultRecord) => void;
+  upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
+  upsertOpportunityPool: (pool: OpportunityPool) => void;
   upsertFreight: (freight: FreightRecord) => void;
   upsertDelivery: (delivery: DeliveryRecord) => void;
   upsertClient: (client: Client) => void;
@@ -576,6 +582,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setProductsStore = useAppStore((store) => store.setProducts);
   const upsertSimulationStore = useAppStore((store) => store.upsertSimulation);
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
+  const negotiationWallets = useAppStore((store) => store.negotiationWallets);
+  const opportunityPools = useAppStore((store) => store.opportunityPools);
+  const upsertNegotiationWalletStore = useAppStore((store) => store.upsertNegotiationWallet);
+  const upsertOpportunityPoolStore = useAppStore((store) => store.upsertOpportunityPool);
   const upsertFinancialTitleStore = useAppStore((store) => store.upsertFinancialTitle);
   const upsertRealizedResultStore = useAppStore((store) => store.upsertRealizedResult);
   const upsertFreightStore = useAppStore((store) => store.upsertFreight);
@@ -1324,6 +1334,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const upsertNegotiationWallet = (wallet: NegotiationWallet) => {
+    upsertNegotiationWalletStore(wallet);
+  };
+
+  const upsertOpportunityPool = (pool: OpportunityPool) => {
+    upsertOpportunityPoolStore(pool);
+  };
+
   const upsertFinancialTitle = (title: FinancialTitle) => {
     upsertFinancialTitleStore(title);
     if (!isSupabaseProvider()) return;
@@ -1475,6 +1493,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       orders,
       financialTitles,
       realizedResults,
+      negotiationWallets,
+      opportunityPools,
       freights,
       deliveries,
       clients,
@@ -1486,6 +1506,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertOrder,
       upsertFinancialTitle,
       upsertRealizedResult,
+      upsertNegotiationWallet,
+      upsertOpportunityPool,
       upsertFreight,
       upsertDelivery,
       upsertClient,
@@ -1505,6 +1527,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       orders,
       financialTitles,
       realizedResults,
+      negotiationWallets,
+      opportunityPools,
       freights,
       deliveries,
       clients,
@@ -1516,6 +1540,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertOrder,
       upsertFinancialTitle,
       upsertRealizedResult,
+      upsertNegotiationWallet,
+      upsertOpportunityPool,
       upsertFreight,
       upsertDelivery,
       upsertClient,

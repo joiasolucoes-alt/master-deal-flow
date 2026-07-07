@@ -20,6 +20,7 @@ import { ClipboardCheck, FileWarning, ThumbsDown, ThumbsUp } from "lucide-react"
 import { toast } from "sonner";
 import type { ApprovalStage, Simulation, User } from "@/data/types";
 import { convertSimulationToOrder } from "@/features/simulations/services/simulationService";
+import { createWalletFromSimulationOrder } from "@/features/negotiation-wallets";
 import { useAppStore } from "@/store/useAppStore";
 import { canReviewApprovals, isPendingApprovalStatus } from "@/lib/permissions";
 import {
@@ -82,6 +83,7 @@ function ApprovalsPage() {
     orders,
     upsertSimulation,
     upsertOrder,
+    upsertNegotiationWallet,
     selectedApprovalId,
     setSelectedApprovalId,
     users,
@@ -243,6 +245,13 @@ function ApprovalsPage() {
         );
         upsertSimulation(conversion.simulation);
         upsertOrder(conversion.order);
+        upsertNegotiationWallet(
+          createWalletFromSimulationOrder({
+            simulation: nextSimulation,
+            order: conversion.order,
+            organizationId: nextSimulation.unit,
+          }),
+        );
         addNotification({
           id: `not-${Date.now()}`,
           title: "Simulação aprovada",

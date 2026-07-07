@@ -21,6 +21,8 @@ import type {
   Order,
   Product,
   RealizedResultRecord,
+  NegotiationWallet,
+  OpportunityPool,
   Simulation,
   Supplier,
 } from "@/data/types";
@@ -41,6 +43,8 @@ export type AppStore = AppStoreState & {
   setOrders: (value: Order[]) => void;
   setFinancialTitles: (value: FinancialTitle[]) => void;
   setRealizedResults: (value: RealizedResultRecord[]) => void;
+  setNegotiationWallets: (value: NegotiationWallet[]) => void;
+  setOpportunityPools: (value: OpportunityPool[]) => void;
   setFreights: (value: FreightRecord[]) => void;
   setDeliveries: (value: DeliveryRecord[]) => void;
   setClients: (value: Client[]) => void;
@@ -50,6 +54,8 @@ export type AppStore = AppStoreState & {
   upsertOrder: (order: Order, audit?: AuditEvent) => void;
   upsertFinancialTitle: (title: FinancialTitle, audit?: AuditEvent) => void;
   upsertRealizedResult: (result: RealizedResultRecord, audit?: AuditEvent) => void;
+  upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
+  upsertOpportunityPool: (pool: OpportunityPool) => void;
   upsertFreight: (freight: FreightRecord, audit?: AuditEvent) => void;
   upsertDelivery: (delivery: DeliveryRecord, audit?: AuditEvent) => void;
   upsertClient: (client: Client) => void;
@@ -69,6 +75,8 @@ type PersistedState = Omit<
   | "setOrders"
   | "setFinancialTitles"
   | "setRealizedResults"
+  | "setNegotiationWallets"
+  | "setOpportunityPools"
   | "setFreights"
   | "setDeliveries"
   | "setClients"
@@ -78,6 +86,8 @@ type PersistedState = Omit<
   | "upsertOrder"
   | "upsertFinancialTitle"
   | "upsertRealizedResult"
+  | "upsertNegotiationWallet"
+  | "upsertOpportunityPool"
   | "upsertFreight"
   | "upsertDelivery"
   | "upsertClient"
@@ -98,6 +108,8 @@ function baseState(): PersistedState {
     orders,
     financialTitles,
     realizedResults: [],
+    negotiationWallets: [],
+    opportunityPools: [],
     freights,
     deliveries,
     clients,
@@ -187,6 +199,10 @@ const storeActions = {
     setState((current) => ({ ...current, financialTitles: value })),
   setRealizedResults: (value: RealizedResultRecord[]) =>
     setState((current) => ({ ...current, realizedResults: value })),
+  setNegotiationWallets: (value: NegotiationWallet[]) =>
+    setState((current) => ({ ...current, negotiationWallets: value })),
+  setOpportunityPools: (value: OpportunityPool[]) =>
+    setState((current) => ({ ...current, opportunityPools: value })),
   setFreights: (value: FreightRecord[]) => setState((current) => ({ ...current, freights: value })),
   setDeliveries: (value: DeliveryRecord[]) =>
     setState((current) => ({ ...current, deliveries: value })),
@@ -224,6 +240,20 @@ const storeActions = {
         ? current.realizedResults.map((item) => (item.id === result.id ? result : item))
         : [result, ...current.realizedResults],
       auditEvents: audit ? [audit, ...current.auditEvents] : current.auditEvents,
+    })),
+  upsertNegotiationWallet: (wallet: NegotiationWallet) =>
+    setState((current) => ({
+      ...current,
+      negotiationWallets: current.negotiationWallets.some((item) => item.id === wallet.id)
+        ? current.negotiationWallets.map((item) => (item.id === wallet.id ? wallet : item))
+        : [wallet, ...current.negotiationWallets],
+    })),
+  upsertOpportunityPool: (pool: OpportunityPool) =>
+    setState((current) => ({
+      ...current,
+      opportunityPools: current.opportunityPools.some((item) => item.id === pool.id)
+        ? current.opportunityPools.map((item) => (item.id === pool.id ? pool : item))
+        : [pool, ...current.opportunityPools],
     })),
   upsertFreight: (freight: FreightRecord, audit?: AuditEvent) =>
     setState((current) => ({

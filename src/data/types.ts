@@ -330,14 +330,7 @@ export interface FreightRecord {
 }
 
 export type DeliveryStatus =
-  | "pending"
-  | "loading"
-  | "loaded"
-  | "in_route"
-  | "arrived"
-  | "delivered"
-  | "issue"
-  | "cancelled";
+  "pending" | "loading" | "loaded" | "in_route" | "arrived" | "delivered" | "issue" | "cancelled";
 
 export interface DeliveryOccurrence {
   id: string;
@@ -374,6 +367,13 @@ export interface DeliveryRecord {
   unit: string;
   createdAt: string;
 }
+
+export type {
+  NegotiationWallet,
+  NegotiationWalletEntry,
+  OpportunityPool,
+  OpportunityPoolEntry,
+} from "@/features/negotiation-wallets";
 
 export interface Negotiation {
   id: string;
