@@ -73,8 +73,12 @@ function DriverTrackingPage() {
         return;
       }
       setTrip(result.trip);
-    } catch {
-      setError("Não foi possível validar o acesso. Tente novamente em instantes.");
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? `Não foi possível validar o acesso: ${error.message}`
+          : "Não foi possível validar o acesso. Tente novamente em instantes.",
+      );
     } finally {
       setAuthenticating(false);
     }
@@ -146,16 +150,18 @@ function DriverTrackingPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Senha/PIN</label>
               <Input
+                type="text"
                 autoFocus
                 inputMode="numeric"
                 autoComplete="one-time-code"
+                maxLength={6}
                 value={pin}
-                onChange={(event) => setPin(event.target.value)}
+                onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") void submitPin();
                 }}
                 placeholder="Digite a senha"
-                className="h-12 text-center text-lg tracking-widest"
+                className="h-12 bg-white text-center text-lg font-semibold tracking-widest text-slate-950 placeholder:text-slate-400"
               />
             </div>
 

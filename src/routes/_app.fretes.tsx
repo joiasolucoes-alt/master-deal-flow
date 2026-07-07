@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -653,6 +653,7 @@ function FreightDetailsForm({
   const [documentNotes, setDocumentNotes] = useState("");
   const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
   const [documentUploading, setDocumentUploading] = useState(false);
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!freight) {
     return (
@@ -683,7 +684,7 @@ function FreightDetailsForm({
 
   const handleUploadDocument = async () => {
     if (!selectedDocumentFile) {
-      toast.info("Selecione um arquivo antes de anexar.");
+      documentInputRef.current?.click();
       return;
     }
 
@@ -695,6 +696,7 @@ function FreightDetailsForm({
         notes: documentNotes,
       });
       setSelectedDocumentFile(null);
+      if (documentInputRef.current) documentInputRef.current.value = "";
       setDocumentNotes("");
     } catch (error) {
       const message =
@@ -833,13 +835,25 @@ function FreightDetailsForm({
           <Field label="Arquivo">
             <div className="space-y-1">
               <Input
+                ref={documentInputRef}
                 type="file"
                 accept="application/pdf,image/jpeg,image/png"
+                className="sr-only"
                 onChange={(event) => handleSelectDocumentFile(event.target.files?.[0])}
               />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => documentInputRef.current?.click()}
+              >
+                <Upload />
+                {selectedDocumentFile ? selectedDocumentFile.name : "Selecionar arquivo do PC"}
+              </Button>
               <p className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Upload className="h-3.5 w-3.5" />
-                PDF, JPG ou PNG até 10 MB.
+                PDF, JPG ou PNG até 10 MB. O botão Anexar também abre a seleção se nenhum arquivo
+                estiver escolhido.
               </p>
             </div>
           </Field>
