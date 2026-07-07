@@ -361,13 +361,13 @@ function ApprovalsPage() {
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle>Fila de aprovação</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <ScrollArea className="h-[520px]">
+            <ScrollArea className="h-[280px] lg:h-[520px]">
               <div className="space-y-1 p-3">
                 {pending.length === 0 && (
                   <p className="p-4 text-sm text-muted-foreground">
