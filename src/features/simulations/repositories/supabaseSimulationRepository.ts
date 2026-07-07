@@ -160,22 +160,28 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
         client,
         "simulation_items",
         simulationUuid,
-        simulation.products.map((product) => productToSimulationItemRow(product, simulationUuid)),
+        withUniqueExternalIds(
+          simulation.products.map((product) => productToSimulationItemRow(product, simulationUuid)),
+        ),
       );
       await replaceChildren(
         client,
         "simulation_costs",
         simulationUuid,
-        simulation.expenseItems.map((expense) =>
-          expenseToSimulationCostRow(expense, simulationUuid),
+        withUniqueExternalIds(
+          simulation.expenseItems.map((expense) =>
+            expenseToSimulationCostRow(expense, simulationUuid),
+          ),
         ),
       );
       await replaceChildren(
         client,
         "simulation_purchase_costs",
         simulationUuid,
-        simulation.purchaseItems.map((purchase) =>
-          purchaseToSimulationPurchaseCostRow(purchase, simulationUuid),
+        withUniqueExternalIds(
+          simulation.purchaseItems.map((purchase) =>
+            purchaseToSimulationPurchaseCostRow(purchase, simulationUuid),
+          ),
         ),
       );
       await replaceChildren(
@@ -220,8 +226,33 @@ async function replaceChildren(
   const deleteResult = await client.from(table).delete().eq("simulation_id", simulationUuid);
   if (deleteResult.error) throw deleteResult.error;
   if (rows.length === 0) return;
-  const insertResult = await client.from(table).insert(rows);
-  if (insertResult.error) throw insertResult.error;
+
+  const conflictTarget =
+    table === "simulation_installments"
+      ? "simulation_id,installment_number"
+      : "simulation_id,external_id";
+  const upsertResult = await client.from(table).upsert(rows, { onConflict: conflictTarget });
+  if (upsertResult.error) throw upsertResult.error;
+}
+
+function withUniqueExternalIds(rows: Record<string, unknown>[]) {
+  const occurrences = new Map<string, number>();
+
+  return rows.map((row, index) => {
+    const rawExternalId =
+      typeof row.external_id === "string" && row.external_id.trim().length > 0
+        ? row.external_id
+        : `row-${index + 1}`;
+    const previousOccurrences = occurrences.get(rawExternalId) ?? 0;
+    occurrences.set(rawExternalId, previousOccurrences + 1);
+
+    if (previousOccurrences === 0) return row;
+
+    return {
+      ...row,
+      external_id: `${rawExternalId}-${previousOccurrences + 1}`,
+    };
+  });
 }
 
 async function insertAuditEvent(

@@ -1318,7 +1318,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void repository.save(simulation).catch((error) => {
       console.error("Falha ao salvar simulação no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar simulação.");
-      toast.error("Falha ao salvar simulação no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1339,7 +1338,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void repository.save(order).catch((error) => {
       console.error("Falha ao salvar pedido no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar pedido.");
-      toast.error("Falha ao salvar pedido no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1360,7 +1358,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void repository.saveWallet(wallet).catch((error) => {
       console.error("Falha ao salvar carteira da negociação no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar carteira.");
-      toast.error("Falha ao salvar carteira no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1381,7 +1378,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void repository.savePool(pool).catch((error) => {
       console.error("Falha ao salvar pool de oportunidades no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar pool.");
-      toast.error("Falha ao salvar pool no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1402,7 +1398,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void repository.saveTitle(title).catch((error) => {
       console.error("Falha ao salvar título financeiro no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar financeiro.");
-      toast.error("Falha ao salvar financeiro no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1425,7 +1420,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLastDataError(
         error instanceof Error ? error.message : "Falha ao salvar resultado realizado.",
       );
-      toast.error("Falha ao salvar fechamento no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1446,7 +1440,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void repository.save(freight).catch((error) => {
       console.error("Falha ao salvar frete no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar frete.");
-      toast.error("Falha ao salvar frete no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1467,7 +1460,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void repository.save(delivery).catch((error) => {
       console.error("Falha ao salvar entrega no Supabase.", error);
       setLastDataError(error instanceof Error ? error.message : "Falha ao salvar entrega.");
-      toast.error("Falha ao salvar entrega no Supabase. Dados locais preservados.");
     });
   };
 
@@ -1493,7 +1485,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .catch((error) => {
         console.error(`Falha ao salvar ${label} no Supabase.`, error);
         setLastDataError(error instanceof Error ? error.message : `Falha ao salvar ${label}.`);
-        toast.error(`Falha ao salvar ${label} no Supabase. Dados locais preservados.`);
       });
   };
 

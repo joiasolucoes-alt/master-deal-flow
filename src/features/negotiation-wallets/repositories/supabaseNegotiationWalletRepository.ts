@@ -280,6 +280,57 @@ async function replacePoolEntries(
   if (insertResult.error) throw insertResult.error;
 }
 
+function isMissingOnConflictConstraint(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String(error.code) : "";
+  return code === "42P10";
+}
+
+async function saveRowByExternalId(
+  client: SupabaseClient,
+  table: "negotiation_wallets" | "opportunity_pools",
+  row: Record<string, unknown>,
+  externalId: string,
+  label: string,
+) {
+  const upsertResult = await client
+    .from(table)
+    .upsert(row, { onConflict: "external_id" })
+    .select("id")
+    .single();
+
+  if (!upsertResult.error) return upsertResult.data;
+  if (!isMissingOnConflictConstraint(upsertResult.error)) throw upsertResult.error;
+
+  console.warn(
+    `${label} sem constraint de conflito no Supabase; usando update/insert manual.`,
+    upsertResult.error,
+  );
+
+  const existingResult = await client
+    .from(table)
+    .select("id")
+    .eq("external_id", externalId)
+    .limit(1)
+    .maybeSingle();
+  if (existingResult.error) throw existingResult.error;
+
+  if (existingResult.data?.id) {
+    const updateResult = await client
+      .from(table)
+      .update(row)
+      .eq("id", existingResult.data.id)
+      .select("id")
+      .single();
+    if (updateResult.error) throw updateResult.error;
+    return updateResult.data;
+  }
+
+  const insertResult = await client.from(table).insert(row).select("id").single();
+  if (insertResult.error) throw insertResult.error;
+  return insertResult.data;
+}
+
 export function createSupabaseNegotiationWalletRepository() {
   return {
     async listWallets() {
@@ -297,13 +348,14 @@ export function createSupabaseNegotiationWalletRepository() {
     async saveWallet(wallet: NegotiationWallet) {
       await ensureSupabaseSession();
       const client = requireClient();
-      const { data, error } = await client
-        .from("negotiation_wallets")
-        .upsert(walletToRow(wallet), { onConflict: "external_id" })
-        .select("id")
-        .single();
+      const data = await saveRowByExternalId(
+        client,
+        "negotiation_wallets",
+        walletToRow(wallet),
+        wallet.id,
+        "Carteira",
+      );
 
-      if (error) throw error;
       if (!data?.id) throw new Error("Carteira não retornou identificador no Supabase.");
 
       await replaceWalletEntries(client, data.id as string, wallet.entries);
@@ -325,13 +377,14 @@ export function createSupabaseNegotiationWalletRepository() {
     async savePool(pool: OpportunityPool) {
       await ensureSupabaseSession();
       const client = requireClient();
-      const { data, error } = await client
-        .from("opportunity_pools")
-        .upsert(poolToRow(pool), { onConflict: "external_id" })
-        .select("id")
-        .single();
+      const data = await saveRowByExternalId(
+        client,
+        "opportunity_pools",
+        poolToRow(pool),
+        pool.id,
+        "Pool de oportunidades",
+      );
 
-      if (error) throw error;
       if (!data?.id) throw new Error("Pool não retornou identificador no Supabase.");
 
       await replacePoolEntries(client, data.id as string, pool.entries);
