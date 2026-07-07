@@ -128,7 +128,12 @@ export function canAccessPath(user: User | null | undefined, pathname: string) {
 }
 
 export function isPendingApprovalStatus(status: Simulation["status"]) {
-  return status === "Pendente de aprovação" || status === "Em análise";
+  return (
+    status === "Pendente de aprovação" ||
+    status === "Em análise" ||
+    status === "Aguardando financeiro" ||
+    status === "Aguardando aprovação do Gestor"
+  );
 }
 
 export function isSimulationOwner(user: User | null | undefined, simulation: Simulation) {

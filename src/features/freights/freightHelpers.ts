@@ -73,7 +73,7 @@ export function updateOrderFromFreight(order: Order, freight: FreightRecord): Or
         ? "Em rota"
         : order.status === "Aguardando faturamento" || order.status === "Em faturamento"
           ? order.status
-          : "Em separação";
+          : "Aguardando frete";
 
   return {
     ...order,
@@ -87,7 +87,7 @@ export function updateOrderFromFreight(order: Order, freight: FreightRecord): Or
 function getInitialFreightStatus(order: Order): FreightStatus {
   if (order.status === "Entregue") return "delivered";
   if (order.status === "Em rota") return "in_route";
-  if (order.status === "Em separação") return "hired";
+  if (order.status === "Aguardando frete" || order.status === "Em separação") return "hired";
   return "quoted";
 }
 

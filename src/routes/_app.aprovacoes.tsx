@@ -234,7 +234,7 @@ function ApprovalsPage() {
       const existingOrder = orders.find((order) => order.simulationId === selected.id);
       if (existingOrder || selected.orderId) {
         upsertSimulation(nextSimulation);
-        toast.success("Aprovação final registrada.");
+        toast.success("Aprovação do Gestor registrada.");
       } else {
         const conversion = convertSimulationToOrder(
           nextSimulation,
@@ -254,7 +254,7 @@ function ApprovalsPage() {
           entityId: conversion.order.id,
           targetUserName: selected.owner,
         });
-        toast.success(`Aprovação final concluída e pedido ${conversion.order.number} criado.`);
+        toast.success(`Aprovação do Gestor concluída e pedido ${conversion.order.number} criado.`);
       }
     } else {
       upsertSimulation(nextSimulation);
@@ -282,8 +282,8 @@ function ApprovalsPage() {
       if (decision === "approve" && stage === "financial") {
         addNotification({
           id: `not-${Date.now()}-principal`,
-          title: "Simulação aguardando aprovação final",
-          description: `${selected.number} passou pelo Financeiro e aguarda decisão final.`,
+          title: "Simulação aguardando aprovação do Gestor",
+          description: `${selected.number} passou pelo Financeiro e aguarda decisão do Gestor.`,
           type: "warning",
           createdAt: new Date().toISOString(),
           unread: true,
@@ -294,7 +294,7 @@ function ApprovalsPage() {
       }
       toast.success(
         decision === "approve"
-          ? "Etapa financeira aprovada. A simulação segue para aprovação final."
+          ? "Etapa financeira aprovada. A simulação segue para aprovação do Gestor."
           : decision === "adjust"
             ? "Ajuste solicitado. A simulação voltou para o Comercial."
             : "Decisão registrada.",
@@ -484,7 +484,7 @@ function ApprovalDetails({
             active={currentStage === "financial"}
           />
           <ApprovalStepCard
-            label="Aprovação final"
+            label="Gestor"
             step={flow.principal}
             active={currentStage === "principal"}
           />
@@ -561,15 +561,15 @@ function ApprovalDetails({
           <ConfirmDialog
             trigger={
               <Button>
-                <Check /> {currentStage === "financial" ? "Aprovar financeiro" : "Aprovar final"}
+                <Check /> {currentStage === "financial" ? "Aprovar financeiro" : "Aprovar Gestor"}
               </Button>
             }
             title={
-              currentStage === "financial" ? "Aprovar etapa financeira" : "Aprovar etapa final"
+              currentStage === "financial" ? "Aprovar etapa financeira" : "Aprovar etapa Gestor"
             }
             description={
               currentStage === "financial"
-                ? "A simulação seguirá para a aprovação final."
+                ? "A simulação seguirá para a aprovação do Gestor."
                 : "A simulação será aprovada e convertida em pedido."
             }
             actionLabel="Aprovar"

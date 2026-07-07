@@ -1,5 +1,5 @@
 import type { Negotiation, Order, Simulation, User } from "@/data/types";
-import { normalizeRole } from "@/lib/permissions";
+import { isPendingApprovalStatus, normalizeRole } from "@/lib/permissions";
 import { matchesUserIdentity } from "@/lib/userIdentity";
 
 export function canViewAllFlows(user: User | null | undefined) {
@@ -22,7 +22,7 @@ export function filterSimulationsForUser(simulations: Simulation[], user: User |
     if (belongsToUser(simulation.owner, user)) return true;
     if (
       (role === "Financeiro" || role === "Aprovador") &&
-      (simulation.status === "Pendente de aprovação" || simulation.status === "Em análise")
+      isPendingApprovalStatus(simulation.status)
     ) {
       return true;
     }

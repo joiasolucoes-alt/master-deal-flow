@@ -6,11 +6,14 @@ export type AppStatus =
   | "Rascunho"
   | "Em análise"
   | "Pendente de aprovação"
+  | "Aguardando financeiro"
+  | "Aguardando aprovação do Gestor"
   | "Aprovada"
   | "Reprovada"
   | "Ajuste solicitado"
   | "Aguardando faturamento"
   | "Em faturamento"
+  | "Aguardando frete"
   | "Em separação"
   | "Em rota"
   | "Entregue";
@@ -167,7 +170,10 @@ export interface Simulation {
   validUntil: string;
   notes: string;
   financialNotes?: string;
-  status: Exclude<AppStatus, "Em faturamento" | "Em separação" | "Em rota" | "Entregue">;
+  status: Exclude<
+    AppStatus,
+    "Em faturamento" | "Aguardando frete" | "Em separação" | "Em rota" | "Entregue"
+  >;
   priority: Priority;
   products: SimulationProduct[];
   purchaseItems: PurchaseItem[];
@@ -211,7 +217,12 @@ export interface Order {
   totalValue: number;
   status: Extract<
     AppStatus,
-    "Aguardando faturamento" | "Em faturamento" | "Em separação" | "Em rota" | "Entregue"
+    | "Aguardando faturamento"
+    | "Em faturamento"
+    | "Aguardando frete"
+    | "Em separação"
+    | "Em rota"
+    | "Entregue"
   >;
   priority: Priority;
   products: SimulationProduct[];

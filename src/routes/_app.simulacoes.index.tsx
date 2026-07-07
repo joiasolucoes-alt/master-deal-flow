@@ -20,7 +20,7 @@ import { useAppContext } from "@/features/app/app-context";
 import { getSimulationTotals } from "@/lib/calculations";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
-import { canCreateSimulation } from "@/lib/permissions";
+import { canCreateSimulation, isPendingApprovalStatus } from "@/lib/permissions";
 import { isSimulationAdjustmentRequested } from "@/lib/simulationStatus";
 import { filterSimulationsForUser } from "@/lib/visibility";
 import { BadgeDollarSign, CheckCircle2, FileSpreadsheet, TriangleAlert } from "lucide-react";
@@ -33,7 +33,8 @@ export const Route = createFileRoute("/_app/simulacoes/")({
 const statusOptions = [
   "Todos",
   "Rascunho",
-  "Pendente de aprovação",
+  "Aguardando financeiro",
+  "Aguardando aprovação do Gestor",
   "Aprovada",
   "Reprovada",
   "Ajuste solicitado",
@@ -80,10 +81,7 @@ function SimulationsPage() {
     const total = visibleSimulations.length;
     const approved = visibleSimulations.filter((s) => s.status === "Aprovada").length;
     const pending = visibleSimulations.filter(
-      (s) =>
-        s.status === "Pendente de aprovação" ||
-        s.status === "Em análise" ||
-        s.status === "Rascunho",
+      (s) => isPendingApprovalStatus(s.status) || s.status === "Rascunho",
     ).length;
     const revenue = visibleSimulations.reduce((sum, s) => sum + getSimulationTotals(s).revenue, 0);
     return { total, approved, pending, revenue };

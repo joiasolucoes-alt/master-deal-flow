@@ -152,8 +152,8 @@ function OrderDetailPage() {
     setBillingOpen(false);
     setBillingForm(createEmptyBillingForm());
     toast.success(
-      updatedOrder.status === "Em separação"
-        ? "Faturamento concluído. Pedido liberado para separação."
+      updatedOrder.status === "Aguardando frete"
+        ? "Faturamento concluído. Pedido liberado para frete."
         : "Faturamento parcial registrado.",
     );
   };
@@ -480,7 +480,7 @@ function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
   const status =
     billingProgress >= 100 &&
     (order.status === "Aguardando faturamento" || order.status === "Em faturamento")
-      ? "Em separação"
+      ? "Aguardando frete"
       : billingProgress > 0 && order.status === "Aguardando faturamento"
         ? "Em faturamento"
         : order.status;

@@ -98,9 +98,13 @@ export function AppHeader() {
     }
 
     void loadRemoteNotifications();
+    const intervalId = window.setInterval(loadRemoteNotifications, 20000);
+    window.addEventListener("focus", loadRemoteNotifications);
 
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", loadRemoteNotifications);
     };
   }, [auth.hasAccess, setNotifications]);
 
@@ -412,11 +416,16 @@ function inferTargetRole(row: NotificationRow): UserRole | undefined {
   if (
     text.includes("pendente de aprovação") ||
     text.includes("enviada para aprovação") ||
-    text.includes("aguardando aprovação financeira")
+    text.includes("aguardando aprovação financeira") ||
+    text.includes("aguardando financeiro")
   ) {
     return "Financeiro";
   }
-  if (text.includes("aprovação final") || text.includes("aguarda decisão final")) {
+  if (
+    text.includes("aprovação final") ||
+    text.includes("aguarda decisão final") ||
+    text.includes("aguardando aprovação do gestor")
+  ) {
     return "Aprovador";
   }
   return undefined;

@@ -9,10 +9,16 @@ import type {
 import { normalizeRole, isSimulationOwner } from "@/lib/permissions";
 
 const pendingStep: ApprovalStepState = { status: "pending" };
+const pendingApprovalStatuses = new Set<Simulation["status"]>([
+  "Pendente de aprovação",
+  "Em análise",
+  "Aguardando financeiro",
+  "Aguardando aprovação do Gestor",
+]);
 
 export const APPROVAL_STAGE_LABELS: Record<ApprovalStage, string> = {
   financial: "Financeiro",
-  principal: "Aprovação final",
+  principal: "Gestor",
 };
 
 export function getApprovalFlow(simulation: Simulation): SimulationApprovalFlow {
@@ -30,7 +36,7 @@ export function getApprovalFlow(simulation: Simulation): SimulationApprovalFlow 
     },
   };
 
-  if (simulation.status !== "Pendente de aprovação" && simulation.status !== "Em análise") {
+  if (!pendingApprovalStatuses.has(simulation.status)) {
     return flow;
   }
 
@@ -49,7 +55,7 @@ export function getApprovalFlow(simulation: Simulation): SimulationApprovalFlow 
 }
 
 export function getCurrentApprovalStage(simulation: Simulation): ApprovalStage | null {
-  if (simulation.status !== "Pendente de aprovação" && simulation.status !== "Em análise") {
+  if (!pendingApprovalStatuses.has(simulation.status)) {
     return null;
   }
 
@@ -90,6 +96,7 @@ export function canConvertApprovedSimulation(simulation: Simulation) {
 export function initializeApprovalFlow(simulation: Simulation): Simulation {
   return {
     ...simulation,
+    status: "Aguardando financeiro",
     approvalFlow: {
       financial: { status: "pending" },
       principal: { status: "pending" },
@@ -154,7 +161,9 @@ export function applyApprovalDecision(
     status:
       nextFlow.financial.status === "approved" && nextFlow.principal.status === "approved"
         ? "Aprovada"
-        : "Pendente de aprovação",
+        : nextFlow.financial.status === "approved"
+          ? "Aguardando aprovação do Gestor"
+          : "Aguardando financeiro",
     approvalFlow: nextFlow,
     approvalNotes: payload.notes || simulation.approvalNotes,
     adjustmentReason: undefined,

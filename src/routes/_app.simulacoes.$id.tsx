@@ -390,8 +390,7 @@ function saveApprovalRecordWhenEnabled(payload: {
       decidedAt: new Date().toISOString(),
     })
     .catch((error) => {
-      console.error("Falha ao registrar aprovação no Supabase.", error);
-      toast.error("Falha ao registrar aprovação no Supabase. Fluxo local preservado.");
+      console.warn("Simulação salva, mas a fila auxiliar de aprovação não foi registrada.", error);
     });
 }
 
@@ -665,7 +664,7 @@ function SimulationDetailPage() {
 
     const next = initializeApprovalFlow({
       ...draft,
-      status: "Pendente de aprovação" as const,
+      status: "Aguardando financeiro" as const,
       approvalChecklist: undefined,
       approvalNotes: undefined,
       adjustmentReason: undefined,

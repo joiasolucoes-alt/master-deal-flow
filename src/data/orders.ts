@@ -92,7 +92,7 @@ export const orders: Order[] = [
     date: "2026-06-12T08:00:00-03:00",
     expectedDelivery: "2026-06-16T20:00:00-03:00",
     totalValue: 156900,
-    status: "Em separação",
+    status: "Aguardando frete",
     priority: "Média",
     products: [
       {

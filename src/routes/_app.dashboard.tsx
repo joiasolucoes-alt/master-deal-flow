@@ -38,7 +38,7 @@ import { getSimulationTotals } from "@/lib/calculations";
 import { downloadTextFile } from "@/lib/actions";
 import { ATTENTION_MARGIN_TARGET, MINIMUM_MARGIN_TARGET } from "@/lib/constants";
 import { useAppContext } from "@/features/app/app-context";
-import { canCreateSimulation } from "@/lib/permissions";
+import { canCreateSimulation, isPendingApprovalStatus } from "@/lib/permissions";
 import { useAppStore } from "@/store/useAppStore";
 import {
   filterNegotiationsForUser,
@@ -78,9 +78,8 @@ function DashboardPage() {
     () => filterNegotiationsForUser(negotiations, auth.user),
     [auth.user, negotiations],
   );
-  const pendingApprovals = visibleSimulations.filter(
-    (simulation) =>
-      simulation.status === "Pendente de aprovação" || simulation.status === "Em análise",
+  const pendingApprovals = visibleSimulations.filter((simulation) =>
+    isPendingApprovalStatus(simulation.status),
   ).length;
   const revenue = visibleSimulations.reduce(
     (sum, simulation) => sum + getSimulationTotals(simulation).revenue,
