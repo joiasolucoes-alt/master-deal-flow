@@ -75,3 +75,25 @@
 
 - Alterar `VITE_DATA_PROVIDER=local`.
 - Confirmar que login local e fluxo principal continuam funcionando.
+# Checklist - Onda Automacao Financeira e Frete
+
+1. Criar uma simulacao com produtos, NF/custos, despesas e pagamento.
+2. Enviar a simulacao para aprovacao.
+3. Aprovar pelo Financeiro.
+4. Aprovar pelo Gestor.
+5. Confirmar que virou pedido.
+6. Confirmar que o Financeiro recebeu contas a receber.
+7. Confirmar que o Financeiro recebeu contas a pagar.
+8. Confirmar que o Frete visualiza o pedido.
+9. Confirmar que o Frete aparece como `Aguardando liberacao financeira`.
+10. Tentar avancar o frete antes da baixa financeira e confirmar bloqueio.
+11. Dar baixa em todas as contas a pagar do pedido.
+12. Confirmar que o pedido muda para `Aguardando frete`.
+13. Confirmar que o Frete muda para `Liberado para contratacao`.
+14. Cadastrar transportadora, motorista, veiculo e documentos.
+15. Gerar link do motorista.
+16. Acessar o link do motorista.
+17. Atualizar status pelo motorista.
+18. Confirmar timeline no painel interno.
+19. Conferir notificacoes internas.
+20. Conferir dados no Supabase.

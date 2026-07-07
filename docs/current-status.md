@@ -69,3 +69,24 @@ Nenhum SQL foi aplicado automaticamente. Scripts para execução manual:
 
 1. `docs/wave-3-finance-v2.md`
 2. `docs/wave-3-freight-documents.md`
+# Atualizacao - Onda Automacao Financeira e Liberacao do Frete
+
+Nesta onda, o fluxo passa a tratar o pedido como uma operacao conectada entre Comercial, Financeiro e Frete.
+
+Implementado nesta rodada:
+
+- pedido aprovado pelo Gestor gera contas financeiras previstas automaticamente;
+- contas a receber sao criadas pela condicao de pagamento;
+- contas a pagar sao criadas pela composicao de compra e despesas da simulacao;
+- frete passa a visualizar o pedido desde o nascimento;
+- frete fica bloqueado ate a baixa financeira das contas a pagar;
+- baixa financeira libera o pedido para o frete;
+- notificacoes internas sao geradas para Comercial, Financeiro e Frete.
+
+Pendente para ondas futuras:
+
+- anexos de comprovantes financeiros;
+- boleto real/integracao bancaria;
+- permissao especifica para papel de Frete;
+- RLS refinada por organizacao, unidade e responsabilidade;
+- relatorio previsto x realizado completo.

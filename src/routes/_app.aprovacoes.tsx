@@ -23,6 +23,8 @@ import { convertSimulationToOrder } from "@/features/simulations/services/simula
 import { createWalletFromSimulationOrder } from "@/features/negotiation-wallets";
 import { useAppStore } from "@/store/useAppStore";
 import { canReviewApprovals, isPendingApprovalStatus } from "@/lib/permissions";
+import { createFreightFromOrder } from "@/features/freights/freightHelpers";
+import { createOperationalFinancialTitlesFromSimulationOrder } from "@/features/finance/financialTitleHelpers";
 import {
   APPROVAL_STAGE_LABELS,
   applyApprovalDecision,
@@ -84,6 +86,8 @@ function ApprovalsPage() {
     orders,
     upsertSimulation,
     upsertOrder,
+    upsertFinancialTitle,
+    upsertFreight,
     upsertNegotiationWallet,
     selectedApprovalId,
     setSelectedApprovalId,
@@ -244,8 +248,15 @@ function ApprovalsPage() {
           orders,
           auth.user?.id ?? "system",
         );
+        const financialTitles = createOperationalFinancialTitlesFromSimulationOrder(
+          nextSimulation,
+          conversion.order,
+        );
+        const freight = createFreightFromOrder(conversion.order);
         upsertSimulation(conversion.simulation);
         upsertOrder(conversion.order);
+        financialTitles.forEach(upsertFinancialTitle);
+        upsertFreight(freight);
         upsertNegotiationWallet(
           createWalletFromSimulationOrder({
             simulation: nextSimulation,
@@ -263,6 +274,28 @@ function ApprovalsPage() {
           entityType: "order",
           entityId: conversion.order.id,
           targetUserName: selected.owner,
+        });
+        addNotification({
+          id: `not-${Date.now()}-finance`,
+          title: "Pedido aguardando financeiro",
+          description: `${conversion.order.number} foi criado e já possui contas previstas para baixa.`,
+          type: "warning",
+          createdAt: new Date().toISOString(),
+          unread: true,
+          entityType: "order",
+          entityId: conversion.order.id,
+          targetRole: "Financeiro",
+        });
+        addNotification({
+          id: `not-${Date.now()}-freight`,
+          title: "Pedido visível para frete",
+          description: `${conversion.order.number} já aparece em Fretes, aguardando liberação financeira.`,
+          type: "info",
+          createdAt: new Date().toISOString(),
+          unread: true,
+          entityType: "order",
+          entityId: conversion.order.id,
+          targetRole: "Financeiro",
         });
         toast.success(`Aprovação do Gestor concluída e pedido ${conversion.order.number} criado.`);
       }
