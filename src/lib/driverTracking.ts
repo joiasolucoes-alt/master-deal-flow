@@ -273,7 +273,31 @@ async function invokeDriverFunction<T>(
 async function rpcJson(functionName: string, args: Record<string, unknown>) {
   const client = getClientOrThrow();
   const { data, error } = await client.rpc(functionName, args);
-  if (error) throw error;
+  if (error) {
+    const code = "code" in error ? String(error.code) : "";
+    const message = error.message ?? "Falha ao executar função do Supabase.";
+    const details = "details" in error && error.details ? String(error.details) : "";
+    const hint = "hint" in error && error.hint ? String(error.hint) : "";
+    const text = `${code} ${message} ${details} ${hint}`.toLowerCase();
+
+    if (
+      code === "PGRST202" ||
+      text.includes("could not find the function") ||
+      (text.includes("function") && text.includes(functionName.toLowerCase()))
+    ) {
+      throw new Error(
+        "Portal do motorista ainda não está aplicado no Supabase. Rode a migration 202607070003_driver_portal.sql e tente gerar o link novamente.",
+      );
+    }
+
+    if (code === "42501" || text.includes("permission denied")) {
+      throw new Error(
+        "Permissão insuficiente para o portal do motorista no Supabase. Confira os GRANTs da migration 202607070003_driver_portal.sql.",
+      );
+    }
+
+    throw error;
+  }
   return data;
 }
 
