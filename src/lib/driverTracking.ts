@@ -1,5 +1,9 @@
 import type { FreightRecord } from "@/data/types";
-import { getSupabaseClient, getSupabaseConfigStatus } from "@/lib/supabaseClient";
+import {
+  ensureSupabaseSession,
+  getSupabaseClient,
+  getSupabaseConfigStatus,
+} from "@/lib/supabaseClient";
 
 export type DriverEventType =
   | "arrived_loading"
@@ -9,7 +13,13 @@ export type DriverEventType =
   | "proof_uploaded"
   | "completed";
 export type FreightTrackingStatus =
-  "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled" | DriverEventType;
+  | "quoted"
+  | "hired"
+  | "loading"
+  | "in_route"
+  | "delivered"
+  | "cancelled"
+  | DriverEventType;
 
 export interface DriverTrackingEvent {
   id: string;
@@ -254,10 +264,88 @@ function toAccessSummary(payload: unknown): DriverAccessSummary | null {
   };
 }
 
+type FreightAccessRow = {
+  id: string;
+  external_id?: string | null;
+  organization_id?: string | null;
+  order_id?: string | null;
+};
+
+type DriverAccessLinkRow = {
+  id: string;
+  freight_id: string;
+  expires_at?: string | null;
+  revoked_at?: string | null;
+  completed_at?: string | null;
+  locked_until?: string | null;
+  failed_attempts?: number | null;
+  unlocked_at?: string | null;
+};
+
 function getClientOrThrow() {
   const client = getSupabaseClient();
   if (!client) throw new Error("Supabase nao configurado.");
   return client;
+}
+
+function isUuid(value?: string | null) {
+  return Boolean(
+    value?.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
+  );
+}
+
+async function hashDriverSecret(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function findFreightAccessRow(freight: FreightRecord) {
+  const client = getClientOrThrow();
+  const select = "id, external_id, organization_id, order_id";
+
+  const byExternal = await client
+    .from("freights")
+    .select(select)
+    .eq("external_id", freight.id)
+    .maybeSingle();
+
+  if (byExternal.error) throw byExternal.error;
+  if (byExternal.data) return byExternal.data as FreightAccessRow;
+
+  if (!isUuid(freight.id)) {
+    throw new Error("Frete não encontrado no Supabase. Salve o frete antes de gerar o acesso.");
+  }
+
+  const byId = await client.from("freights").select(select).eq("id", freight.id).maybeSingle();
+  if (byId.error) throw byId.error;
+  if (!byId.data) {
+    throw new Error("Frete não encontrado no Supabase. Salve o frete antes de gerar o acesso.");
+  }
+  return byId.data as FreightAccessRow;
+}
+
+async function findOrderInternalId(freight: FreightRecord, freightRow: FreightAccessRow) {
+  if (freightRow.order_id) return freightRow.order_id;
+  if (!freight.orderId) return null;
+
+  const client = getClientOrThrow();
+  const byExternal = await client
+    .from("orders")
+    .select("id")
+    .eq("external_id", freight.orderId)
+    .maybeSingle();
+
+  if (byExternal.error) return null;
+  return typeof byExternal.data?.id === "string" ? byExternal.data.id : null;
+}
+
+function getAccessStatus(row: DriverAccessLinkRow): DriverAccessSummary["status"] {
+  const now = Date.now();
+  if (row.revoked_at) return "revoked";
+  if (row.completed_at) return "completed";
+  if (row.locked_until && new Date(row.locked_until).getTime() > now) return "locked";
+  if (row.expires_at && new Date(row.expires_at).getTime() < now) return "expired";
+  return "active";
 }
 
 async function invokeDriverFunction<T>(
@@ -305,14 +393,36 @@ export async function createDriverAccessLink(freight: FreightRecord, expiresAt?:
   const token = generateDriverToken();
   const pin = generateDriverPin();
   const expiration = expiresAt ?? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+  const client = getClientOrThrow();
+  const session = await ensureSupabaseSession();
+  if (!session) throw new Error("Sessão Supabase ausente. Faça login novamente.");
+  const freightRow = await findFreightAccessRow(freight);
+  const orderId = await findOrderInternalId(freight, freightRow);
 
-  await rpcJson("create_driver_access_link", {
-    p_freight_external_id: freight.id,
-    p_order_external_id: freight.orderId ?? null,
-    p_token: token,
-    p_pin: pin,
-    p_expires_at: expiration,
+  const { error: revokeError } = await client
+    .from("driver_access_links")
+    .update({
+      revoked_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("freight_id", freightRow.id)
+    .is("completed_at", null)
+    .is("revoked_at", null);
+
+  if (revokeError) throw revokeError;
+
+  const [tokenHash, pinHash] = await Promise.all([hashDriverSecret(token), hashDriverSecret(pin)]);
+  const { error: insertError } = await client.from("driver_access_links").insert({
+    organization_id: freightRow.organization_id ?? null,
+    freight_id: freightRow.id,
+    order_id: orderId,
+    token_hash: tokenHash,
+    pin_hash: pinHash,
+    expires_at: expiration,
+    created_by: session.user.id,
   });
+
+  if (insertError) throw insertError;
 
   return {
     token,
@@ -323,15 +433,71 @@ export async function createDriverAccessLink(freight: FreightRecord, expiresAt?:
 }
 
 export async function revokeDriverAccessLink(freight: FreightRecord) {
-  await rpcJson("revoke_driver_access_link", { p_freight_external_id: freight.id });
+  await ensureSupabaseSession();
+  const client = getClientOrThrow();
+  const freightRow = await findFreightAccessRow(freight);
+  const { error } = await client
+    .from("driver_access_links")
+    .update({
+      revoked_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("freight_id", freightRow.id)
+    .is("revoked_at", null)
+    .is("completed_at", null);
+
+  if (error) throw error;
 }
 
 export async function fetchDriverAccessSummary(freight: FreightRecord) {
   if (!getSupabaseConfigStatus().configured) return null;
-  const payload = await rpcJson("get_driver_access_summary", {
-    p_freight_external_id: freight.id,
-  });
-  return toAccessSummary(payload);
+  await ensureSupabaseSession();
+  const client = getClientOrThrow();
+  const freightRow = await findFreightAccessRow(freight);
+
+  const { data: link, error: linkError } = await client
+    .from("driver_access_links")
+    .select(
+      "id, freight_id, expires_at, revoked_at, completed_at, locked_until, failed_attempts, unlocked_at",
+    )
+    .eq("freight_id", freightRow.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (linkError) throw linkError;
+  if (!link) return null;
+
+  const { data: events, error: eventsError } = await client
+    .from("freight_events")
+    .select("id, freight_id, order_id, event_type, event_label, occurred_at, latitude, longitude")
+    .eq("freight_id", freightRow.id)
+    .order("occurred_at", { ascending: true });
+
+  if (eventsError) throw eventsError;
+
+  const { data: proofs, error: proofsError } = await client
+    .from("delivery_proofs")
+    .select("id, freight_id, file_name, file_path, mime_type, file_size, uploaded_at")
+    .eq("freight_id", freightRow.id)
+    .order("uploaded_at", { ascending: true });
+
+  if (proofsError) throw proofsError;
+
+  const row = link as DriverAccessLinkRow;
+  return {
+    id: row.id,
+    freightId: freight.id,
+    status: getAccessStatus(row),
+    expiresAt: row.expires_at ?? null,
+    revokedAt: row.revoked_at ?? null,
+    completedAt: row.completed_at ?? null,
+    lockedUntil: row.locked_until ?? null,
+    failedAttempts: row.failed_attempts ?? 0,
+    unlockedAt: row.unlocked_at ?? null,
+    events: ((events as Array<Record<string, unknown>> | null) ?? []).map(toDriverEvent),
+    proofs: ((proofs as Array<Record<string, unknown>> | null) ?? []).map(toProof),
+  };
 }
 
 export async function getDeliveryProofSignedUrl(path: string) {

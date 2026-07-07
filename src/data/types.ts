@@ -330,7 +330,14 @@ export interface FreightRecord {
 }
 
 export type DeliveryStatus =
-  "pending" | "loading" | "loaded" | "in_route" | "arrived" | "delivered" | "issue" | "cancelled";
+  | "pending"
+  | "loading"
+  | "loaded"
+  | "in_route"
+  | "arrived"
+  | "delivered"
+  | "issue"
+  | "cancelled";
 
 export interface DeliveryOccurrence {
   id: string;

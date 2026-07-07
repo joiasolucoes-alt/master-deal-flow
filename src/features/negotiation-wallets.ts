@@ -20,7 +20,14 @@ export type WalletEntryCategory =
   | "manual_adjustment"
   | "closing_transfer";
 export type WalletSourceModule =
-  "simulation" | "order" | "financial" | "freight" | "delivery" | "billing" | "manual" | "closing";
+  | "simulation"
+  | "order"
+  | "financial"
+  | "freight"
+  | "delivery"
+  | "billing"
+  | "manual"
+  | "closing";
 
 export interface NegotiationWalletEntry {
   id: string;
