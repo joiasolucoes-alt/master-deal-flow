@@ -530,6 +530,56 @@ function FinancialPage() {
         />
       </div>
 
+      <Tabs defaultValue="negotiation-payment" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="negotiation-payment">Pagamento de negociação</TabsTrigger>
+          <TabsTrigger value="receivable">Contas a receber</TabsTrigger>
+          <TabsTrigger value="payable">Contas a pagar</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="negotiation-payment">
+          <Card className="shadow-card">
+            <CardHeader className="space-y-1">
+              <CardTitle>Pagamento de negociação</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Propostas aprovadas pelo Gestor entram aqui para o Financeiro pagar e informar o
+                comprovante antes da validação comercial.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <DataTable
+                columns={negotiationPaymentColumns}
+                data={negotiationPaymentRows}
+                emptyTitle="Sem negociações aguardando pagamento"
+                emptyDescription="Quando o Gestor aprovar uma proposta, ela aparecerá nesta fila."
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="receivable">
+          <FinancialTitleCard
+            title="Contas a receber"
+            actionLabel="Gerar contas dos pedidos"
+            onGenerate={handleGenerateReceivables}
+            columns={receivableColumns}
+            titles={visibleReceivables}
+            emptyDescription="Não há contas a receber para exibir."
+          />
+        </TabsContent>
+
+        <TabsContent value="payable">
+          <FinancialTitleCard
+            title="Contas a pagar"
+            actionLabel="Gerar contas a pagar"
+            onGenerate={handleGeneratePayables}
+            columns={payableColumns}
+            titles={visiblePayables}
+            emptyDescription="Não há contas a pagar para exibir."
+          />
+        </TabsContent>
+      </Tabs>
+
       <Card className="shadow-card">
         <CardHeader>
           <CardTitle>Fluxo de caixa</CardTitle>
@@ -719,56 +769,6 @@ function FinancialPage() {
           ) : null}
         </CardContent>
       </Card>
-
-      <Tabs defaultValue="receivable" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="negotiation-payment">Pagamento de negociação</TabsTrigger>
-          <TabsTrigger value="receivable">Contas a receber</TabsTrigger>
-          <TabsTrigger value="payable">Contas a pagar</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="negotiation-payment">
-          <Card className="shadow-card">
-            <CardHeader className="space-y-1">
-              <CardTitle>Pagamento de negociação</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Propostas aprovadas pelo Gestor entram aqui para o Financeiro pagar e informar o
-                comprovante antes da validação comercial.
-              </p>
-            </CardHeader>
-            <CardContent>
-              <DataTable
-                columns={negotiationPaymentColumns}
-                data={negotiationPaymentRows}
-                emptyTitle="Sem negociações aguardando pagamento"
-                emptyDescription="Quando o Gestor aprovar uma proposta, ela aparecerá nesta fila."
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="receivable">
-          <FinancialTitleCard
-            title="Contas a receber"
-            actionLabel="Gerar contas dos pedidos"
-            onGenerate={handleGenerateReceivables}
-            columns={receivableColumns}
-            titles={visibleReceivables}
-            emptyDescription="Não há contas a receber para exibir."
-          />
-        </TabsContent>
-
-        <TabsContent value="payable">
-          <FinancialTitleCard
-            title="Contas a pagar"
-            actionLabel="Gerar contas a pagar"
-            onGenerate={handleGeneratePayables}
-            columns={payableColumns}
-            titles={visiblePayables}
-            emptyDescription="Não há contas a pagar para exibir."
-          />
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }
