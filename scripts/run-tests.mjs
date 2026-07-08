@@ -157,6 +157,81 @@ function createPayableTitlesFromOrder(order, freights = []) {
   return titles;
 }
 
+function createOperationalFinancialTitlesFromSimulationOrder(simulation, order) {
+  return [
+    ...createFinancialTitlesFromOrder(order),
+    ...createPayableTitlesFromSimulationOrder(simulation, order),
+  ];
+}
+
+function createPayableTitlesFromSimulationOrder(simulation, order) {
+  const titles = [];
+  const purchaseItems = simulation.purchaseItems?.filter((item) => item.value > 0) ?? [];
+
+  if (purchaseItems.length > 0) {
+    purchaseItems.forEach((item, index) => {
+      titles.push({
+        id: `pay-${order.id}-purchase-${index + 1}`,
+        orderId: order.id,
+        titleNumber: `${order.number}-PAG-${item.type}`,
+        type: "payable",
+        status: "open",
+        amount: Math.round(item.value * 100) / 100,
+        paidAmount: 0,
+      });
+    });
+  } else {
+    titles.push(...createPayableTitlesFromOrder(order));
+  }
+
+  const totals = getTotals(simulation);
+  const bases = {
+    revenue: totals.revenue,
+    purchaseTotal: totals.purchaseTotal,
+    grossProfit: totals.grossProfit,
+  };
+
+  simulation.expenseItems?.forEach((expense, index) => {
+    const amount = Math.round(getExpenseTotal(expense, bases) * 100) / 100;
+    if (amount <= 0) return;
+    titles.push({
+      id: `pay-${order.id}-expense-${index + 1}`,
+      orderId: order.id,
+      titleNumber: `${order.number}-PAG-${expense.type}`,
+      type: "payable",
+      status: "open",
+      amount,
+      paidAmount: 0,
+    });
+  });
+
+  return titles;
+}
+
+function getRequiredPayablesForFreightRelease(titles, orderId) {
+  return titles.filter(
+    (title) =>
+      title.orderId === orderId &&
+      title.type === "payable" &&
+      title.status !== "cancelled" &&
+      title.amount > 0,
+  );
+}
+
+function isOrderFinanciallyReleased(order, titles) {
+  const payables = getRequiredPayablesForFreightRelease(titles, order?.id);
+  return payables.length > 0 && payables.every((title) => title.paidAmount >= title.amount);
+}
+
+function releaseOrderForFreightIfReady(order, titles) {
+  if (!isOrderFinanciallyReleased(order, titles)) return order;
+  return {
+    ...order,
+    status: "Aguardando frete",
+    logisticsStatus: "Financeiro liberou a operação.",
+  };
+}
+
 function calculateBillingProgress(titles) {
   const total = titles.reduce((sum, title) => sum + title.amount, 0);
   const paid = titles.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0);
@@ -587,6 +662,36 @@ assert.equal(payableTitles[0].type, "payable");
 assert.equal(payableTitles[0].amount, 250);
 assert.equal(payableTitles[1].titleNumber, "PED PAY 1-PAG-FRETE");
 assert.equal(payableTitles[1].amount, 120);
+
+const operationalOrder = {
+  id: "ord-oper-1",
+  number: "PED OPER 1",
+  totalValue: 1000,
+  paymentTerms: "7 e 14 dias",
+  products: [{ quantityTotal: 10, costUnit: 60, saleUnit: 100 }],
+  status: "Aguardando faturamento",
+  logisticsStatus: "Aguardando financeiro.",
+};
+const operationalSimulation = {
+  products: [{ quantityTotal: 10, costUnit: 60, saleUnit: 100 }],
+  purchaseItems: [{ type: "Mercadoria", value: 600 }],
+  expenseItems: [{ type: "Frete", calculationType: "fixed", value: 100 }],
+};
+const operationalTitles = createOperationalFinancialTitlesFromSimulationOrder(
+  operationalSimulation,
+  operationalOrder,
+);
+assert.equal(operationalTitles.filter((title) => title.type === "receivable").length, 2);
+assert.equal(operationalTitles.filter((title) => title.type === "payable").length, 2);
+assert.equal(isOrderFinanciallyReleased(operationalOrder, operationalTitles), false);
+const paidOperationalTitles = operationalTitles.map((title) =>
+  title.type === "payable" ? { ...title, paidAmount: title.amount, status: "paid" } : title,
+);
+assert.equal(isOrderFinanciallyReleased(operationalOrder, paidOperationalTitles), true);
+assert.equal(
+  releaseOrderForFreightIfReady(operationalOrder, paidOperationalTitles).status,
+  "Aguardando frete",
+);
 assert.equal(
   calculateBillingProgress([
     { amount: 500, paidAmount: 500 },

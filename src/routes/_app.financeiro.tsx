@@ -37,11 +37,14 @@ import {
   createPayableTitlesFromOrder,
   getFinancialTitleStatus,
   getStatusLabel,
+  releaseOrderForFreightIfReady,
 } from "@/features/finance/financialTitleHelpers";
+import { createFreightFromOrder } from "@/features/freights/freightHelpers";
 import { formatCompactCurrency, formatCurrency, formatDate } from "@/lib/format";
 import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
 import { createWalletEntry, upsertWalletEntry } from "@/features/negotiation-wallets";
+import { useAppStore } from "@/store/useAppStore";
 
 export const Route = createFileRoute("/_app/financeiro")({
   component: FinancialPage,
@@ -56,8 +59,10 @@ function FinancialPage() {
     negotiationWallets,
     upsertFinancialTitle,
     upsertOrder,
+    upsertFreight,
     upsertNegotiationWallet,
   } = useAppContext();
+  const addNotification = useAppStore((store) => store.addNotification);
   const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
@@ -313,6 +318,40 @@ function FinancialPage() {
       const order = orders.find((item) => item.id === title.orderId);
       if (order && relatedTitles.length) {
         upsertOrder(updateOrderBilling(order, relatedTitles));
+      }
+    } else {
+      const nextTitles = upsertTitleInMemory(financialTitles, updatedTitle);
+      const order = orders.find((item) => item.id === title.orderId);
+      if (order) {
+        const releasedOrder = releaseOrderForFreightIfReady(order, nextTitles);
+        if (releasedOrder.status !== order.status) {
+          upsertOrder(releasedOrder);
+          if (!freights.some((freight) => freight.orderId === order.id)) {
+            upsertFreight(createFreightFromOrder(releasedOrder));
+          }
+          addNotification({
+            id: `not-${Date.now()}-commercial-release`,
+            title: "Financeiro liberou a operação",
+            description: `${order.number} foi liberado para o fluxo de frete.`,
+            type: "success",
+            createdAt: new Date().toISOString(),
+            unread: true,
+            entityType: "order",
+            entityId: order.id,
+            targetUserName: order.owner,
+          });
+          addNotification({
+            id: `not-${Date.now()}-freight-release`,
+            title: "Frete liberado para contratação",
+            description: `${order.number} já pode avançar no módulo de Fretes.`,
+            type: "success",
+            createdAt: new Date().toISOString(),
+            unread: true,
+            entityType: "order",
+            entityId: order.id,
+            targetRole: "Financeiro",
+          });
+        }
       }
     }
 
@@ -775,12 +814,9 @@ function FinancialTitleCard({
 function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
   const billingProgress = calculateBillingProgress(titles, order.totalValue);
   const status =
-    billingProgress >= 100 &&
-    (order.status === "Aguardando faturamento" || order.status === "Em faturamento")
-      ? "Aguardando frete"
-      : billingProgress > 0 && order.status === "Aguardando faturamento"
-        ? "Em faturamento"
-        : order.status;
+    billingProgress > 0 && order.status === "Aguardando faturamento"
+      ? "Em faturamento"
+      : order.status;
 
   return {
     ...order,

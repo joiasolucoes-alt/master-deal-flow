@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAppContext } from "@/features/app/app-context";
-import type { FreightRecord } from "@/data/types";
+import type { FinancialTitle, FreightRecord, Order } from "@/data/types";
 import {
   createFreightFromOrder,
   getFreightStatusLabel,
@@ -66,6 +66,10 @@ import {
   reverseEntriesByReference,
   upsertWalletEntry,
 } from "@/features/negotiation-wallets";
+import {
+  getFreightReleaseStatusLabel,
+  isOrderFinanciallyReleased,
+} from "@/features/finance/financialTitleHelpers";
 
 export const Route = createFileRoute("/_app/fretes")({
   component: FreightsPage,
@@ -88,6 +92,7 @@ function FreightsPage() {
     auth,
     orders,
     simulations,
+    financialTitles,
     freights,
     negotiationWallets,
     upsertFreight,
@@ -112,9 +117,7 @@ function FreightsPage() {
   );
   const eligibleOrders = visibleOrders.filter(
     (order) =>
-      order.status !== "Aguardando faturamento" &&
-      order.status !== "Em faturamento" &&
-      !freights.some((freight) => freight.orderId === order.id),
+      order.status !== "Entregue" && !freights.some((freight) => freight.orderId === order.id),
   );
   const total = visibleFreights.length;
   const transit = visibleFreights.filter((f) => f.status === "in_route").length;
@@ -192,10 +195,16 @@ function FreightsPage() {
     }
 
     eligibleOrders.forEach((order) => upsertFreight(createFreightFromOrder(order)));
-    toast.success("Fretes gerados a partir dos pedidos liberados.");
+    toast.success("Fretes gerados a partir dos pedidos em curso.");
   };
 
   const handleAdvanceFreight = (freight: FreightRecord) => {
+    const order = orders.find((item) => item.id === freight.orderId);
+    if (!isOrderFinanciallyReleased(order, financialTitles)) {
+      toast.warning("Frete aguardando liberação financeira para avançar.");
+      return;
+    }
+
     const nextStatus = getNextFreightStatus(freight.status);
     if (nextStatus === freight.status) return;
 
@@ -206,7 +215,6 @@ function FreightsPage() {
     };
     upsertFreight(nextFreight);
 
-    const order = orders.find((item) => item.id === freight.orderId);
     if (order) upsertOrder(updateOrderFromFreight(order, nextFreight));
 
     toast.success(`Frete atualizado para ${getFreightStatusLabel(nextStatus)}.`);
@@ -287,6 +295,12 @@ function FreightsPage() {
 
   const handleGenerateDriverAccess = async () => {
     if (!selectedFreight) return;
+    const order = orders.find((item) => item.id === selectedFreight.orderId);
+    if (!isOrderFinanciallyReleased(order, financialTitles)) {
+      toast.warning("Libere a operação no Financeiro antes de acionar o motorista.");
+      return;
+    }
+
     try {
       const access = await createDriverAccessLink(selectedFreight);
       setGeneratedDriverAccess(access);
@@ -350,6 +364,18 @@ function FreightsPage() {
     },
     { key: "loading", header: "Carregamento", cell: (f) => formatDate(f.pickupDate) },
     {
+      key: "release",
+      header: "Liberação",
+      cell: (f) => (
+        <StatusBadge
+          status={getFreightReleaseStatusLabel(
+            orders.find((order) => order.id === f.orderId),
+            financialTitles,
+          )}
+        />
+      ),
+    },
+    {
       key: "status",
       header: "Status",
       cell: (f) => <StatusBadge status={getFreightStatusLabel(f.status)} />,
@@ -358,20 +384,24 @@ function FreightsPage() {
       key: "actions",
       header: "",
       className: "text-right",
-      cell: (f) => (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={f.status === "delivered" || f.status === "cancelled"}
-          onClick={(event) => {
-            event.stopPropagation();
-            handleAdvanceFreight(f);
-          }}
-        >
-          <ArrowRight />
-          Avançar
-        </Button>
-      ),
+      cell: (f) => {
+        const order = orders.find((item) => item.id === f.orderId);
+        const financiallyReleased = isOrderFinanciallyReleased(order, financialTitles);
+        return (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!financiallyReleased || f.status === "delivered" || f.status === "cancelled"}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleAdvanceFreight(f);
+            }}
+          >
+            <ArrowRight />
+            {financiallyReleased ? "Avançar" : "Bloqueado"}
+          </Button>
+        );
+      },
     },
   ];
 
@@ -410,6 +440,8 @@ function FreightsPage() {
           />
           <FreightDetailsForm
             freight={selectedFreight}
+            order={orders.find((order) => order.id === selectedFreight?.orderId)}
+            financialTitles={financialTitles}
             form={form}
             documents={documents}
             documentsLoading={documentsLoading}
@@ -425,6 +457,8 @@ function FreightsPage() {
 
       <DriverAccessCard
         freight={selectedFreight}
+        order={orders.find((order) => order.id === selectedFreight?.orderId)}
+        financialTitles={financialTitles}
         access={driverAccess}
         generatedAccess={generatedDriverAccess}
         loading={driverAccessLoading}
@@ -438,6 +472,8 @@ function FreightsPage() {
 
 function DriverAccessCard({
   freight,
+  order,
+  financialTitles,
   access,
   generatedAccess,
   loading,
@@ -446,6 +482,8 @@ function DriverAccessCard({
   onOpenProof,
 }: {
   freight?: FreightRecord;
+  order?: Order;
+  financialTitles: FinancialTitle[];
   access: DriverAccessSummary | null;
   generatedAccess: GeneratedDriverAccess | null;
   loading: boolean;
@@ -454,6 +492,7 @@ function DriverAccessCard({
   onOpenProof: (filePath: string) => void;
 }) {
   const [copying, setCopying] = useState<string | null>(null);
+  const financiallyReleased = isOrderFinanciallyReleased(order, financialTitles);
 
   const copyText = async (label: string, value: string) => {
     setCopying(label);
@@ -531,9 +570,9 @@ function DriverAccessCard({
               )}
 
               <div className="grid gap-2 sm:grid-cols-2">
-                <Button variant="soft" onClick={onGenerate}>
+                <Button variant="soft" disabled={!financiallyReleased} onClick={onGenerate}>
                   <RotateCw />
-                  Gerar novo acesso
+                  {financiallyReleased ? "Gerar novo acesso" : "Aguardando financeiro"}
                 </Button>
                 <Button
                   variant="outline"
@@ -624,6 +663,8 @@ function accessStatusLabel(access: DriverAccessSummary | null) {
 
 function FreightDetailsForm({
   freight,
+  order,
+  financialTitles,
   form,
   documents,
   documentsLoading,
@@ -635,6 +676,8 @@ function FreightDetailsForm({
   onOpenDocument,
 }: {
   freight?: FreightRecord;
+  order?: Order;
+  financialTitles: FinancialTitle[];
   form: FreightFormState;
   documents: FreightDocumentRecord[];
   documentsLoading: boolean;
@@ -664,7 +707,9 @@ function FreightDetailsForm({
     );
   }
 
-  const canAdvance = freight.status !== "delivered" && freight.status !== "cancelled";
+  const financiallyReleased = isOrderFinanciallyReleased(order, financialTitles);
+  const canAdvance =
+    financiallyReleased && freight.status !== "delivered" && freight.status !== "cancelled";
 
   const handleSelectDocumentFile = (file?: File) => {
     if (!file) {
@@ -720,6 +765,16 @@ function FreightDetailsForm({
           </p>
         </div>
         <StatusBadge status={getFreightStatusLabel(freight.status)} />
+      </div>
+      <div className="mb-4 rounded-xl border bg-background/60 p-3 text-sm">
+        <p className="font-semibold text-foreground">
+          {getFreightReleaseStatusLabel(order, financialTitles)}
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          {financiallyReleased
+            ? "Operação liberada para contratação, motorista e avanço logístico."
+            : "O frete pode ser preparado, mas só avança depois da baixa financeira necessária."}
+        </p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -924,7 +979,7 @@ function FreightDetailsForm({
         </Button>
         <Button disabled={!canAdvance} onClick={() => onAdvance(freight)}>
           <ArrowRight />
-          Avançar status
+          {financiallyReleased ? "Avançar status" : "Aguardando financeiro"}
         </Button>
       </div>
     </div>

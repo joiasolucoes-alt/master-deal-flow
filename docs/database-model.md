@@ -64,3 +64,23 @@ Todas as tabelas estao com RLS ativo. Nesta onda, as politicas sao simples:
 - delete fica restrito, exceto tabelas filhas usadas para substituir itens da simulacao/pedido
 
 As regras por perfil, unidade e responsabilidade ainda nao foram aplicadas nesta etapa.
+# Complemento - Onda Automacao Financeira e Liberacao do Frete
+
+Nenhuma tabela nova foi criada nesta onda.
+
+Estruturas reutilizadas:
+
+- `orders`: pedido gerado a partir da simulacao aprovada.
+- `financial_titles`: tabela unica para contas a pagar e contas a receber.
+- `freights`: fretes vinculados ao pedido.
+- `freight_documents`: documentos de frete.
+- `driver_access_links`: acesso temporario do motorista.
+- `freight_events`: eventos do motorista/frete.
+- `delivery_proofs`: comprovantes de entrega.
+- `notifications`: notificacoes internas.
+- `audit_events`: historico de operacoes persistidas pelos repositorios Supabase.
+
+Regra aplicada no frontend:
+
+- o frete e liberado quando todos os titulos `payable` do pedido estiverem pagos;
+- contas `receivable` seguem acompanhadas, mas nao bloqueiam o frete nesta onda.
