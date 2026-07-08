@@ -8,15 +8,24 @@ export type AppStatus =
   | "Pendente de aprovação"
   | "Aguardando financeiro"
   | "Aguardando aprovação do Gestor"
+  | "Aguardando pagamento"
+  | "Pagamento realizado"
+  | "Comprovante anexado"
+  | "Aguardando validação comercial"
+  | "Validada pelo comercial"
   | "Aprovada"
   | "Reprovada"
   | "Ajuste solicitado"
+  | "Pedido confirmado"
   | "Aguardando faturamento"
   | "Em faturamento"
   | "Aguardando frete"
+  | "Frete liberado"
   | "Em separação"
   | "Em rota"
-  | "Entregue";
+  | "Entregue"
+  | "Finalizada"
+  | "Cancelada";
 
 export type Priority = "Baixa" | "Média" | "Alta" | "Crítica";
 export type Viability = "Pendente" | "Viável" | "Atenção" | "Inviável";
@@ -191,6 +200,17 @@ export interface Simulation {
   adjustmentRequestedAt?: string;
   adjustmentRequestedBy?: string;
   adjustmentStage?: ApprovalStage;
+  paymentRequestedAt?: string;
+  paymentPaidAt?: string;
+  paymentPaidBy?: string;
+  paymentReceiptFileName?: string;
+  paymentReceiptFilePath?: string;
+  paymentReceiptAttachedAt?: string;
+  paymentReceiptAttachedBy?: string;
+  paymentValidationNotes?: string;
+  paymentValidatedAt?: string;
+  paymentValidatedBy?: string;
+  paymentAdjustmentReason?: string;
   orderId?: string;
   convertedAt?: string;
 }
@@ -219,7 +239,9 @@ export interface Order {
     AppStatus,
     | "Aguardando faturamento"
     | "Em faturamento"
+    | "Pedido confirmado"
     | "Aguardando frete"
+    | "Frete liberado"
     | "Em separação"
     | "Em rota"
     | "Entregue"
@@ -249,6 +271,8 @@ export interface FinancialTitle {
   id: string;
   orderId?: string;
   orderNumber?: string;
+  simulationId?: string;
+  simulationNumber?: string;
   client: string;
   titleNumber: string;
   type: FinancialTitleType;
@@ -260,6 +284,10 @@ export interface FinancialTitle {
   bankName: string;
   invoiceNumber?: string;
   invoiceIssuedAt?: string;
+  proofFileName?: string;
+  proofFilePath?: string;
+  proofAttachedAt?: string;
+  proofAttachedBy?: string;
   notes: string;
   owner: string;
   unit: string;

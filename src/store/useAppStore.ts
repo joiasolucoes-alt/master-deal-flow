@@ -32,7 +32,6 @@ const STORE_KEY = "master-flow-zustand-app-store";
 const PENDING_APPROVAL_STATUSES = new Set([
   "Pendente de aprovação",
   "Em análise",
-  "Aguardando financeiro",
   "Aguardando aprovação do Gestor",
 ]);
 

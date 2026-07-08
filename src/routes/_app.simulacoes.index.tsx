@@ -33,9 +33,12 @@ export const Route = createFileRoute("/_app/simulacoes/")({
 const statusOptions = [
   "Todos",
   "Rascunho",
-  "Aguardando financeiro",
   "Aguardando aprovação do Gestor",
-  "Aprovada",
+  "Aguardando pagamento",
+  "Pagamento realizado",
+  "Comprovante anexado",
+  "Aguardando validação comercial",
+  "Pedido confirmado",
   "Reprovada",
   "Ajuste solicitado",
 ];
@@ -79,7 +82,12 @@ function SimulationsPage() {
 
   const summary = useMemo(() => {
     const total = visibleSimulations.length;
-    const approved = visibleSimulations.filter((s) => s.status === "Aprovada").length;
+    const approved = visibleSimulations.filter(
+      (s) =>
+        s.status === "Aguardando pagamento" ||
+        s.status === "Aguardando validação comercial" ||
+        s.status === "Pedido confirmado",
+    ).length;
     const pending = visibleSimulations.filter(
       (s) => isPendingApprovalStatus(s.status) || s.status === "Rascunho",
     ).length;
@@ -181,7 +189,7 @@ function SimulationsPage() {
           tone="info"
         />
         <StatCard
-          label="Aprovadas"
+          label="Em pré-pedido"
           value={String(summary.approved)}
           icon={CheckCircle2}
           tone="success"

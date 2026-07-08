@@ -1,3 +1,20 @@
+# Checklist da onda atual
+
+1. Comercial cria proposta.
+2. Comercial envia para aprovacao.
+3. Gestor aprova.
+4. Confirmar que nenhum pedido foi criado ainda.
+5. Confirmar status **Aguardando pagamento**.
+6. Financeiro ve contas a pagar da proposta.
+7. Financeiro da baixa e informa comprovante.
+8. Comercial ve a proposta em **Aguardando validacao comercial**.
+9. Comercial valida o comprovante.
+10. Sistema cria pedido confirmado.
+11. Frete fica liberado.
+12. Frete gera link real do motorista.
+13. Motorista atualiza entrega.
+14. Conferir registros no Supabase.
+
 # Checklist de homologação - Onda 1.1
 
 ## Login e ambiente

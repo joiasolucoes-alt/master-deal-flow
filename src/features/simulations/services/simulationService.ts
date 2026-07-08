@@ -53,6 +53,17 @@ export function duplicateSimulation(
     approvalChecklist: undefined,
     approvalFlow: undefined,
     approvalNotes: undefined,
+    paymentRequestedAt: undefined,
+    paymentPaidAt: undefined,
+    paymentPaidBy: undefined,
+    paymentReceiptFileName: undefined,
+    paymentReceiptFilePath: undefined,
+    paymentReceiptAttachedAt: undefined,
+    paymentReceiptAttachedBy: undefined,
+    paymentValidationNotes: undefined,
+    paymentValidatedAt: undefined,
+    paymentValidatedBy: undefined,
+    paymentAdjustmentReason: undefined,
     orderId: undefined,
     convertedAt: undefined,
   };
@@ -73,8 +84,10 @@ export function convertSimulationToOrder(
   existingOrders: Order[],
   userId: string,
 ): { order: Order; simulation: Simulation; audit: AuditEvent } {
-  if (!isSimulationFullyApproved(simulation)) {
-    throw new Error("Simulação precisa das aprovações financeira e final antes de virar pedido.");
+  if (!canConfirmSimulationAsOrder(simulation)) {
+    throw new Error(
+      "Proposta precisa da aprovação do Gestor, pagamento com comprovante e validação comercial antes de virar pedido.",
+    );
   }
   const existing = existingOrders.find((o) => o.simulationId === simulation.id);
   if (existing) throw new Error(`Simulação já convertida no pedido ${existing.number}.`);
@@ -93,20 +106,20 @@ export function convertSimulationToOrder(
     date: createdAt,
     expectedDelivery: simulation.deliveryDate,
     totalValue: totals.revenue,
-    status: "Aguardando faturamento",
+    status: "Pedido confirmado",
     priority: simulation.priority,
     products: simulation.products,
     billingProgress: 0,
     deliveryProgress: 0,
     paymentTerms: simulation.paymentCondition,
-    logisticsStatus: "Pedido criado a partir de simulação aprovada.",
+    logisticsStatus: "Pedido confirmado após pagamento e validação comercial.",
     documents: ["Pedido interno"],
     notes: [`Origem: conversão da simulação ${simulation.number}.`],
     timeline: [
       {
         id: `tl-${Date.now()}`,
-        title: "Pedido criado",
-        description: "Conversão da simulação aprovada.",
+        title: "Pedido confirmado",
+        description: "Pagamento validado pelo Comercial antes da liberação operacional.",
         date: createdAt,
         completed: true,
       },
@@ -114,14 +127,29 @@ export function convertSimulationToOrder(
   };
   return {
     order,
-    simulation: { ...simulation, orderId, convertedAt: createdAt },
+    simulation: {
+      ...simulation,
+      status: "Pedido confirmado",
+      orderId,
+      convertedAt: createdAt,
+      paymentValidatedAt: simulation.paymentValidatedAt ?? createdAt,
+    },
     audit: audit(
       "order",
       orderId,
       "converted",
-      `Pedido ${order.number} criado a partir da simulação ${simulation.number}.`,
+      `Pedido ${order.number} confirmado a partir da proposta ${simulation.number}.`,
       userId,
       { simulationId: simulation.id },
     ),
   };
+}
+
+export function canConfirmSimulationAsOrder(simulation: Simulation) {
+  return (
+    isSimulationFullyApproved(simulation) &&
+    simulation.status === "Aguardando validação comercial" &&
+    Boolean(simulation.paymentPaidAt) &&
+    Boolean(simulation.paymentReceiptFileName || simulation.paymentReceiptFilePath)
+  );
 }

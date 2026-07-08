@@ -572,7 +572,7 @@ function DriverAccessCard({
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button variant="soft" disabled={!financiallyReleased} onClick={onGenerate}>
                   <RotateCw />
-                  {financiallyReleased ? "Gerar novo acesso" : "Aguardando financeiro"}
+                  {financiallyReleased ? "Gerar novo acesso" : "Aguardando liberação"}
                 </Button>
                 <Button
                   variant="outline"
@@ -979,7 +979,7 @@ function FreightDetailsForm({
         </Button>
         <Button disabled={!canAdvance} onClick={() => onAdvance(freight)}>
           <ArrowRight />
-          {financiallyReleased ? "Avançar status" : "Aguardando financeiro"}
+          {financiallyReleased ? "Avançar status" : "Aguardando liberação"}
         </Button>
       </div>
     </div>

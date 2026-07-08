@@ -1,3 +1,9 @@
+# Onda atual - fluxo operacional aprovado pelo cliente
+
+O pedido operacional so nasce depois da validacao comercial do comprovante de pagamento. A aprovacao do Gestor muda a proposta para **Aguardando pagamento**, sem criar pedido.
+
+Fluxo oficial: Comercial cria proposta -> Gestor aprova -> Financeiro registra pagamento e comprovante -> Comercial valida -> Pedido confirmado -> Frete liberado -> Motorista atualiza entrega -> Financeiro e Comercial acompanham fechamento.
+
 # Fluxo Operacional
 
 ## Onda - Automacao Financeira e Liberacao do Frete
@@ -16,4 +22,3 @@ Fluxo validado para esta onda:
 10. O motorista atualiza a entrega pelo portal temporario.
 
 O Supabase segue como fonte principal em producao. O LocalStorage fica como fallback de desenvolvimento.
-

@@ -33,10 +33,12 @@ import { useAppContext } from "@/features/app/app-context";
 import type { FinancialTitle, Order } from "@/data/types";
 import {
   calculateBillingProgress,
+  areSimulationPayablesPaidWithProof,
   createFinancialTitlesFromOrder,
   createPayableTitlesFromOrder,
   getFinancialTitleStatus,
   getStatusLabel,
+  hasPaymentProof,
   releaseOrderForFreightIfReady,
 } from "@/features/finance/financialTitleHelpers";
 import { createFreightFromOrder } from "@/features/freights/freightHelpers";
@@ -53,11 +55,13 @@ export const Route = createFileRoute("/_app/financeiro")({
 function FinancialPage() {
   const {
     auth,
+    simulations,
     orders,
     financialTitles,
     freights,
     negotiationWallets,
     upsertFinancialTitle,
+    upsertSimulation,
     upsertOrder,
     upsertFreight,
     upsertNegotiationWallet,
@@ -109,7 +113,11 @@ function FinancialPage() {
     () =>
       visibleOrders.filter(
         (order) =>
-          (order.status === "Aguardando faturamento" || order.status === "Em faturamento") &&
+          (order.status === "Pedido confirmado" ||
+            order.status === "Frete liberado" ||
+            order.status === "Aguardando frete" ||
+            order.status === "Aguardando faturamento" ||
+            order.status === "Em faturamento") &&
           order.billingProgress < 100,
       ),
     [visibleOrders],
@@ -303,10 +311,32 @@ function FinancialPage() {
     }
 
     const paidAmount = roundCurrency(title.paidAmount + amount);
+    const paidAt = paidAmount >= title.amount ? new Date().toISOString() : title.paidAt;
+    let proofFileName = title.proofFileName;
+    let proofAttachedAt = title.proofAttachedAt;
+    let proofAttachedBy = title.proofAttachedBy;
+
+    if (title.type === "payable" && paidAmount >= title.amount && !hasPaymentProof(title)) {
+      const proof = window.prompt(
+        "Informe o nome ou referência do comprovante de pagamento.",
+        title.proofFileName ?? "",
+      );
+      if (!proof?.trim()) {
+        toast.error("Informe o comprovante para concluir o pagamento da proposta.");
+        return;
+      }
+      proofFileName = proof.trim();
+      proofAttachedAt = paidAt;
+      proofAttachedBy = auth.user?.name ?? auth.user?.email ?? "Financeiro";
+    }
+
     const updatedTitle: FinancialTitle = {
       ...title,
       paidAmount,
-      paidAt: paidAmount >= title.amount ? new Date().toISOString() : title.paidAt,
+      paidAt,
+      proofFileName,
+      proofAttachedAt,
+      proofAttachedBy,
     };
     updatedTitle.status = getFinancialTitleStatus(updatedTitle);
     upsertFinancialTitle(updatedTitle);
@@ -318,6 +348,33 @@ function FinancialPage() {
       const order = orders.find((item) => item.id === title.orderId);
       if (order && relatedTitles.length) {
         upsertOrder(updateOrderBilling(order, relatedTitles));
+      }
+    } else if (title.simulationId && !title.orderId) {
+      const nextTitles = upsertTitleInMemory(financialTitles, updatedTitle);
+      const simulation = simulations.find((item) => item.id === title.simulationId);
+      if (simulation && areSimulationPayablesPaidWithProof(simulation, nextTitles)) {
+        upsertSimulation({
+          ...simulation,
+          status: "Aguardando validação comercial",
+          paymentPaidAt: paidAt,
+          paymentPaidBy: auth.user?.name ?? auth.user?.email ?? "Financeiro",
+          paymentReceiptFileName: updatedTitle.proofFileName,
+          paymentReceiptFilePath: updatedTitle.proofFilePath,
+          paymentReceiptAttachedAt: updatedTitle.proofAttachedAt,
+          paymentReceiptAttachedBy: updatedTitle.proofAttachedBy,
+          paymentAdjustmentReason: undefined,
+        });
+        addNotification({
+          id: `not-${Date.now()}-payment-proof`,
+          title: "Comprovante de pagamento anexado",
+          description: `${simulation.number} aguarda validação comercial para virar pedido.`,
+          type: "success",
+          createdAt: new Date().toISOString(),
+          unread: true,
+          entityType: "simulation",
+          entityId: simulation.id,
+          targetUserName: simulation.owner,
+        });
       }
     } else {
       const nextTitles = upsertTitleInMemory(financialTitles, updatedTitle);
@@ -633,7 +690,11 @@ function buildFinancialColumns(
       cell: (r) => <span className="font-medium">{r.titleNumber}</span>,
     },
     { key: "client", header: partyLabel, cell: (r) => r.client },
-    { key: "order", header: "Pedido", cell: (r) => r.orderNumber ?? "-" },
+    {
+      key: "order",
+      header: "Pedido/Proposta",
+      cell: (r) => r.orderNumber ?? r.simulationNumber ?? "-",
+    },
     { key: "due", header: "Vencimento", cell: (r) => formatDate(r.dueDate) },
     {
       key: "value",
@@ -814,9 +875,11 @@ function FinancialTitleCard({
 function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
   const billingProgress = calculateBillingProgress(titles, order.totalValue);
   const status =
-    billingProgress > 0 && order.status === "Aguardando faturamento"
-      ? "Em faturamento"
-      : order.status;
+    billingProgress > 0 && order.status === "Pedido confirmado"
+      ? "Frete liberado"
+      : billingProgress > 0 && order.status === "Aguardando faturamento"
+        ? "Em faturamento"
+        : order.status;
 
   return {
     ...order,

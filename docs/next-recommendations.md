@@ -1,3 +1,13 @@
+# Recomendacoes apos esta onda
+
+- Upload real de comprovante financeiro em Storage.
+- Conta a pagar/receber com anexos e historico detalhado.
+- Alertas de vencimento de boleto/boleta e frete.
+- Comissao realizada por pedido.
+- Margem prevista x margem realizada.
+- RLS mais forte por perfil e organizacao.
+- Integracao com banco/boletos e ERP.
+
 # Proximas recomendacoes
 
 1. Criar papel especifico `Frete` no modelo de permissoes.
@@ -9,4 +19,3 @@
 7. Reforcar RLS por organizacao, unidade e responsavel.
 8. Integrar notificacoes externas por WhatsApp, e-mail ou Telegram.
 9. Integrar com ERP/banco apenas depois da validacao operacional.
-

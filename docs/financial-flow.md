@@ -1,3 +1,9 @@
+# Onda atual - pagamento antes do pedido
+
+O Financeiro passa a atuar depois da aprovacao do Gestor e antes da criacao do pedido. As contas a pagar da proposta sao geradas no status **Aguardando pagamento**. O comprovante e obrigatorio para a proposta seguir para validacao comercial.
+
+Contas a receber continuam nascendo quando o pedido for confirmado.
+
 # Fluxo Financeiro
 
 ## O que foi automatizado
@@ -24,4 +30,3 @@ Regra de liberacao do frete:
 - integracao bancaria real;
 - anexos de comprovantes financeiros;
 - boletos reais.
-

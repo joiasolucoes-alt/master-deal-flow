@@ -76,7 +76,11 @@ function OrderDetailPage() {
     .reduce((sum, title) => sum + title.amount, 0);
   const receivedAmount = orderReceivables.reduce((sum, title) => sum + title.paidAmount, 0);
   const canBillOrder =
-    order.status === "Aguardando faturamento" || order.status === "Em faturamento";
+    order.status === "Pedido confirmado" ||
+    order.status === "Frete liberado" ||
+    order.status === "Aguardando frete" ||
+    order.status === "Aguardando faturamento" ||
+    order.status === "Em faturamento";
   const wallet = negotiationWallets.find((item) => item.orderId === order.id);
 
   const handleOpenBilling = () => {
@@ -521,8 +525,10 @@ function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
   const billingProgress = calculateBillingProgress(titles, order.totalValue);
   const status =
     billingProgress >= 100 &&
-    (order.status === "Aguardando faturamento" || order.status === "Em faturamento")
-      ? "Aguardando frete"
+    (order.status === "Aguardando faturamento" ||
+      order.status === "Em faturamento" ||
+      order.status === "Pedido confirmado")
+      ? "Frete liberado"
       : billingProgress > 0 && order.status === "Aguardando faturamento"
         ? "Em faturamento"
         : order.status;

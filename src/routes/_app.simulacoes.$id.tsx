@@ -81,13 +81,12 @@ import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
 import { useAppStore } from "@/store/useAppStore";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
-import { getOrderNumberFromSimulation } from "@/features/simulations/services/simulationService";
 import {
-  canConvertApprovedSimulation,
-  initializeApprovalFlow,
-} from "@/features/approvals/approvalFlow";
+  canConfirmSimulationAsOrder,
+  convertSimulationToOrder,
+} from "@/features/simulations/services/simulationService";
+import { initializeApprovalFlow } from "@/features/approvals/approvalFlow";
 import {
-  canConvertSimulationToOrder,
   canCreateSimulation,
   canEditSimulation,
   canSubmitSimulationForApproval,
@@ -101,6 +100,15 @@ import {
   getSimulationAdjustmentReason,
   isSimulationAdjustmentRequested,
 } from "@/lib/simulationStatus";
+import {
+  createFinancialTitlesFromOrder,
+  linkSimulationTitlesToOrder,
+  releaseOrderForFreightIfReady,
+} from "@/features/finance/financialTitleHelpers";
+import {
+  createFreightFromOrder,
+  linkFreightToConfirmedOrder,
+} from "@/features/freights/freightHelpers";
 
 export const Route = createFileRoute("/_app/simulacoes/$id")({
   component: SimulationDetailPage,
@@ -308,6 +316,17 @@ function mergeWorkflowStateFromServer(draft: Simulation, source: Simulation): Si
     adjustmentRequestedAt: source.adjustmentRequestedAt,
     adjustmentRequestedBy: source.adjustmentRequestedBy,
     adjustmentStage: source.adjustmentStage,
+    paymentRequestedAt: source.paymentRequestedAt,
+    paymentPaidAt: source.paymentPaidAt,
+    paymentPaidBy: source.paymentPaidBy,
+    paymentReceiptFileName: source.paymentReceiptFileName,
+    paymentReceiptFilePath: source.paymentReceiptFilePath,
+    paymentReceiptAttachedAt: source.paymentReceiptAttachedAt,
+    paymentReceiptAttachedBy: source.paymentReceiptAttachedBy,
+    paymentValidationNotes: source.paymentValidationNotes,
+    paymentValidatedAt: source.paymentValidatedAt,
+    paymentValidatedBy: source.paymentValidatedBy,
+    paymentAdjustmentReason: source.paymentAdjustmentReason,
     orderId: source.orderId,
     convertedAt: source.convertedAt,
   };
@@ -402,10 +421,14 @@ function SimulationDetailPage() {
     auth,
     simulations,
     orders,
+    financialTitles,
+    freights,
     clients,
     suppliers,
     upsertSimulation,
     upsertOrder,
+    upsertFinancialTitle,
+    upsertFreight,
     upsertNegotiationWallet,
   } = useAppContext();
   const addNotification = useAppStore((store) => store.addNotification);
@@ -445,7 +468,7 @@ function SimulationDetailPage() {
   const userCanCreate = canCreateSimulation(currentUser);
   const userCanEdit = canEditSimulation(currentUser, draft);
   const userCanSubmit = canSubmitSimulationForApproval(currentUser, draft);
-  const userCanConvert = canConvertSimulationToOrder(currentUser);
+  const userCanValidatePayment = canValidatePaymentProof(currentUser, draft);
   const isAdminUser = currentUser ? normalizeRole(currentUser.role) === "Admin" : false;
 
   useEffect(() => {
@@ -577,6 +600,17 @@ function SimulationDetailPage() {
       approvalChecklist: undefined,
       approvalFlow: undefined,
       approvalNotes: undefined,
+      paymentRequestedAt: undefined,
+      paymentPaidAt: undefined,
+      paymentPaidBy: undefined,
+      paymentReceiptFileName: undefined,
+      paymentReceiptFilePath: undefined,
+      paymentReceiptAttachedAt: undefined,
+      paymentReceiptAttachedBy: undefined,
+      paymentValidationNotes: undefined,
+      paymentValidatedAt: undefined,
+      paymentValidatedBy: undefined,
+      paymentAdjustmentReason: undefined,
       orderId: undefined,
       convertedAt: undefined,
     };
@@ -587,81 +621,89 @@ function SimulationDetailPage() {
   }
 
   function convertToOrder() {
-    if (!canConvertSimulationToOrder(currentUser)) {
-      toast.error("Seu perfil não pode converter simulações em pedido.");
+    if (!canValidatePaymentProof(currentUser, draft)) {
+      toast.error("Seu perfil não pode validar este comprovante.");
       return;
     }
-    if (!canConvertApprovedSimulation(draft)) {
-      toast.error("A simulação precisa das aprovações financeira e final antes de virar pedido.");
+    if (!canConfirmSimulationAsOrder(draft)) {
+      toast.error("A proposta precisa estar paga, com comprovante, para virar pedido.");
       return;
     }
 
     if (orders.some((order) => order.simulationId === draft.id) || draft.orderId) {
-      toast.error("Esta simulação já foi convertida em pedido.");
+      toast.error("Esta proposta já foi confirmada como pedido.");
       return;
     }
-    const orderId = `ord-${Date.now()}`;
-    const orderNumber = getOrderNumberFromSimulation(draft.number);
-    const order = {
-      id: orderId,
-      number: orderNumber,
-      simulationId: draft.id,
-      client: draft.client,
-      origin: draft.unit,
-      destination: `${draft.deliveryCity} • ${draft.deliveryState}`,
-      owner: draft.owner,
-      unit: draft.unit,
-      date: new Date().toISOString(),
-      expectedDelivery: draft.deliveryDate,
-      totalValue: totals.revenue,
-      status: "Aguardando faturamento" as const,
-      priority: draft.priority,
-      products: draft.products,
-      billingProgress: 0,
-      deliveryProgress: 0,
-      paymentTerms: draft.paymentCondition,
-      logisticsStatus: "Pedido criado a partir de simulação aprovada.",
-      documents: ["Pedido interno"],
-      notes: [`Origem: conversão da simulação ${draft.number}.`],
-      timeline: [
-        {
-          id: `tl-${Date.now()}`,
-          title: "Pedido criado",
-          description: "Conversão da simulação aprovada.",
-          date: new Date().toISOString(),
-          completed: true,
-        },
-      ],
+    const validationNotes =
+      window.prompt(
+        "Observação da validação comercial do comprovante:",
+        draft.paymentValidationNotes ?? "Comprovante conferido e liberado.",
+      ) ?? "";
+    const simulationForConversion = {
+      ...draft,
+      status: "Aguardando validação comercial" as const,
+      paymentValidationNotes: validationNotes.trim(),
+      paymentValidatedAt: new Date().toISOString(),
+      paymentValidatedBy: currentUser?.name ?? currentUser?.email ?? "Comercial",
     };
-    const next = { ...draft, orderId, convertedAt: new Date().toISOString() };
-    upsertSimulation(next);
-    upsertOrder(order);
+    const conversion = convertSimulationToOrder(
+      simulationForConversion,
+      orders,
+      currentUser?.id ?? "system",
+    );
+    const linkedTitles = linkSimulationTitlesToOrder(draft, conversion.order, financialTitles);
+    const receivables = createFinancialTitlesFromOrder(conversion.order);
+    const finalOrder = releaseOrderForFreightIfReady(conversion.order, [
+      ...linkedTitles,
+      ...receivables,
+    ]);
+    const existingFreight = freights.find((freight) => freight.id === `freight-${draft.id}`);
+    const freight = existingFreight
+      ? linkFreightToConfirmedOrder(existingFreight, finalOrder)
+      : createFreightFromOrder(finalOrder);
+
+    upsertSimulation(conversion.simulation);
+    linkedTitles.filter((title) => title.simulationId === draft.id).forEach(upsertFinancialTitle);
+    receivables.forEach(upsertFinancialTitle);
+    upsertOrder(finalOrder);
+    upsertFreight(freight);
     upsertNegotiationWallet(
       createWalletFromSimulationOrder({
         simulation: draft,
-        order,
+        order: finalOrder,
         organizationId: draft.unit,
       }),
     );
     clearSavedSimulationFormDraft(draftStorageKey);
     addNotification({
       id: `not-${Date.now()}`,
-      title: "Pedido criado",
-      description: `${order.number} foi criado a partir da simulação ${draft.number}.`,
+      title: "Pedido confirmado",
+      description: `${finalOrder.number} foi confirmado após validação do pagamento.`,
       type: "success",
       createdAt: new Date().toISOString(),
       unread: true,
       entityType: "order",
-      entityId: order.id,
+      entityId: finalOrder.id,
       targetUserId: currentUser?.id,
       targetUserEmail: currentUser?.email,
       targetUserName: draft.owner,
     });
-    setDraft(next);
-    toast.success(`Pedido ${orderNumber} criado.`, {
+    addNotification({
+      id: `not-${Date.now()}-freight-confirmed`,
+      title: "Frete liberado",
+      description: `${finalOrder.number} foi confirmado e liberado para execução logística.`,
+      type: "success",
+      createdAt: new Date().toISOString(),
+      unread: true,
+      entityType: "order",
+      entityId: finalOrder.id,
+      targetRole: "Financeiro",
+    });
+    setDraft(conversion.simulation);
+    toast.success(`Pedido ${finalOrder.number} confirmado.`, {
       action: {
         label: "Abrir",
-        onClick: () => navigate({ to: "/pedidos/$id", params: { id: orderId } }),
+        onClick: () => navigate({ to: "/pedidos/$id", params: { id: finalOrder.id } }),
       },
     });
   }
@@ -680,7 +722,7 @@ function SimulationDetailPage() {
 
     const next = initializeApprovalFlow({
       ...draft,
-      status: "Aguardando financeiro" as const,
+      status: "Aguardando aprovação do Gestor" as const,
       approvalChecklist: undefined,
       approvalNotes: undefined,
       adjustmentReason: undefined,
@@ -692,9 +734,9 @@ function SimulationDetailPage() {
     setRemoteSimulation(next);
     upsertSimulation(next);
     saveApprovalRecordWhenEnabled({
-      id: `apr-${next.id}-financial`,
+      id: `apr-${next.id}-principal`,
       simulationId: next.id,
-      stage: "financial",
+      stage: "principal",
       approverId: currentUser?.id,
       status: "pending",
       checklist: next.approvalChecklist,
@@ -704,13 +746,13 @@ function SimulationDetailPage() {
     addNotification({
       id: `not-${Date.now()}`,
       title: "Simulação enviada para aprovação",
-      description: `${next.number} está aguardando aprovação financeira.`,
+      description: `${next.number} está aguardando aprovação do Gestor.`,
       type: "warning",
       createdAt: new Date().toISOString(),
       unread: true,
       entityType: "approval",
       entityId: next.id,
-      targetRole: "Financeiro",
+      targetRole: "Aprovador",
     });
     setDraft(next);
     toast.success("Simulação enviada para aprovação");
@@ -752,9 +794,9 @@ function SimulationDetailPage() {
                 <Pencil /> Salvar rascunho
               </Button>
             ) : null}
-            {canConvertApprovedSimulation(draft) && !draft.orderId && userCanConvert ? (
+            {canConfirmSimulationAsOrder(draft) && !draft.orderId && userCanValidatePayment ? (
               <Button onClick={convertToOrder}>
-                <CheckCircle2 /> Converter em pedido
+                <CheckCircle2 /> Validar pagamento
               </Button>
             ) : null}
           </>
@@ -802,6 +844,34 @@ function SimulationDetailPage() {
         </Card>
       ) : null}
 
+      {draft.status === "Aguardando validação comercial" ? (
+        <Card className="border-primary/40 bg-primary-soft/30 shadow-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CheckCircle2 className="h-4 w-4" />
+              Comprovante aguardando validação comercial
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1 text-sm">
+              <p>
+                Comprovante:{" "}
+                <strong>{draft.paymentReceiptFileName ?? "Comprovante registrado"}</strong>
+              </p>
+              <p className="text-muted-foreground">
+                Pago por {draft.paymentPaidBy ?? "Financeiro"}{" "}
+                {draft.paymentPaidAt ? `em ${formatDate(draft.paymentPaidAt)}` : ""}.
+              </p>
+            </div>
+            {canConfirmSimulationAsOrder(draft) && userCanValidatePayment ? (
+              <Button onClick={convertToOrder} className="shrink-0">
+                <CheckCircle2 /> Validar e confirmar pedido
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <ProgressStepper steps={STEPS} activeStep={step} onStepChange={setStep} />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
@@ -830,7 +900,7 @@ function SimulationDetailPage() {
                 onSubmitForApproval={submitForApproval}
                 onConvertToOrder={convertToOrder}
                 canSubmit={userCanSubmit}
-                canConvert={userCanConvert}
+                canConvert={userCanValidatePayment}
               />
             )}
 
@@ -2144,20 +2214,22 @@ function ResultStep({
           <div className="space-y-1 text-sm">
             <p className="font-medium text-foreground">Status atual: {draft.status}</p>
             <p className="text-muted-foreground">
-              {draft.status === "Aprovada" && hasOrder
-                ? "A simulação já foi aprovada e o pedido foi criado."
-                : draft.status === "Aprovada"
-                  ? "A simulação foi aprovada e já pode virar pedido."
-                  : pendingApproval
-                    ? "A simulação está na fila da Central de aprovações."
-                    : canSubmit
-                      ? "Revise o resumo e envie a simulação para aprovação."
-                      : "Seu perfil pode consultar esta simulação, mas não enviá-la para aprovação."}
+              {hasOrder
+                ? "A proposta já foi validada e o pedido foi confirmado."
+                : draft.status === "Aguardando pagamento"
+                  ? "Gestor aprovou. A proposta aguarda pagamento e comprovante do Financeiro."
+                  : draft.status === "Aguardando validação comercial"
+                    ? "Financeiro registrou pagamento. O Comercial precisa validar o comprovante."
+                    : pendingApproval
+                      ? "A proposta está na fila da Central de aprovações do Gestor."
+                      : canSubmit
+                        ? "Revise o resumo e envie a proposta para aprovação do Gestor."
+                        : "Seu perfil pode consultar esta proposta, mas não enviá-la para aprovação."}
             </p>
           </div>
-          {canConvertApprovedSimulation(draft) && !hasOrder && canConvert ? (
+          {canConfirmSimulationAsOrder(draft) && !hasOrder && canConvert ? (
             <Button onClick={onConvertToOrder}>
-              <CheckCircle2 /> Converter em pedido
+              <CheckCircle2 /> Validar e confirmar pedido
             </Button>
           ) : pendingApproval || hasOrder || !canSubmit ? null : (
             <Button onClick={onSubmitForApproval}>
@@ -2331,4 +2403,13 @@ function SummaryTile({
       <CheckCircle2 className="mt-2 h-4 w-4 opacity-60" />
     </div>
   );
+}
+
+function canValidatePaymentProof(user: User | null | undefined, simulation: Simulation) {
+  if (!user || user.status !== "Ativo") return false;
+  const role = normalizeRole(user.role);
+  if (role === "Admin") return true;
+  if (role !== "Comercial") return false;
+  const owner = simulation.owner.trim().toLowerCase();
+  return owner === user.name.trim().toLowerCase() || owner === user.email.trim().toLowerCase();
 }

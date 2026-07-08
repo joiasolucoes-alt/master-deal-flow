@@ -164,6 +164,85 @@ function createOperationalFinancialTitlesFromSimulationOrder(simulation, order) 
   ];
 }
 
+function createPreOrderPayableTitlesFromSimulation(simulation) {
+  const titles = [];
+  const purchaseItems = simulation.purchaseItems?.filter((item) => item.value > 0) ?? [];
+
+  if (purchaseItems.length) {
+    purchaseItems.forEach((item, index) => {
+      titles.push({
+        id: `prepay-${simulation.id}-purchase-${index + 1}`,
+        simulationId: simulation.id,
+        simulationNumber: simulation.number,
+        titleNumber: `${simulation.number}-PAG-${item.type}`,
+        type: "payable",
+        status: "open",
+        amount: Math.round(item.value * 100) / 100,
+        paidAmount: 0,
+        proofFileName: "",
+      });
+    });
+  } else {
+    const totals = getTotals(simulation);
+    titles.push({
+      id: `prepay-${simulation.id}-goods`,
+      simulationId: simulation.id,
+      simulationNumber: simulation.number,
+      titleNumber: `${simulation.number}-PAG-MERC`,
+      type: "payable",
+      status: "open",
+      amount: Math.round(totals.merchandiseCost * 100) / 100,
+      paidAmount: 0,
+      proofFileName: "",
+    });
+  }
+
+  simulation.expenseItems
+    ?.filter((expense) => getExpenseTotal(expense, getTotals(simulation)) > 0)
+    .forEach((expense, index) => {
+      titles.push({
+        id: `prepay-${simulation.id}-expense-${index + 1}`,
+        simulationId: simulation.id,
+        simulationNumber: simulation.number,
+        titleNumber: `${simulation.number}-PAG-${expense.type}`,
+        type: "payable",
+        status: "open",
+        amount: Math.round(getExpenseTotal(expense, getTotals(simulation)) * 100) / 100,
+        paidAmount: 0,
+        proofFileName: "",
+      });
+    });
+
+  return titles.filter((title) => title.amount > 0);
+}
+
+function areSimulationPayablesPaidWithProof(simulation, titles) {
+  const payables = titles.filter(
+    (title) =>
+      title.simulationId === simulation.id &&
+      title.type === "payable" &&
+      title.status !== "cancelled" &&
+      title.amount > 0,
+  );
+
+  return (
+    payables.length > 0 &&
+    payables.every(
+      (title) =>
+        title.paidAmount >= title.amount &&
+        (title.proofFileName || title.proofFilePath || title.proofAttachedAt),
+    )
+  );
+}
+
+function linkSimulationTitlesToOrder(simulation, order, titles) {
+  return titles.map((title) =>
+    title.simulationId === simulation.id
+      ? { ...title, orderId: order.id, orderNumber: order.number }
+      : title,
+  );
+}
+
 function createPayableTitlesFromSimulationOrder(simulation, order) {
   const titles = [];
   const purchaseItems = simulation.purchaseItems?.filter((item) => item.value > 0) ?? [];
@@ -227,7 +306,7 @@ function releaseOrderForFreightIfReady(order, titles) {
   if (!isOrderFinanciallyReleased(order, titles)) return order;
   return {
     ...order,
-    status: "Aguardando frete",
+    status: "Frete liberado",
     logisticsStatus: "Financeiro liberou a operação.",
   };
 }
@@ -251,6 +330,29 @@ function createFreightFromOrder(order) {
           : "quoted",
     route: `${order.origin} → ${order.destination}`,
     owner: order.owner,
+  };
+}
+
+function createFreightFromSimulation(simulation) {
+  const units = simulation.products.reduce((sum, product) => sum + product.quantityTotal, 0);
+  return {
+    id: `freight-${simulation.id}`,
+    orderId: undefined,
+    orderNumber: simulation.number,
+    status: "quoted",
+    route: `${simulation.unit} → ${simulation.deliveryCity} • ${simulation.deliveryState}`,
+    freightValue: simulation.expenseItems?.find((expense) => expense.type === "Frete")?.value ?? 0,
+    weight: units,
+    owner: simulation.owner,
+  };
+}
+
+function linkFreightToConfirmedOrder(freight, order) {
+  return {
+    ...freight,
+    orderId: order.id,
+    orderNumber: order.number,
+    route: `${order.origin} → ${order.destination}`,
   };
 }
 
@@ -459,7 +561,7 @@ function getApprovalFlow(simulation) {
   const inferredApproved = simulation.status === "Aprovada";
   return {
     financial: {
-      status: inferredApproved ? "approved" : "pending",
+      status: "approved",
       ...(simulation.approvalFlow?.financial ?? {}),
     },
     principal: {
@@ -470,9 +572,13 @@ function getApprovalFlow(simulation) {
 }
 
 function getCurrentApprovalStage(simulation) {
-  if (!["Pendente de aprovação", "Em análise"].includes(simulation.status)) return null;
+  if (
+    !["Pendente de aprovação", "Em análise", "Aguardando aprovação do Gestor"].includes(
+      simulation.status,
+    )
+  )
+    return null;
   const flow = getApprovalFlow(simulation);
-  if (flow.financial.status === "pending") return "financial";
   if (flow.financial.status === "approved" && flow.principal.status === "pending") {
     return "principal";
   }
@@ -497,10 +603,23 @@ function applyApprovalDecision(simulation, stage, status) {
     ...simulation,
     status:
       nextFlow.financial.status === "approved" && nextFlow.principal.status === "approved"
-        ? "Aprovada"
+        ? "Aguardando pagamento"
         : "Pendente de aprovação",
     approvalFlow: nextFlow,
+    paymentRequestedAt:
+      nextFlow.financial.status === "approved" && nextFlow.principal.status === "approved"
+        ? "2026-07-05T12:00:00-03:00"
+        : simulation.paymentRequestedAt,
   };
+}
+
+function canConfirmSimulationAsOrder(simulation) {
+  return (
+    isSimulationFullyApproved(simulation) &&
+    simulation.status === "Aguardando validação comercial" &&
+    Boolean(simulation.paymentPaidAt) &&
+    Boolean(simulation.paymentReceiptFileName || simulation.paymentReceiptFilePath)
+  );
 }
 
 const smoke = getTotals({
@@ -573,21 +692,89 @@ assert.equal(transitionSimulation(submittedSimulation, "Reprovada").status, "Rep
 
 const twoStepSubmitted = transitionSimulation(draftSimulation, "Pendente de aprovação", {
   approvalFlow: {
-    financial: { status: "pending" },
+    financial: { status: "approved" },
     principal: { status: "pending" },
   },
 });
-assert.equal(getCurrentApprovalStage(twoStepSubmitted), "financial");
+assert.equal(getCurrentApprovalStage(twoStepSubmitted), "principal");
 assert.equal(isSimulationFullyApproved(twoStepSubmitted), false);
 
-const financialApproved = applyApprovalDecision(twoStepSubmitted, "financial", "approved");
-assert.equal(financialApproved.status, "Pendente de aprovação");
-assert.equal(getCurrentApprovalStage(financialApproved), "principal");
-assert.equal(isSimulationFullyApproved(financialApproved), false);
-
-const principalApproved = applyApprovalDecision(financialApproved, "principal", "approved");
-assert.equal(principalApproved.status, "Aprovada");
+const principalApproved = applyApprovalDecision(twoStepSubmitted, "principal", "approved");
+assert.equal(principalApproved.status, "Aguardando pagamento");
 assert.equal(isSimulationFullyApproved(principalApproved), true);
+assert.equal(principalApproved.paymentRequestedAt, "2026-07-05T12:00:00-03:00");
+
+const preOrderPayables = createPreOrderPayableTitlesFromSimulation({
+  ...principalApproved,
+  number: "SIM-2026-9001",
+  client: "Cliente teste",
+  supplier: "Fornecedor teste",
+  owner: "Comercial",
+  unit: "Matriz",
+  deliveryCity: "Cataguases",
+  deliveryState: "MG",
+  deliveryDate: "2026-07-10T12:00:00-03:00",
+  products: [{ quantityTotal: 10, costUnit: 60, saleUnit: 100 }],
+  purchaseItems: [{ type: "Mercadoria", value: 600 }],
+  expenseItems: [{ type: "Frete", calculationType: "fixed", value: 100 }],
+});
+assert.equal(preOrderPayables.length, 2);
+assert.equal(
+  preOrderPayables.every((title) => title.simulationId === principalApproved.id),
+  true,
+);
+assert.equal(areSimulationPayablesPaidWithProof(principalApproved, preOrderPayables), false);
+
+const paidPreOrderPayables = preOrderPayables.map((title) => ({
+  ...title,
+  status: "paid",
+  paidAmount: title.amount,
+  proofFileName: `${title.titleNumber}.pdf`,
+}));
+const commercialValidationSimulation = {
+  ...principalApproved,
+  status: "Aguardando validação comercial",
+  paymentPaidAt: "2026-07-05T13:00:00-03:00",
+  paymentReceiptFileName: "comprovante.pdf",
+};
+assert.equal(areSimulationPayablesPaidWithProof(principalApproved, paidPreOrderPayables), true);
+assert.equal(canConfirmSimulationAsOrder(principalApproved), false);
+assert.equal(canConfirmSimulationAsOrder(commercialValidationSimulation), true);
+
+const futureFreight = createFreightFromSimulation({
+  ...commercialValidationSimulation,
+  number: "SIM-2026-9001",
+  products: [{ quantityTotal: 10, costUnit: 60, saleUnit: 100 }],
+  expenseItems: [{ type: "Frete", calculationType: "fixed", value: 100 }],
+  unit: "Matriz",
+  deliveryCity: "Cataguases",
+  deliveryState: "MG",
+  owner: "Comercial",
+});
+assert.equal(futureFreight.orderId, undefined);
+assert.equal(futureFreight.orderNumber, "SIM-2026-9001");
+
+const confirmedOrder = {
+  id: "ord-confirmed-9001",
+  number: "PED-2026-9001",
+  origin: "Matriz",
+  destination: "Cataguases • MG",
+  status: "Pedido confirmado",
+  deliveryProgress: 0,
+};
+const linkedTitles = linkSimulationTitlesToOrder(
+  commercialValidationSimulation,
+  confirmedOrder,
+  paidPreOrderPayables,
+);
+assert.equal(
+  linkedTitles.every((title) => title.orderId === confirmedOrder.id),
+  true,
+);
+assert.equal(
+  linkFreightToConfirmedOrder(futureFreight, confirmedOrder).orderNumber,
+  "PED-2026-9001",
+);
 
 assert.equal(getDataProvider("supabase"), "supabase");
 assert.equal(getDataProvider("local"), "local");
@@ -690,7 +877,7 @@ const paidOperationalTitles = operationalTitles.map((title) =>
 assert.equal(isOrderFinanciallyReleased(operationalOrder, paidOperationalTitles), true);
 assert.equal(
   releaseOrderForFreightIfReady(operationalOrder, paidOperationalTitles).status,
-  "Aguardando frete",
+  "Frete liberado",
 );
 assert.equal(
   calculateBillingProgress([

@@ -15,6 +15,39 @@ function requireClient(): SupabaseClient {
   return client;
 }
 
+function getMissingSchemaColumn(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+  if (code !== "PGRST204") return null;
+  return message.match(/'([^']+)'/)?.[1] ?? null;
+}
+
+async function upsertFinancialTitleWithSchemaFallback(
+  client: SupabaseClient,
+  row: Record<string, unknown>,
+) {
+  const compatibleRow = { ...row };
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await client
+      .from("financial_titles")
+      .upsert(compatibleRow, { onConflict: "external_id" })
+      .select("*")
+      .single();
+
+    const missingColumn = getMissingSchemaColumn(result.error);
+    if (!result.error || !missingColumn || !(missingColumn in compatibleRow)) return result;
+    delete compatibleRow[missingColumn];
+  }
+
+  return client
+    .from("financial_titles")
+    .upsert(compatibleRow, { onConflict: "external_id" })
+    .select("*")
+    .single();
+}
+
 export function createSupabaseFinancialRepository(): FinancialRepository {
   return {
     async listTitles() {
@@ -32,11 +65,10 @@ export function createSupabaseFinancialRepository(): FinancialRepository {
     async saveTitle(title) {
       await ensureSupabaseSession();
       const client = requireClient();
-      const { data, error } = await client
-        .from("financial_titles")
-        .upsert(financialTitleToRow(title), { onConflict: "external_id" })
-        .select("*")
-        .single();
+      const { data, error } = await upsertFinancialTitleWithSchemaFallback(
+        client,
+        financialTitleToRow(title),
+      );
 
       if (error) throw error;
       return rowToFinancialTitle(data as FinancialTitleRow);

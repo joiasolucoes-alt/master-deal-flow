@@ -36,7 +36,10 @@ function OrdersPage() {
   const filtered = useMemo(
     () =>
       visibleOrders.filter((o) => {
-        const effectiveStatus = o.status === "Em separação" ? "Aguardando frete" : o.status;
+        const effectiveStatus =
+          o.status === "Em separação" || o.status === "Frete liberado"
+            ? "Aguardando frete"
+            : o.status;
         if (status !== "Todos" && effectiveStatus !== status) return false;
         if (search && !`${o.number} ${o.client}`.toLowerCase().includes(search.toLowerCase()))
           return false;
@@ -50,7 +53,11 @@ function OrdersPage() {
       total: visibleOrders.length,
       transit: visibleOrders.filter((o) => o.status === "Em rota").length,
       awaitingFreight: visibleOrders.filter(
-        (o) => o.status === "Aguardando frete" || o.status === "Em separação",
+        (o) =>
+          o.status === "Aguardando frete" ||
+          o.status === "Frete liberado" ||
+          o.status === "Pedido confirmado" ||
+          o.status === "Em separação",
       ).length,
       delivered: visibleOrders.filter((o) => o.status === "Entregue").length,
       value: visibleOrders.reduce((sum, o) => sum + o.totalValue, 0),
@@ -172,7 +179,9 @@ function OrdersPage() {
                 "Todos",
                 "Aguardando faturamento",
                 "Em faturamento",
+                "Pedido confirmado",
                 "Aguardando frete",
+                "Frete liberado",
                 "Em rota",
                 "Entregue",
               ].map((o) => (

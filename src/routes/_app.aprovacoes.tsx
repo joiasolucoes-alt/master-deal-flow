@@ -19,19 +19,16 @@ import { formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { ClipboardCheck, FileWarning, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 import type { ApprovalStage, Simulation, User } from "@/data/types";
-import { convertSimulationToOrder } from "@/features/simulations/services/simulationService";
-import { createWalletFromSimulationOrder } from "@/features/negotiation-wallets";
 import { useAppStore } from "@/store/useAppStore";
-import { canReviewApprovals, isPendingApprovalStatus } from "@/lib/permissions";
-import { createFreightFromOrder } from "@/features/freights/freightHelpers";
-import { createOperationalFinancialTitlesFromSimulationOrder } from "@/features/finance/financialTitleHelpers";
+import { canReviewApprovals } from "@/lib/permissions";
+import { createFreightFromSimulation } from "@/features/freights/freightHelpers";
+import { createPreOrderPayableTitlesFromSimulation } from "@/features/finance/financialTitleHelpers";
 import {
   APPROVAL_STAGE_LABELS,
   applyApprovalDecision,
   canUserDecideApprovalStage,
   getApprovalFlow,
   getCurrentApprovalStage,
-  isFinancialApprovalComplete,
 } from "@/features/approvals/approvalFlow";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
@@ -83,12 +80,9 @@ function ApprovalsPage() {
     auth,
     simulations,
     setSimulations,
-    orders,
     upsertSimulation,
-    upsertOrder,
     upsertFinancialTitle,
     upsertFreight,
-    upsertNegotiationWallet,
     selectedApprovalId,
     setSelectedApprovalId,
     users,
@@ -185,21 +179,7 @@ function ApprovalsPage() {
     }
 
     const checklist = selected.approvalChecklist;
-    if (decision === "approve" && stage === "financial") {
-      if (!checklist?.marginValidated || !checklist.costsChecked) {
-        toast.error("Financeiro precisa validar margem e custos antes de aprovar.");
-        return;
-      }
-      if (!bankAccount.trim()) {
-        toast.error("Informe a conta bancária de saída antes de aprovar.");
-        return;
-      }
-    }
     if (decision === "approve" && stage === "principal") {
-      if (!isFinancialApprovalComplete(selected)) {
-        toast.error("A aprovação financeira precisa ser concluída primeiro.");
-        return;
-      }
       if (
         !checklist?.assumptionsReviewed ||
         !checklist.marginValidated ||
@@ -237,75 +217,53 @@ function ApprovalsPage() {
       bankAccount: stage === "financial" ? bankAccount : undefined,
     });
 
-    if (decision === "approve" && nextSimulation.status === "Aprovada") {
-      const existingOrder = orders.find((order) => order.simulationId === selected.id);
-      if (existingOrder || selected.orderId) {
-        upsertSimulation(nextSimulation);
-        toast.success("Aprovação do Gestor registrada.");
-      } else {
-        const conversion = convertSimulationToOrder(
-          nextSimulation,
-          orders,
-          auth.user?.id ?? "system",
-        );
-        const financialTitles = createOperationalFinancialTitlesFromSimulationOrder(
-          nextSimulation,
-          conversion.order,
-        );
-        const freight = createFreightFromOrder(conversion.order);
-        upsertSimulation(conversion.simulation);
-        upsertOrder(conversion.order);
-        financialTitles.forEach(upsertFinancialTitle);
-        upsertFreight(freight);
-        upsertNegotiationWallet(
-          createWalletFromSimulationOrder({
-            simulation: nextSimulation,
-            order: conversion.order,
-            organizationId: nextSimulation.unit,
-          }),
-        );
-        addNotification({
-          id: `not-${Date.now()}`,
-          title: "Simulação aprovada",
-          description: `${selected.number} foi aprovada e virou o pedido ${conversion.order.number}.`,
-          type: "success",
-          createdAt: new Date().toISOString(),
-          unread: true,
-          entityType: "order",
-          entityId: conversion.order.id,
-          targetUserName: selected.owner,
-        });
-        addNotification({
-          id: `not-${Date.now()}-finance`,
-          title: "Pedido aguardando financeiro",
-          description: `${conversion.order.number} foi criado e já possui contas previstas para baixa.`,
-          type: "warning",
-          createdAt: new Date().toISOString(),
-          unread: true,
-          entityType: "order",
-          entityId: conversion.order.id,
-          targetRole: "Financeiro",
-        });
-        addNotification({
-          id: `not-${Date.now()}-freight`,
-          title: "Pedido visível para frete",
-          description: `${conversion.order.number} já aparece em Fretes, aguardando liberação financeira.`,
-          type: "info",
-          createdAt: new Date().toISOString(),
-          unread: true,
-          entityType: "order",
-          entityId: conversion.order.id,
-          targetRole: "Financeiro",
-        });
-        toast.success(`Aprovação do Gestor concluída e pedido ${conversion.order.number} criado.`);
-      }
+    if (decision === "approve" && nextSimulation.status === "Aguardando pagamento") {
+      const payables = createPreOrderPayableTitlesFromSimulation(nextSimulation);
+      const freight = createFreightFromSimulation(nextSimulation);
+      upsertSimulation(nextSimulation);
+      payables.forEach(upsertFinancialTitle);
+      upsertFreight(freight);
+      addNotification({
+        id: `not-${Date.now()}`,
+        title: "Proposta aprovada pelo Gestor",
+        description: `${selected.number} foi aprovada e agora aguarda pagamento do Financeiro.`,
+        type: "success",
+        createdAt: new Date().toISOString(),
+        unread: true,
+        entityType: "simulation",
+        entityId: selected.id,
+        targetUserName: selected.owner,
+      });
+      addNotification({
+        id: `not-${Date.now()}-finance`,
+        title: "Proposta aguardando pagamento",
+        description: `${selected.number} precisa de pagamento e comprovante antes de virar pedido.`,
+        type: "warning",
+        createdAt: new Date().toISOString(),
+        unread: true,
+        entityType: "simulation",
+        entityId: selected.id,
+        targetRole: "Financeiro",
+      });
+      addNotification({
+        id: `not-${Date.now()}-freight`,
+        title: "Operação futura visível para frete",
+        description: `${selected.number} já aparece em Fretes, mas fica bloqueada até a validação comercial.`,
+        type: "info",
+        createdAt: new Date().toISOString(),
+        unread: true,
+        entityType: "simulation",
+        entityId: selected.id,
+        targetRole: "Financeiro",
+      });
+      toast.success("Gestor aprovou. A proposta agora aguarda pagamento do Financeiro.");
     } else {
       upsertSimulation(nextSimulation);
       addNotification({
         id: `not-${Date.now()}`,
         title:
           decision === "approve"
-            ? "Etapa financeira aprovada"
+            ? "Aprovação registrada"
             : decision === "adjust"
               ? "Aguardando reajuste para sua simulação"
               : "Simulação reprovada",
@@ -322,22 +280,9 @@ function ApprovalsPage() {
         targetUserEmail: ownerUser?.email,
         targetUserName: ownerUser?.name ?? selected.owner,
       });
-      if (decision === "approve" && stage === "financial") {
-        addNotification({
-          id: `not-${Date.now()}-principal`,
-          title: "Simulação aguardando aprovação do Gestor",
-          description: `${selected.number} passou pelo Financeiro e aguarda decisão do Gestor.`,
-          type: "warning",
-          createdAt: new Date().toISOString(),
-          unread: true,
-          entityType: "approval",
-          entityId: selected.id,
-          targetRole: "Aprovador",
-        });
-      }
       toast.success(
         decision === "approve"
-          ? "Etapa financeira aprovada. A simulação segue para aprovação do Gestor."
+          ? "Decisão registrada."
           : decision === "adjust"
             ? "Aguardando reajuste. A simulação permanece visível no fluxo."
             : "Decisão registrada.",
@@ -371,7 +316,7 @@ function ApprovalsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Central de aprovações"
-        description="Analise simulações em fila e aprove primeiro no financeiro, depois na etapa final."
+        description="Analise propostas enviadas pelo Comercial e registre a decisão do Gestor."
       />
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -555,7 +500,7 @@ function ApprovalDetails({
             <Input
               value={bankAccount}
               onChange={(event) => setBankAccount(event.target.value)}
-              placeholder="Informe a conta usada para o pagamento"
+              placeholder="Campo legado para propostas antigas"
             />
           </div>
         ) : null}
@@ -625,17 +570,11 @@ function ApprovalDetails({
           <ConfirmDialog
             trigger={
               <Button disabled={!canDecide}>
-                <Check /> {currentStage === "financial" ? "Aprovar financeiro" : "Aprovar Gestor"}
+                <Check /> Aprovar proposta
               </Button>
             }
-            title={
-              currentStage === "financial" ? "Aprovar etapa financeira" : "Aprovar etapa Gestor"
-            }
-            description={
-              currentStage === "financial"
-                ? "A simulação seguirá para a aprovação do Gestor."
-                : "A simulação será aprovada e convertida em pedido."
-            }
+            title={"Aprovar proposta"}
+            description="A proposta seguirá para Aguardando pagamento. O pedido ainda não será criado."
             actionLabel="Aprovar"
             disabled={!canDecideCurrentStage}
             onConfirm={() => onDecide("approve")}
@@ -657,13 +596,18 @@ function ApprovalDetails({
 }
 
 function isApprovalQueueStatus(simulation: Simulation) {
-  return isPendingApprovalStatus(simulation.status) || isSimulationAdjustmentRequested(simulation);
+  return (
+    simulation.status === "Pendente de aprovação" ||
+    simulation.status === "Em análise" ||
+    simulation.status === "Aguardando aprovação do Gestor" ||
+    isSimulationAdjustmentRequested(simulation)
+  );
 }
 
 function approvalQueueLabel(simulation: Simulation) {
   if (simulation.status === "Ajuste solicitado") return "Aguardando reajuste do Comercial";
   if (simulation.status === "Aguardando aprovação do Gestor") return "Aguardando Gestor";
-  if (simulation.status === "Aguardando financeiro") return "Aguardando Financeiro";
+  if (simulation.status === "Aguardando pagamento") return "Aguardando pagamento";
   return "Em acompanhamento";
 }
 
