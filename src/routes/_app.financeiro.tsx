@@ -568,10 +568,11 @@ function FinancialPage() {
         const simulation = simulations.find(
           (item) => item.id === selectedPaymentTitle.simulationId,
         );
-        if (simulation && areSimulationPayablesPaidWithProof(simulation, nextTitles)) {
+        if (simulation) {
+          const fullyPaidWithProof = areSimulationPayablesPaidWithProof(simulation, nextTitles);
           upsertSimulation({
             ...simulation,
-            status: "Aguardando validação comercial",
+            status: fullyPaidWithProof ? "Aguardando validação comercial" : "Pagamento realizado",
             paymentPaidAt: paidAt,
             paymentPaidBy: auth.user?.name ?? auth.user?.email ?? "Financeiro",
             paymentReceiptFileName: uploadedProof.proofFileName,
@@ -582,8 +583,12 @@ function FinancialPage() {
           });
           addNotification({
             id: `not-${Date.now()}-payment-proof`,
-            title: "Comprovante aguardando validação",
-            description: `${simulation.number} teve o pagamento realizado. Valide o comprovante para virar pedido.`,
+            title: fullyPaidWithProof
+              ? "Comprovante aguardando validação"
+              : "Pagamento registrado na negociação",
+            description: fullyPaidWithProof
+              ? `${simulation.number} teve todos os pagamentos realizados. Valide o comprovante para virar pedido.`
+              : `${simulation.number} teve pagamento registrado pelo Financeiro e ainda possui saldo pendente.`,
             type: "success",
             createdAt: new Date().toISOString(),
             unread: true,
@@ -594,7 +599,18 @@ function FinancialPage() {
         }
       }
 
-      toast.success("Pagamento realizado. Aguardando validação comercial.");
+      const updatedTitles = upsertTitleInMemory(financialTitles, updatedTitle);
+      const relatedSimulation = selectedPaymentTitle.simulationId
+        ? simulations.find((item) => item.id === selectedPaymentTitle.simulationId)
+        : null;
+      const fullyPaidWithProof = relatedSimulation
+        ? areSimulationPayablesPaidWithProof(relatedSimulation, updatedTitles)
+        : false;
+      toast.success(
+        fullyPaidWithProof
+          ? "Pagamento realizado. Aguardando validação comercial."
+          : "Pagamento registrado. A negociação ainda possui saldo pendente.",
+      );
       setSelectedPaymentTitle(null);
       setPaymentForm(createEmptyPaymentForm());
     } catch (error) {
