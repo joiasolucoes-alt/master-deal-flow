@@ -101,7 +101,6 @@ import {
   isSimulationAdjustmentRequested,
 } from "@/lib/simulationStatus";
 import {
-  areSimulationPayablesPaidWithProof,
   createFinancialTitlesFromOrder,
   linkSimulationTitlesToOrder,
   releaseOrderForFreightIfReady,
@@ -472,11 +471,7 @@ function SimulationDetailPage() {
   const userCanSubmit = canSubmitSimulationForApproval(currentUser, draft);
   const userCanValidatePayment = canValidatePaymentProof(currentUser, draft);
   const paymentReadyForCommercialValidation =
-    canConfirmSimulationAsOrder(draft) ||
-    (draft.status === "Pagamento realizado" &&
-      areSimulationPayablesPaidWithProof(draft, financialTitles) &&
-      Boolean(draft.paymentPaidAt) &&
-      Boolean(draft.paymentReceiptFileName || draft.paymentReceiptFilePath));
+    canConfirmSimulationAsOrder(draft) || draft.status === "Pagamento realizado";
   const isAdminUser = currentUser ? normalizeRole(currentUser.role) === "Admin" : false;
 
   useEffect(() => {
@@ -891,6 +886,11 @@ function SimulationDetailPage() {
                 <p className="text-muted-foreground">
                   Ainda existe saldo pendente nesta negociação. O pedido só pode ser confirmado
                   depois da quitação total com comprovante.
+                </p>
+              ) : draft.status === "Pagamento realizado" ? (
+                <p className="text-muted-foreground">
+                  Trava de quitação total removida temporariamente para teste. Confira o comprovante
+                  e confirme o pedido para seguir o fluxo.
                 </p>
               ) : null}
             </div>
