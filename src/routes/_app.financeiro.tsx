@@ -26,6 +26,14 @@ import { DataTable, type DataColumn } from "@/components/app/data-table";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,6 +50,10 @@ import {
   hasPaymentProof,
   releaseOrderForFreightIfReady,
 } from "@/features/finance/financialTitleHelpers";
+import {
+  uploadPaymentProofFile,
+  validatePaymentProofFile,
+} from "@/features/finance/paymentProofStorage";
 import { createFreightFromOrder } from "@/features/freights/freightHelpers";
 import { formatCompactCurrency, formatCurrency, formatDate } from "@/lib/format";
 import {
@@ -75,6 +87,9 @@ function FinancialPage() {
   const addNotification = useAppStore((store) => store.addNotification);
   const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
+  const [selectedPaymentTitle, setSelectedPaymentTitle] = useState<FinancialTitle | null>(null);
+  const [paymentForm, setPaymentForm] = useState<PaymentForm>(() => createEmptyPaymentForm());
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, auth.user),
@@ -327,26 +342,25 @@ function FinancialPage() {
   const handleGenerateNegotiationPayment = (row: NegotiationPaymentRow) => {
     if (row.payables.length > 0) {
       toast.info("Esta negociação já possui pagamentos gerados.");
-      return;
+      return row.payables;
     }
 
     const titles = createPreOrderPayableTitlesFromSimulation(row.simulation);
     if (titles.length === 0) {
       toast.info("Nenhum pagamento previsto foi encontrado para esta negociação.");
-      return;
+      return [];
     }
 
     titles.forEach(upsertFinancialTitle);
     toast.success(`${titles.length} pagamento(s) gerado(s) para ${row.simulation.number}.`);
+    return titles;
   };
 
   const handlePayNegotiation = (row: NegotiationPaymentRow) => {
-    if (row.payables.length === 0) {
-      handleGenerateNegotiationPayment(row);
-      return;
-    }
+    const payables = row.payables.length ? row.payables : handleGenerateNegotiationPayment(row);
+    if (!payables.length) return;
 
-    const nextTitle = row.payables.find(
+    const nextTitle = payables.find(
       (title) => title.status !== "paid" && title.status !== "cancelled",
     );
     if (!nextTitle) {
@@ -354,10 +368,24 @@ function FinancialPage() {
       return;
     }
 
-    handleRegisterPayment(nextTitle);
+    openPaymentDialog(nextTitle);
   };
 
-  const handleRegisterPayment = (title: FinancialTitle) => {
+  const openPaymentDialog = (title: FinancialTitle) => {
+    const remainingAmount = getRemainingAmount(title);
+    if (remainingAmount <= 0) {
+      toast.info("Este título já está totalmente baixado.");
+      return;
+    }
+
+    setSelectedPaymentTitle(title);
+    setPaymentForm({
+      amount: formatCurrencyInput(remainingAmount),
+      proofFile: null,
+    });
+  };
+
+  const handleRegisterPayment = async (title: FinancialTitle, options?: PaymentProofOptions) => {
     const remainingAmount = getRemainingAmount(title);
     if (remainingAmount <= 0) {
       toast.info("Este título já está totalmente baixado.");
@@ -382,9 +410,10 @@ function FinancialPage() {
 
     const paidAmount = roundCurrency(title.paidAmount + amount);
     const paidAt = paidAmount >= title.amount ? new Date().toISOString() : title.paidAt;
-    let proofFileName = title.proofFileName;
-    let proofAttachedAt = title.proofAttachedAt;
-    let proofAttachedBy = title.proofAttachedBy;
+    let proofFileName = options?.proofFileName ?? title.proofFileName;
+    const proofFilePath = options?.proofFilePath ?? title.proofFilePath;
+    let proofAttachedAt = options?.proofAttachedAt ?? title.proofAttachedAt;
+    let proofAttachedBy = options?.proofAttachedBy ?? title.proofAttachedBy;
 
     if (title.type === "payable" && paidAmount >= title.amount && !hasPaymentProof(title)) {
       const proof = window.prompt(
@@ -405,6 +434,7 @@ function FinancialPage() {
       paidAmount,
       paidAt,
       proofFileName,
+      proofFilePath,
       proofAttachedAt,
       proofAttachedBy,
     };
@@ -487,6 +517,93 @@ function FinancialPage() {
         ? "Baixa de pagamento registrada."
         : "Baixa de recebimento registrada.",
     );
+  };
+
+  const handleRegisterNegotiationPayment = async () => {
+    if (!selectedPaymentTitle) return;
+
+    const remainingAmount = getRemainingAmount(selectedPaymentTitle);
+    const amount = parseCurrencyInput(paymentForm.amount);
+
+    if (amount <= 0) {
+      toast.error("Informe um valor maior que zero.");
+      return;
+    }
+    if (roundCurrency(amount) !== roundCurrency(remainingAmount)) {
+      toast.error("Para liberar a validação comercial, pague o saldo completo da negociação.");
+      return;
+    }
+    if (!paymentForm.proofFile) {
+      toast.error("Anexe o comprovante antes de marcar pagamento realizado.");
+      return;
+    }
+
+    const validationMessage = validatePaymentProofFile(paymentForm.proofFile);
+    if (validationMessage) {
+      toast.error(validationMessage);
+      return;
+    }
+
+    setPaymentSubmitting(true);
+    try {
+      const uploadedProof = await uploadPaymentProofFile({
+        titleId: selectedPaymentTitle.id,
+        file: paymentForm.proofFile,
+      });
+      const paidAt = new Date().toISOString();
+      const updatedTitle: FinancialTitle = {
+        ...selectedPaymentTitle,
+        paidAmount: selectedPaymentTitle.amount,
+        paidAt,
+        proofFileName: uploadedProof.proofFileName,
+        proofFilePath: uploadedProof.proofFilePath,
+        proofAttachedAt: paidAt,
+        proofAttachedBy: auth.user?.name ?? auth.user?.email ?? "Financeiro",
+      };
+      updatedTitle.status = getFinancialTitleStatus(updatedTitle);
+      upsertFinancialTitle(updatedTitle);
+
+      if (selectedPaymentTitle.simulationId && !selectedPaymentTitle.orderId) {
+        const nextTitles = upsertTitleInMemory(financialTitles, updatedTitle);
+        const simulation = simulations.find(
+          (item) => item.id === selectedPaymentTitle.simulationId,
+        );
+        if (simulation && areSimulationPayablesPaidWithProof(simulation, nextTitles)) {
+          upsertSimulation({
+            ...simulation,
+            status: "Aguardando validação comercial",
+            paymentPaidAt: paidAt,
+            paymentPaidBy: auth.user?.name ?? auth.user?.email ?? "Financeiro",
+            paymentReceiptFileName: uploadedProof.proofFileName,
+            paymentReceiptFilePath: uploadedProof.proofFilePath,
+            paymentReceiptAttachedAt: paidAt,
+            paymentReceiptAttachedBy: auth.user?.name ?? auth.user?.email ?? "Financeiro",
+            paymentAdjustmentReason: undefined,
+          });
+          addNotification({
+            id: `not-${Date.now()}-payment-proof`,
+            title: "Comprovante aguardando validação",
+            description: `${simulation.number} teve o pagamento realizado. Valide o comprovante para virar pedido.`,
+            type: "success",
+            createdAt: new Date().toISOString(),
+            unread: true,
+            entityType: "simulation",
+            entityId: simulation.id,
+            targetUserName: simulation.owner,
+          });
+        }
+      }
+
+      toast.success("Pagamento realizado. Aguardando validação comercial.");
+      setSelectedPaymentTitle(null);
+      setPaymentForm(createEmptyPaymentForm());
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível anexar o comprovante.",
+      );
+    } finally {
+      setPaymentSubmitting(false);
+    }
   };
 
   const receivableColumns = buildFinancialColumns("Cliente", "Recebido", handleRegisterPayment);
@@ -769,6 +886,96 @@ function FinancialPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={Boolean(selectedPaymentTitle)}
+        onOpenChange={(open) => {
+          if (open || paymentSubmitting) return;
+          setSelectedPaymentTitle(null);
+          setPaymentForm(createEmptyPaymentForm());
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar pagamento da negociação</DialogTitle>
+            <DialogDescription>
+              Anexe o comprovante e confirme o pagamento para enviar ao Comercial validar.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedPaymentTitle ? (
+            <div className="space-y-4">
+              <div className="rounded-md border border-border bg-card/60 p-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Negociação</span>
+                  <strong>{selectedPaymentTitle.simulationNumber}</strong>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Documento</span>
+                  <strong>{selectedPaymentTitle.titleNumber}</strong>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Saldo</span>
+                  <strong>{formatCurrency(getRemainingAmount(selectedPaymentTitle))}</strong>
+                </div>
+              </div>
+
+              <label className="block space-y-1 text-sm font-medium">
+                <span>Valor da baixa</span>
+                <Input
+                  value={paymentForm.amount}
+                  onChange={(event) =>
+                    setPaymentForm((current) => ({ ...current, amount: event.target.value }))
+                  }
+                  placeholder="0,00"
+                />
+                <span className="block text-xs text-muted-foreground">
+                  Para esta etapa, o pagamento precisa quitar o saldo completo da negociação.
+                </span>
+              </label>
+
+              <label className="block space-y-1 text-sm font-medium">
+                <span>Comprovante</span>
+                <Input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setPaymentForm((current) => ({ ...current, proofFile: file }));
+                  }}
+                />
+                <span className="block text-xs text-muted-foreground">
+                  PDF, JPG ou PNG até 10 MB.
+                </span>
+              </label>
+
+              {paymentForm.proofFile ? (
+                <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+                  <span className="text-muted-foreground">Arquivo selecionado: </span>
+                  <strong>{paymentForm.proofFile.name}</strong>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={paymentSubmitting}
+              onClick={() => {
+                setSelectedPaymentTitle(null);
+                setPaymentForm(createEmptyPaymentForm());
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button disabled={paymentSubmitting} onClick={handleRegisterNegotiationPayment}>
+              <FileCheck2 />
+              {paymentSubmitting ? "Registrando..." : "Pagamento realizado"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -971,6 +1178,18 @@ type BillingForm = {
   billingNotes: string;
 };
 
+type PaymentForm = {
+  amount: string;
+  proofFile: File | null;
+};
+
+type PaymentProofOptions = {
+  proofFileName?: string;
+  proofFilePath?: string;
+  proofAttachedAt?: string;
+  proofAttachedBy?: string;
+};
+
 function buildBillingOrderColumns(onSelect: (order: Order) => void): DataColumn<Order>[] {
   return [
     {
@@ -1118,6 +1337,13 @@ function createEmptyBillingForm(): BillingForm {
     invoiceIssuedAt: today,
     billingDueDate: today,
     billingNotes: "",
+  };
+}
+
+function createEmptyPaymentForm(): PaymentForm {
+  return {
+    amount: "",
+    proofFile: null,
   };
 }
 

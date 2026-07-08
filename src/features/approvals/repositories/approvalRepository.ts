@@ -44,7 +44,7 @@ export function approvalToRow(record: ApprovalRecord): Record<string, unknown> {
     external_id: record.id,
     stage: record.stage ?? null,
     status: record.status,
-    checklist: record.checklist ?? null,
+    checklist: record.checklist ?? {},
     comment: record.comment ?? null,
     bank_account: record.bankAccount ?? null,
     decided_at: record.decidedAt ?? null,

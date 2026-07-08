@@ -160,7 +160,14 @@ function SimulationsPage() {
       cell: (s) => (
         <Button asChild variant="ghost" size="sm">
           <Link to="/simulacoes/$id" params={{ id: s.id }}>
-            <Eye className="h-4 w-4" />
+            {s.status === "Aguardando validação comercial" ? (
+              <>
+                <CheckCircle2 className="h-4 w-4" />
+                Validar pagamento
+              </>
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
           </Link>
         </Button>
       ),
