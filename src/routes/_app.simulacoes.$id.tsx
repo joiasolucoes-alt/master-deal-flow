@@ -101,10 +101,12 @@ import {
   isSimulationAdjustmentRequested,
 } from "@/lib/simulationStatus";
 import {
+  areSimulationPayablesPaidWithProof,
   createFinancialTitlesFromOrder,
   linkSimulationTitlesToOrder,
   releaseOrderForFreightIfReady,
 } from "@/features/finance/financialTitleHelpers";
+import { getPaymentProofSignedUrl } from "@/features/finance/paymentProofStorage";
 import {
   createFreightFromOrder,
   linkFreightToConfirmedOrder,
@@ -469,6 +471,12 @@ function SimulationDetailPage() {
   const userCanEdit = canEditSimulation(currentUser, draft);
   const userCanSubmit = canSubmitSimulationForApproval(currentUser, draft);
   const userCanValidatePayment = canValidatePaymentProof(currentUser, draft);
+  const paymentReadyForCommercialValidation =
+    canConfirmSimulationAsOrder(draft) ||
+    (draft.status === "Pagamento realizado" &&
+      areSimulationPayablesPaidWithProof(draft, financialTitles) &&
+      Boolean(draft.paymentPaidAt) &&
+      Boolean(draft.paymentReceiptFileName || draft.paymentReceiptFilePath));
   const isAdminUser = currentUser ? normalizeRole(currentUser.role) === "Admin" : false;
 
   useEffect(() => {
@@ -625,7 +633,7 @@ function SimulationDetailPage() {
       toast.error("Seu perfil não pode validar este comprovante.");
       return;
     }
-    if (!canConfirmSimulationAsOrder(draft)) {
+    if (!paymentReadyForCommercialValidation) {
       toast.error("A proposta precisa estar paga, com comprovante, para virar pedido.");
       return;
     }
@@ -706,6 +714,20 @@ function SimulationDetailPage() {
         onClick: () => navigate({ to: "/pedidos/$id", params: { id: finalOrder.id } }),
       },
     });
+  }
+
+  async function openPaymentProof() {
+    if (!draft.paymentReceiptFilePath) {
+      toast.info("Esta proposta tem comprovante registrado, mas sem arquivo para abrir.");
+      return;
+    }
+
+    try {
+      const url = await getPaymentProofSignedUrl(draft.paymentReceiptFilePath);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível abrir o comprovante.");
+    }
   }
 
   function submitForApproval() {
@@ -794,7 +816,7 @@ function SimulationDetailPage() {
                 <Pencil /> Salvar rascunho
               </Button>
             ) : null}
-            {canConfirmSimulationAsOrder(draft) && !draft.orderId && userCanValidatePayment ? (
+            {paymentReadyForCommercialValidation && !draft.orderId && userCanValidatePayment ? (
               <Button onClick={convertToOrder}>
                 <CheckCircle2 /> Validar pagamento
               </Button>
@@ -844,12 +866,15 @@ function SimulationDetailPage() {
         </Card>
       ) : null}
 
-      {draft.status === "Aguardando validação comercial" ? (
+      {draft.status === "Aguardando validação comercial" ||
+      draft.status === "Pagamento realizado" ? (
         <Card className="border-primary/40 bg-primary-soft/30 shadow-card">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <CheckCircle2 className="h-4 w-4" />
-              Comprovante aguardando validação comercial
+              {paymentReadyForCommercialValidation
+                ? "Comprovante aguardando validação comercial"
+                : "Pagamento registrado pelo Financeiro"}
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -862,12 +887,25 @@ function SimulationDetailPage() {
                 Pago por {draft.paymentPaidBy ?? "Financeiro"}{" "}
                 {draft.paymentPaidAt ? `em ${formatDate(draft.paymentPaidAt)}` : ""}.
               </p>
+              {!paymentReadyForCommercialValidation ? (
+                <p className="text-muted-foreground">
+                  Ainda existe saldo pendente nesta negociação. O pedido só pode ser confirmado
+                  depois da quitação total com comprovante.
+                </p>
+              ) : null}
             </div>
-            {canConfirmSimulationAsOrder(draft) && userCanValidatePayment ? (
-              <Button onClick={convertToOrder} className="shrink-0">
-                <CheckCircle2 /> Validar e confirmar pedido
-              </Button>
-            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {draft.paymentReceiptFilePath ? (
+                <Button variant="outline" onClick={openPaymentProof} className="shrink-0">
+                  <Download /> Abrir comprovante
+                </Button>
+              ) : null}
+              {paymentReadyForCommercialValidation && userCanValidatePayment ? (
+                <Button onClick={convertToOrder} className="shrink-0">
+                  <CheckCircle2 /> Validar e confirmar pedido
+                </Button>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       ) : null}

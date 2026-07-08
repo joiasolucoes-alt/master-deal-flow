@@ -75,6 +75,21 @@ export async function uploadPaymentProofFile({
   };
 }
 
+export async function getPaymentProofSignedUrl(path: string) {
+  if (!path) throw new Error("Comprovante sem caminho de arquivo.");
+  await ensureSupabaseSession();
+  const client = getSupabaseClient();
+  if (!client) throw new Error("Supabase não está configurado.");
+
+  const { data, error } = await client.storage
+    .from(PAYMENT_PROOF_BUCKET)
+    .createSignedUrl(path, 60 * 10);
+
+  if (error) throw error;
+  if (!data?.signedUrl) throw new Error("Não foi possível gerar o link do comprovante.");
+  return data.signedUrl;
+}
+
 function sanitizeFileName(fileName: string) {
   return fileName
     .normalize("NFD")
