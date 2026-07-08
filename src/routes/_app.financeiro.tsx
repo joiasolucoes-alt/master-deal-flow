@@ -30,10 +30,11 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAppContext } from "@/features/app/app-context";
-import type { FinancialTitle, Order } from "@/data/types";
+import type { FinancialTitle, Order, Simulation } from "@/data/types";
 import {
   calculateBillingProgress,
   areSimulationPayablesPaidWithProof,
+  createPreOrderPayableTitlesFromSimulation,
   createFinancialTitlesFromOrder,
   createPayableTitlesFromOrder,
   getFinancialTitleStatus,
@@ -43,7 +44,12 @@ import {
 } from "@/features/finance/financialTitleHelpers";
 import { createFreightFromOrder } from "@/features/freights/freightHelpers";
 import { formatCompactCurrency, formatCurrency, formatDate } from "@/lib/format";
-import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
+import {
+  belongsToUser,
+  canViewAllFlows,
+  filterOrdersForUser,
+  filterSimulationsForUser,
+} from "@/lib/visibility";
 import { toast } from "sonner";
 import { createWalletEntry, upsertWalletEntry } from "@/features/negotiation-wallets";
 import { useAppStore } from "@/store/useAppStore";
@@ -70,18 +76,30 @@ function FinancialPage() {
   const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
+  const visibleSimulations = useMemo(
+    () => filterSimulationsForUser(simulations, auth.user),
+    [auth.user, simulations],
+  );
   const visibleOrderIds = useMemo(
     () => new Set(visibleOrders.map((order) => order.id)),
     [visibleOrders],
+  );
+  const visibleSimulationIds = useMemo(
+    () => new Set(visibleSimulations.map((simulation) => simulation.id)),
+    [visibleSimulations],
   );
   const visibleTitles = useMemo(() => {
     return financialTitles
       .map((title) => ({ ...title, status: getFinancialTitleStatus(title) }))
       .filter((title) => {
         if (canViewAllFlows(auth.user)) return true;
-        return visibleOrderIds.has(title.orderId ?? "") || belongsToUser(title.owner, auth.user);
+        return (
+          visibleOrderIds.has(title.orderId ?? "") ||
+          visibleSimulationIds.has(title.simulationId ?? "") ||
+          belongsToUser(title.owner, auth.user)
+        );
       });
-  }, [auth.user, financialTitles, visibleOrderIds]);
+  }, [auth.user, financialTitles, visibleOrderIds, visibleSimulationIds]);
   const visibleReceivables = useMemo(
     () => visibleTitles.filter((title) => title.type === "receivable"),
     [visibleTitles],
@@ -129,6 +147,25 @@ function FinancialPage() {
   const ordersWithoutPayables = visibleOrders.filter(
     (order) =>
       !financialTitles.some((title) => title.orderId === order.id && title.type === "payable"),
+  );
+  const negotiationPaymentRows = useMemo(
+    () =>
+      visibleSimulations
+        .filter((simulation) =>
+          [
+            "Aguardando pagamento",
+            "Pagamento realizado",
+            "Comprovante anexado",
+            "Aguardando validação comercial",
+          ].includes(simulation.status),
+        )
+        .map((simulation) => {
+          const titles = visiblePayables.filter(
+            (title) => title.simulationId === simulation.id && !title.orderId,
+          );
+          return buildNegotiationPaymentRow(simulation, titles);
+        }),
+    [visiblePayables, visibleSimulations],
   );
 
   const handleGenerateReceivables = () => {
@@ -287,6 +324,39 @@ function FinancialPage() {
     toast.success("Contas a pagar geradas a partir dos pedidos.");
   };
 
+  const handleGenerateNegotiationPayment = (row: NegotiationPaymentRow) => {
+    if (row.payables.length > 0) {
+      toast.info("Esta negociação já possui pagamentos gerados.");
+      return;
+    }
+
+    const titles = createPreOrderPayableTitlesFromSimulation(row.simulation);
+    if (titles.length === 0) {
+      toast.info("Nenhum pagamento previsto foi encontrado para esta negociação.");
+      return;
+    }
+
+    titles.forEach(upsertFinancialTitle);
+    toast.success(`${titles.length} pagamento(s) gerado(s) para ${row.simulation.number}.`);
+  };
+
+  const handlePayNegotiation = (row: NegotiationPaymentRow) => {
+    if (row.payables.length === 0) {
+      handleGenerateNegotiationPayment(row);
+      return;
+    }
+
+    const nextTitle = row.payables.find(
+      (title) => title.status !== "paid" && title.status !== "cancelled",
+    );
+    if (!nextTitle) {
+      toast.info("Todos os pagamentos desta negociação já foram baixados.");
+      return;
+    }
+
+    handleRegisterPayment(nextTitle);
+  };
+
   const handleRegisterPayment = (title: FinancialTitle) => {
     const remainingAmount = getRemainingAmount(title);
     if (remainingAmount <= 0) {
@@ -421,6 +491,10 @@ function FinancialPage() {
 
   const receivableColumns = buildFinancialColumns("Cliente", "Recebido", handleRegisterPayment);
   const payableColumns = buildFinancialColumns("Favorecido", "Pago", handleRegisterPayment);
+  const negotiationPaymentColumns = buildNegotiationPaymentColumns(
+    handleGenerateNegotiationPayment,
+    handlePayNegotiation,
+  );
 
   return (
     <div className="space-y-6">
@@ -648,9 +722,30 @@ function FinancialPage() {
 
       <Tabs defaultValue="receivable" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="negotiation-payment">Pagamento de negociação</TabsTrigger>
           <TabsTrigger value="receivable">Contas a receber</TabsTrigger>
           <TabsTrigger value="payable">Contas a pagar</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="negotiation-payment">
+          <Card className="shadow-card">
+            <CardHeader className="space-y-1">
+              <CardTitle>Pagamento de negociação</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Propostas aprovadas pelo Gestor entram aqui para o Financeiro pagar e informar o
+                comprovante antes da validação comercial.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <DataTable
+                columns={negotiationPaymentColumns}
+                data={negotiationPaymentRows}
+                emptyTitle="Sem negociações aguardando pagamento"
+                emptyDescription="Quando o Gestor aprovar uma proposta, ela aparecerá nesta fila."
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="receivable">
           <FinancialTitleCard
@@ -739,6 +834,133 @@ function buildFinancialColumns(
       ),
     },
   ];
+}
+
+type NegotiationPaymentRow = {
+  simulation: Simulation;
+  payables: FinancialTitle[];
+  amount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  dueDate?: string;
+  proofStatus: string;
+  status: string;
+};
+
+function buildNegotiationPaymentColumns(
+  onGeneratePayment: (row: NegotiationPaymentRow) => void,
+  onPay: (row: NegotiationPaymentRow) => void,
+): DataColumn<NegotiationPaymentRow>[] {
+  return [
+    {
+      key: "number",
+      header: "Negociação",
+      cell: (row) => (
+        <div>
+          <p className="font-semibold text-foreground">{row.simulation.number}</p>
+          <p className="text-xs text-muted-foreground">{row.simulation.supplier}</p>
+        </div>
+      ),
+    },
+    { key: "client", header: "Cliente", cell: (row) => row.simulation.client },
+    { key: "owner", header: "Comercial", cell: (row) => row.simulation.owner },
+    {
+      key: "due",
+      header: "Vencimento",
+      cell: (row) => (row.dueDate ? formatDate(row.dueDate) : "Gerar pagamentos"),
+    },
+    {
+      key: "value",
+      header: "Valor previsto",
+      className: "text-right",
+      cell: (row) => <span className="font-medium">{formatCurrency(row.amount)}</span>,
+    },
+    {
+      key: "paid",
+      header: "Pago",
+      className: "text-right",
+      cell: (row) => formatCurrency(row.paidAmount),
+    },
+    {
+      key: "remaining",
+      header: "Saldo",
+      className: "text-right",
+      cell: (row) => <span className="font-medium">{formatCurrency(row.remainingAmount)}</span>,
+    },
+    {
+      key: "proof",
+      header: "Comprovante",
+      cell: (row) => row.proofStatus,
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (row) => <StatusBadge status={row.status} />,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      cell: (row) => (
+        <Button
+          size="sm"
+          variant={row.payables.length ? "outline" : "soft"}
+          disabled={row.remainingAmount <= 0 && row.payables.length > 0}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (row.payables.length) {
+              onPay(row);
+            } else {
+              onGeneratePayment(row);
+            }
+          }}
+        >
+          {row.payables.length ? <CheckCircle2 /> : <Plus />}
+          {row.payables.length ? "Dar baixa" : "Gerar pagamentos"}
+        </Button>
+      ),
+    },
+  ];
+}
+
+function buildNegotiationPaymentRow(
+  simulation: Simulation,
+  payables: FinancialTitle[],
+): NegotiationPaymentRow {
+  const referencePayables = payables.length
+    ? payables
+    : createPreOrderPayableTitlesFromSimulation(simulation);
+  const amount = roundCurrency(referencePayables.reduce((sum, title) => sum + title.amount, 0));
+  const paidAmount = roundCurrency(
+    payables.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0),
+  );
+  const remainingAmount = Math.max(0, roundCurrency(amount - paidAmount));
+  const sortedDueDates = referencePayables
+    .map((title) => title.dueDate)
+    .filter(Boolean)
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  const proofCount = payables.filter(hasPaymentProof).length;
+  const paidCount = payables.filter((title) => title.status === "paid").length;
+  const status =
+    payables.length === 0
+      ? "Aguardando pagamento"
+      : remainingAmount <= 0 && proofCount === payables.length
+        ? "Aguardando validação comercial"
+        : paidCount > 0
+          ? "Pagamento realizado"
+          : "Aguardando pagamento";
+
+  return {
+    simulation,
+    payables,
+    amount,
+    paidAmount,
+    remainingAmount,
+    dueDate: sortedDueDates[0],
+    proofStatus:
+      payables.length === 0 ? "Pendente" : `${proofCount}/${payables.length} comprovante(s)`,
+    status,
+  };
 }
 
 type BillingForm = {
