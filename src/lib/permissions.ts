@@ -74,15 +74,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "orders:convert",
     "reports:view",
   ],
-  Financeiro: [
-    "dashboard:view",
-    "approvals:view",
-    "approvals:decide",
-    "orders:view",
-    "finance:view",
-    "freights:view",
-    "reports:view",
-  ],
+  Financeiro: ["dashboard:view", "orders:view", "finance:view", "freights:view", "reports:view"],
   Admin: allPermissions,
 };
 
@@ -131,8 +123,11 @@ export function isPendingApprovalStatus(status: Simulation["status"]) {
   return (
     status === "Pendente de aprovação" ||
     status === "Em análise" ||
-    status === "Aguardando financeiro" ||
-    status === "Aguardando aprovação do Gestor"
+    status === "Aguardando aprovação do Gestor" ||
+    status === "Aguardando pagamento" ||
+    status === "Pagamento realizado" ||
+    status === "Comprovante anexado" ||
+    status === "Aguardando validação comercial"
   );
 }
 
@@ -149,7 +144,11 @@ export function canEditSimulation(user: User | null | undefined, simulation: Sim
   if (normalizeRole(user.role) === "Admin") return true;
   if (!hasPermission(user, "simulations:edit-own")) return false;
   if (!isSimulationOwner(user, simulation)) return false;
-  return simulation.status === "Rascunho" || simulation.status === "Ajuste solicitado";
+  return (
+    simulation.status === "Rascunho" ||
+    simulation.status === "Ajuste solicitado" ||
+    simulation.status === "Aguardando validação comercial"
+  );
 }
 
 export function canSubmitSimulationForApproval(

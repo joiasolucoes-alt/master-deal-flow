@@ -157,6 +157,95 @@ export function createOperationalFinancialTitlesFromSimulationOrder(
   ];
 }
 
+export function createPreOrderPayableTitlesFromSimulation(
+  simulation: Simulation,
+  now = new Date(),
+) {
+  const titles: FinancialTitle[] = [];
+  const purchaseItems = simulation.purchaseItems.filter((item) => item.value > 0);
+  const baseDueDate = addDays(simulation.deliveryDate || simulation.createdAt, -1);
+
+  if (purchaseItems.length > 0) {
+    purchaseItems.forEach((item, index) => {
+      const suffix = normalizeTitleSuffix(item.type || `NF-${index + 1}`);
+      titles.push(
+        createSimulationPayableTitle({
+          id: `prepay-${simulation.id}-purchase-${index + 1}-${suffix}`,
+          simulation,
+          titleNumber: `${simulation.number}-PAG-${suffix}`,
+          payee: item.supplier || simulation.supplier || "Fornecedor da proposta",
+          amount: item.value,
+          dueDate: baseDueDate,
+          notes: `${item.type} ${item.document ? `(${item.document})` : ""} previsto antes da confirmação do pedido.`,
+          now,
+        }),
+      );
+    });
+  } else {
+    titles.push(
+      createSimulationPayableTitle({
+        id: `prepay-${simulation.id}-goods`,
+        simulation,
+        titleNumber: `${simulation.number}-PAG-MERC`,
+        payee: simulation.supplier || "Fornecedor da proposta",
+        amount: getSimulationTotals(simulation).merchandiseCost,
+        dueDate: baseDueDate,
+        notes: "Pagamento previsto da mercadoria antes da confirmação do pedido.",
+        now,
+      }),
+    );
+  }
+
+  createSimulationExpensePayables(simulation, now).forEach((title) => titles.push(title));
+
+  return dedupeFinancialTitles(titles).filter((title) => title.amount > 0);
+}
+
+export function getRequiredPayablesForSimulation(
+  titles: FinancialTitle[],
+  simulationId: string | undefined,
+) {
+  if (!simulationId) return [];
+  return titles.filter(
+    (title) =>
+      title.simulationId === simulationId &&
+      title.type === "payable" &&
+      title.status !== "cancelled" &&
+      title.amount > 0,
+  );
+}
+
+export function hasPaymentProof(title: FinancialTitle) {
+  return Boolean(title.proofFileName || title.proofFilePath || title.proofAttachedAt);
+}
+
+export function areSimulationPayablesPaidWithProof(
+  simulation: Simulation,
+  titles: FinancialTitle[],
+) {
+  const requiredPayables = getRequiredPayablesForSimulation(titles, simulation.id);
+  if (requiredPayables.length === 0) return false;
+  return requiredPayables.every(
+    (title) => getFinancialTitleStatus(title) === "paid" && hasPaymentProof(title),
+  );
+}
+
+export function linkSimulationTitlesToOrder(
+  simulation: Simulation,
+  order: Order,
+  titles: FinancialTitle[],
+) {
+  return titles.map((title) => {
+    if (title.simulationId !== simulation.id) return title;
+    return {
+      ...title,
+      orderId: order.id,
+      orderNumber: order.number,
+      notes: addUniqueText(title.notes, `Vinculado ao pedido confirmado ${order.number}.`),
+    };
+  });
+}
+
 export function createPayableTitlesFromSimulationOrder(
   simulation: Simulation,
   order: Order,
@@ -211,7 +300,7 @@ export function isOrderFinanciallyReleased(order: Order | undefined, titles: Fin
 }
 
 export function getFreightReleaseStatusLabel(order: Order | undefined, titles: FinancialTitle[]) {
-  if (!order) return "Sem pedido vinculado";
+  if (!order) return "Aguardando pagamento";
   if (order.status === "Entregue") return "Finalizado";
   if (isOrderFinanciallyReleased(order, titles)) return "Liberado para contratação";
   return "Aguardando liberação financeira";
@@ -220,6 +309,8 @@ export function getFreightReleaseStatusLabel(order: Order | undefined, titles: F
 export function releaseOrderForFreightIfReady(order: Order, titles: FinancialTitle[]) {
   if (!isOrderFinanciallyReleased(order, titles)) return order;
   if (
+    order.status !== "Pedido confirmado" &&
+    order.status !== "Frete liberado" &&
     order.status !== "Aguardando faturamento" &&
     order.status !== "Em faturamento" &&
     order.status !== "Aguardando frete"
@@ -232,17 +323,17 @@ export function releaseOrderForFreightIfReady(order: Order, titles: FinancialTit
 
   return {
     ...order,
-    status: "Aguardando frete" as const,
-    logisticsStatus: "Financeiro liberou a operação para contratação do frete.",
-    notes: addUnique(order.notes, "Operação liberada pelo financeiro para o frete."),
+    status: "Frete liberado" as const,
+    logisticsStatus: "Pagamento validado pelo Comercial. Frete liberado para execução.",
+    notes: addUnique(order.notes, "Operação liberada pelo Financeiro e validada pelo Comercial."),
     timeline: timelineExists
       ? order.timeline
       : [
           ...order.timeline,
           {
             id: "financial-release",
-            title: "Liberação financeira",
-            description: "Contas necessárias baixadas. Frete liberado para contratação.",
+            title: "Liberação operacional",
+            description: "Pagamento comprovado e validado. Frete liberado para execução.",
             date: now,
             completed: true,
           },
@@ -295,6 +386,38 @@ function createPayableTitle(payload: {
   return { ...title, status: getFinancialTitleStatus(title, payload.now) };
 }
 
+function createSimulationPayableTitle(payload: {
+  id: string;
+  simulation: Simulation;
+  titleNumber: string;
+  payee: string;
+  amount: number;
+  dueDate: string;
+  notes: string;
+  now: Date;
+}): FinancialTitle {
+  const title: FinancialTitle = {
+    id: payload.id,
+    simulationId: payload.simulation.id,
+    simulationNumber: payload.simulation.number,
+    client: payload.payee,
+    titleNumber: payload.titleNumber,
+    type: "payable",
+    status: "open",
+    dueDate: payload.dueDate,
+    amount: payload.amount,
+    paidAmount: 0,
+    paymentMethod: "Transferência",
+    bankName: "",
+    notes: payload.notes,
+    owner: payload.simulation.owner,
+    unit: payload.simulation.unit,
+    createdAt: payload.now.toISOString(),
+  };
+
+  return { ...title, status: getFinancialTitleStatus(title, payload.now) };
+}
+
 function createPurchasePayableTitle(
   simulation: Simulation,
   order: Order,
@@ -336,6 +459,34 @@ function createExpensePayables(simulation: Simulation, order: Order, now: Date) 
         amount,
         dueDate: addDays(order.date, getExpenseDueDays(expense)),
         notes: `${expense.type} previsto na simulação (${expense.calculationType === "percentage" ? `${expense.value}%` : "valor fixo"}).`,
+        now,
+      });
+    })
+    .filter((title): title is FinancialTitle => Boolean(title));
+}
+
+function createSimulationExpensePayables(simulation: Simulation, now: Date) {
+  const totals = getSimulationTotals(simulation);
+  const bases = {
+    revenue: totals.revenue,
+    purchaseTotal: totals.purchaseTotal,
+    grossProfit: totals.grossProfit,
+  };
+  const baseDueDate = addDays(simulation.deliveryDate || simulation.createdAt, -1);
+
+  return simulation.expenseItems
+    .map((expense, index) => {
+      const amount = roundCurrency(getExpenseTotal(expense, bases));
+      if (amount <= 0) return null;
+      const suffix = normalizeExpenseSuffix(expense, index);
+      return createSimulationPayableTitle({
+        id: `prepay-${simulation.id}-expense-${index + 1}-${suffix}`,
+        simulation,
+        titleNumber: `${simulation.number}-PAG-${suffix}`,
+        payee: getExpensePayee(expense),
+        amount,
+        dueDate: expense.type === "Comissão" ? addDays(simulation.deliveryDate, 30) : baseDueDate,
+        notes: `${expense.type} previsto na proposta antes da confirmação do pedido.`,
         now,
       });
     })
@@ -398,6 +549,11 @@ function addDays(baseDate: string, days: number) {
 function addUnique(values: string[], value: string) {
   if (values.includes(value)) return values;
   return [...values, value];
+}
+
+function addUniqueText(current: string, value: string) {
+  if (current.includes(value)) return current;
+  return current ? `${current} ${value}` : value;
 }
 
 function startOfDay(date: Date) {

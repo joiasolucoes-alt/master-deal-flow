@@ -1,3 +1,9 @@
+# Onda atual - frete visivel, mas bloqueado
+
+O Frete pode visualizar uma operacao futura apos a aprovacao do Gestor, mas nao pode executar antes de pagamento e validacao comercial.
+
+Depois da validacao comercial, o pedido e confirmado e o frete fica liberado para contratar, anexar documentos e gerar link real do motorista.
+
 # Fluxo de Frete
 
 ## Visibilidade
@@ -23,4 +29,3 @@ Quando o Financeiro baixa as contas a pagar, o pedido muda para `Aguardando fret
 `Liberado para contratacao`
 
 Depois disso, o usuario pode cadastrar transportadora, motorista, veiculo, documentos e gerar o link temporario do motorista.
-

@@ -1,3 +1,9 @@
+# Onda atual - pre-pedido, pagamento e liberacao operacional
+
+Nova regra validada com o cliente: a proposta aprovada pelo Gestor nao vira pedido automaticamente. Ela entra em **Aguardando pagamento**, o Financeiro registra pagamento e comprovante, o Comercial valida esse comprovante e somente entao o sistema confirma o pedido e libera o frete.
+
+Fluxo atual da onda: Comercial cria proposta -> Gestor aprova -> Financeiro paga/anexa comprovante -> Comercial valida -> Pedido confirmado -> Frete liberado -> Motorista/entrega -> Fechamento.
+
 # Status atual - Onda 3 iniciada
 
 O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou a operação financeira pós-pedido.

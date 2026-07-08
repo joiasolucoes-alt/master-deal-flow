@@ -324,7 +324,6 @@ function normalizeStoredUser(user: User): User {
 const PENDING_APPROVAL_STATUSES = new Set<Simulation["status"]>([
   "Pendente de aprovação",
   "Em análise",
-  "Aguardando financeiro",
   "Aguardando aprovação do Gestor",
 ]);
 
@@ -336,7 +335,7 @@ function mergeRemoteSimulationsWithLocalPending(
   const localPending = localSimulations.filter(
     (simulation) =>
       PENDING_APPROVAL_STATUSES.has(simulation.status) &&
-      simulation.approvalFlow?.financial.status === "pending",
+      simulation.approvalFlow?.principal.status === "pending",
   );
 
   if (localPending.length === 0) return remoteSimulations;

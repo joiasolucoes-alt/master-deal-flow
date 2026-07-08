@@ -49,6 +49,17 @@ export type SimulationRow = {
   adjustment_requested_at?: string | null;
   adjustment_requested_by?: string | null;
   adjustment_stage?: "financial" | "principal" | null;
+  payment_requested_at?: string | null;
+  payment_paid_at?: string | null;
+  payment_paid_by?: string | null;
+  payment_receipt_file_name?: string | null;
+  payment_receipt_file_path?: string | null;
+  payment_receipt_attached_at?: string | null;
+  payment_receipt_attached_by?: string | null;
+  payment_validation_notes?: string | null;
+  payment_validated_at?: string | null;
+  payment_validated_by?: string | null;
+  payment_adjustment_reason?: string | null;
   converted_order_external_id?: string | null;
   converted_at?: string | null;
   created_at?: string | null;
@@ -261,6 +272,17 @@ export function simulationToRow(simulation: Simulation): Record<string, unknown>
       simulation.status === "Ajuste solicitado" ? (simulation.adjustmentRequestedBy ?? null) : null,
     adjustment_stage:
       simulation.status === "Ajuste solicitado" ? (simulation.adjustmentStage ?? null) : null,
+    payment_requested_at: simulation.paymentRequestedAt ?? null,
+    payment_paid_at: simulation.paymentPaidAt ?? null,
+    payment_paid_by: simulation.paymentPaidBy ?? null,
+    payment_receipt_file_name: simulation.paymentReceiptFileName ?? null,
+    payment_receipt_file_path: simulation.paymentReceiptFilePath ?? null,
+    payment_receipt_attached_at: simulation.paymentReceiptAttachedAt ?? null,
+    payment_receipt_attached_by: simulation.paymentReceiptAttachedBy ?? null,
+    payment_validation_notes: simulation.paymentValidationNotes ?? null,
+    payment_validated_at: simulation.paymentValidatedAt ?? null,
+    payment_validated_by: simulation.paymentValidatedBy ?? null,
+    payment_adjustment_reason: simulation.paymentAdjustmentReason ?? null,
     converted_order_external_id: simulation.orderId ?? null,
     converted_at: simulation.convertedAt ?? null,
     created_at: simulation.createdAt,
@@ -382,6 +404,17 @@ export function rowToSimulation(row: SimulationRow): Simulation {
     adjustmentRequestedAt: getAdjustmentRequestedAtFromRows(row) ?? undefined,
     adjustmentRequestedBy: getAdjustmentRequestedByFromRows(row) ?? undefined,
     adjustmentStage: row.adjustment_stage ?? undefined,
+    paymentRequestedAt: row.payment_requested_at ?? undefined,
+    paymentPaidAt: row.payment_paid_at ?? undefined,
+    paymentPaidBy: row.payment_paid_by ?? undefined,
+    paymentReceiptFileName: row.payment_receipt_file_name ?? undefined,
+    paymentReceiptFilePath: row.payment_receipt_file_path ?? undefined,
+    paymentReceiptAttachedAt: row.payment_receipt_attached_at ?? undefined,
+    paymentReceiptAttachedBy: row.payment_receipt_attached_by ?? undefined,
+    paymentValidationNotes: row.payment_validation_notes ?? undefined,
+    paymentValidatedAt: row.payment_validated_at ?? undefined,
+    paymentValidatedBy: row.payment_validated_by ?? undefined,
+    paymentAdjustmentReason: row.payment_adjustment_reason ?? undefined,
     orderId: row.converted_order_external_id ?? undefined,
     convertedAt: row.converted_at ?? undefined,
   };

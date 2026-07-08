@@ -12,7 +12,6 @@ const pendingStep: ApprovalStepState = { status: "pending" };
 const pendingApprovalStatuses = new Set<Simulation["status"]>([
   "Pendente de aprovação",
   "Em análise",
-  "Aguardando financeiro",
   "Aguardando aprovação do Gestor",
 ]);
 
@@ -60,10 +59,7 @@ export function getCurrentApprovalStage(simulation: Simulation): ApprovalStage |
   }
 
   const flow = getApprovalFlow(simulation);
-  if (flow.financial.status === "pending") return "financial";
-  if (flow.financial.status === "approved" && flow.principal.status === "pending") {
-    return "principal";
-  }
+  if (flow.principal.status === "pending") return "principal";
   return null;
 }
 
@@ -90,15 +86,20 @@ export function canUserDecideApprovalStage(
 }
 
 export function canConvertApprovedSimulation(simulation: Simulation) {
-  return simulation.status === "Aprovada" && isSimulationFullyApproved(simulation);
+  return (
+    simulation.status === "Aguardando validação comercial" && isSimulationFullyApproved(simulation)
+  );
 }
 
 export function initializeApprovalFlow(simulation: Simulation): Simulation {
   return {
     ...simulation,
-    status: "Aguardando financeiro",
+    status: "Aguardando aprovação do Gestor",
     approvalFlow: {
-      financial: { status: "pending" },
+      financial: {
+        status: "approved",
+        notes: "Etapa financeira movida para pós-aprovação do Gestor.",
+      },
       principal: { status: "pending" },
     },
   };
@@ -160,12 +161,14 @@ export function applyApprovalDecision(
     ...simulation,
     status:
       nextFlow.financial.status === "approved" && nextFlow.principal.status === "approved"
-        ? "Aprovada"
-        : nextFlow.financial.status === "approved"
-          ? "Aguardando aprovação do Gestor"
-          : "Aguardando financeiro",
+        ? "Aguardando pagamento"
+        : "Aguardando aprovação do Gestor",
     approvalFlow: nextFlow,
     approvalNotes: payload.notes || simulation.approvalNotes,
+    paymentRequestedAt:
+      nextFlow.financial.status === "approved" && nextFlow.principal.status === "approved"
+        ? decidedAt
+        : simulation.paymentRequestedAt,
     adjustmentReason: undefined,
     adjustmentRequestedAt: undefined,
     adjustmentRequestedBy: undefined,

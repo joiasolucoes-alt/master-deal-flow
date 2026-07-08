@@ -283,9 +283,12 @@ async function insertNotification(
 ) {
   const importantStatuses = new Set<Simulation["status"]>([
     "Pendente de aprovação",
-    "Aguardando financeiro",
     "Aguardando aprovação do Gestor",
-    "Aprovada",
+    "Aguardando pagamento",
+    "Pagamento realizado",
+    "Comprovante anexado",
+    "Aguardando validação comercial",
+    "Pedido confirmado",
     "Ajuste solicitado",
     "Reprovada",
   ]);

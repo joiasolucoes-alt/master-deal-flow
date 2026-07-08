@@ -1,3 +1,11 @@
+# Onda atual - campos adicionados
+
+Novo SQL manual `019_pre_order_payment_release.sql` adiciona:
+
+- em `simulations`: campos de pagamento, comprovante e validacao comercial;
+- em `financial_titles`: vinculo com proposta (`simulation_external_id`, `simulation_number`) e dados de comprovante;
+- constraints de status atualizadas para aceitar pre-pedido, pagamento, validacao comercial e pedido confirmado.
+
 # Modelo de banco
 
 A primeira onda do banco cobre o fluxo principal do Master Flow: simulacao, aprovacao e pedido.
