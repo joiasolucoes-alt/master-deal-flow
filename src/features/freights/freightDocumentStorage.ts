@@ -11,7 +11,35 @@ const LOCAL_STORAGE_KEY = "master-flow:freight-documents";
 const MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_DOCUMENT_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 
-export type FreightDocumentType = "contract" | "proposal" | "invoice" | "other";
+export type FreightDocumentType =
+  | "driver_cnh"
+  | "driver_id"
+  | "driver_contact"
+  | "driver_employment"
+  | "driver_bank"
+  | "driver_selfie"
+  | "vehicle_crlv"
+  | "vehicle_crlv_trailer"
+  | "vehicle_antt"
+  | "vehicle_owner_doc"
+  | "vehicle_owner_authorization"
+  | "operation_proposal"
+  | "operation_contract"
+  | "operation_collection_order"
+  | "operation_invoice"
+  | "operation_cte_mdfe"
+  | "operation_insurance"
+  | "operation_payment_proof"
+  | "operation_toll_voucher"
+  | "operation_delivery_receipt"
+  | "cargo_mopp"
+  | "cargo_aet"
+  | "cargo_hygiene"
+  | "cargo_risk_management"
+  | "contract"
+  | "proposal"
+  | "invoice"
+  | "other";
 
 export type FreightDocumentRecord = {
   id: string;
