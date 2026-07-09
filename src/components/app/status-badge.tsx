@@ -46,13 +46,54 @@ const statusTone: Record<string, string> = {
   Ocorrência: "border-transparent bg-danger-soft text-danger",
 };
 
+/** Resolve o rótulo canônico de um status (aplica os apelidos de exibição). */
+function resolveStatusLabel(status: string): string {
+  return status === "Em separação"
+    ? "Aguardando frete"
+    : status === "Ajuste solicitado"
+      ? "Aguardando reajuste"
+      : status;
+}
+
+/**
+ * Cor semântica (CSS var) de um status, derivada do MESMO mapa `statusTone`
+ * usado no badge. Garante que a fatia do gráfico e o badge da listagem
+ * tenham exatamente a mesma cor para o mesmo status.
+ */
+const toneToColor: Record<string, string> = {
+  "text-success": "var(--color-success)",
+  "text-danger": "var(--color-danger)",
+  "text-warning": "var(--color-warning)",
+  "text-info": "var(--color-info)",
+  "text-primary": "var(--color-primary)",
+  "text-muted-foreground": "var(--color-muted-foreground)",
+};
+
+export function getStatusColor(status: string): string {
+  const classes = statusTone[resolveStatusLabel(status)] ?? statusTone.Rascunho;
+  const toneKey = Object.keys(toneToColor).find((key) => classes.includes(key));
+  return toneKey ? toneToColor[toneKey] : "var(--color-muted-foreground)";
+}
+
+export type StatusTone = "primary" | "success" | "warning" | "danger" | "info";
+
+const toneToName: Record<string, StatusTone> = {
+  "text-success": "success",
+  "text-danger": "danger",
+  "text-warning": "warning",
+  "text-info": "info",
+  "text-primary": "primary",
+};
+
+/** Tom semântico de um status, no formato aceito por componentes como `Progress`. */
+export function getStatusTone(status: string): StatusTone {
+  const classes = statusTone[resolveStatusLabel(status)] ?? statusTone.Rascunho;
+  const toneKey = Object.keys(toneToName).find((key) => classes.includes(key));
+  return toneKey ? toneToName[toneKey] : "primary";
+}
+
 export function StatusBadge({ status }: { status: string }) {
-  const label =
-    status === "Em separação"
-      ? "Aguardando frete"
-      : status === "Ajuste solicitado"
-        ? "Aguardando reajuste"
-        : status;
+  const label = resolveStatusLabel(status);
   return (
     <Badge
       className={cn("rounded-full px-3 py-1 font-medium", statusTone[label] ?? statusTone.Rascunho)}

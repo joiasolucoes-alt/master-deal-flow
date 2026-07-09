@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { DataTable, type DataColumn } from "@/components/app/data-table";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
+import { getStatusColor } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCompactCurrency, formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
@@ -73,13 +74,6 @@ const reports = [
     description: "Participação de cada SKU nas negociações fechadas.",
     tag: "Produtos",
   },
-];
-
-const pieColors = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
 ];
 
 function ReportsPage() {
@@ -466,8 +460,8 @@ function ReportsPage() {
                   outerRadius={90}
                   paddingAngle={3}
                 >
-                  {negotiationStatus.map((_, idx) => (
-                    <Cell key={idx} fill={pieColors[idx % pieColors.length]} />
+                  {negotiationStatus.map((entry) => (
+                    <Cell key={entry.name} fill={getStatusColor(entry.name)} />
                   ))}
                 </Pie>
                 <Tooltip

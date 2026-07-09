@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
-import { StatusBadge } from "@/components/app/status-badge";
+import { StatusBadge, getStatusColor, getStatusTone } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -59,13 +59,6 @@ const kpiIcons = [
   BriefcaseBusiness,
   CheckCircle2,
 ];
-const pieColors = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
-];
-
 function DashboardPage() {
   const { auth, simulations, orders } = useAppContext();
   const negotiations = useAppStore((store) => store.negotiations);
@@ -191,6 +184,12 @@ function DashboardPage() {
             value={kpi.value}
             icon={kpiIcons[idx] ?? Handshake}
             tone={kpi.tone as "success" | "warning" | "danger" | "info"}
+            trend={
+              kpi.label === "Receita simulada"
+                ? simulationEvolutionData.map((item) => item.value)
+                : undefined
+            }
+            trendPositive={evolutionDelta >= 0}
           />
         ))}
       </div>
@@ -294,10 +293,10 @@ function DashboardPage() {
                   paddingAngle={4}
                   animationDuration={500}
                 >
-                  {statusData.map((_, idx) => (
+                  {statusData.map((entry) => (
                     <Cell
-                      key={idx}
-                      fill={pieColors[idx % pieColors.length]}
+                      key={entry.name}
+                      fill={getStatusColor(entry.name)}
                       stroke="var(--color-card)"
                       strokeWidth={2}
                     />
@@ -433,7 +432,11 @@ function DashboardPage() {
                   <span>Entrega</span>
                   <span>{order.deliveryProgress}%</span>
                 </div>
-                <Progress value={order.deliveryProgress} className="h-2" />
+                <Progress
+                  value={order.deliveryProgress}
+                  tone={getStatusTone(order.status)}
+                  className="h-2"
+                />
               </div>
               <p className="text-xs text-muted-foreground">
                 Previsão: {formatDateTime(order.expectedDelivery)}

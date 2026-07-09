@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
-import { StatusBadge } from "@/components/app/status-badge";
+import { StatusBadge, getStatusTone } from "@/components/app/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -392,7 +392,11 @@ function DeliveryCard({
             <span>Entrega</span>
             <span>{progress}%</span>
           </div>
-          <Progress value={progress} className="h-2" />
+          <Progress
+            value={progress}
+            tone={getStatusTone(getDeliveryStatusLabel(delivery.status))}
+            className="h-2"
+          />
         </div>
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
