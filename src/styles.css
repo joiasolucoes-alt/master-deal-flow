@@ -81,18 +81,18 @@
   --muted-foreground: oklch(0.51 0.018 160);
   --accent: oklch(0.93 0.016 155);
   --accent-foreground: oklch(0.24 0.026 160);
-  --destructive: oklch(0.62 0.24 25);
+  --destructive: oklch(0.58 0.23 25);
   --destructive-foreground: oklch(0.99 0.003 145);
-  --border: oklch(0.88 0.01 155);
-  --input: oklch(0.86 0.012 155);
-  --ring: oklch(0.75 0.18 130 / 48%);
+  --border: oklch(0.84 0.012 158);
+  --input: oklch(0.64 0.012 158);
+  --ring: oklch(0.6 0.2 132 / 90%);
   --shell: oklch(0.965 0.006 155);
   --panel: oklch(0.995 0.002 155);
-  --success: oklch(0.54 0.16 148);
+  --success: oklch(0.51 0.16 148);
   --success-soft: oklch(0.95 0.035 148);
-  --warning: oklch(0.59 0.15 73);
+  --warning: oklch(0.53 0.14 73);
   --warning-soft: oklch(0.96 0.04 82);
-  --danger: oklch(0.56 0.2 25);
+  --danger: oklch(0.55 0.2 25);
   --danger-soft: oklch(0.96 0.028 25);
   --info: oklch(0.5 0.16 252);
   --info-soft: oklch(0.95 0.025 250);
@@ -132,11 +132,11 @@
   --muted-foreground: oklch(0.72 0.01 155);
   --accent: oklch(0.22 0.014 160);
   --accent-foreground: oklch(0.97 0.004 145);
-  --destructive: oklch(0.62 0.24 25);
+  --destructive: oklch(0.58 0.23 25);
   --destructive-foreground: oklch(0.98 0.004 145);
-  --border: oklch(0.26 0.01 165);
-  --input: oklch(0.24 0.01 165);
-  --ring: oklch(0.92 0.24 128 / 45%);
+  --border: oklch(0.32 0.012 168);
+  --input: oklch(0.47 0.012 168);
+  --ring: oklch(0.88 0.22 128 / 85%);
   --shell: oklch(0.14 0.015 165);
   --panel: oklch(0.18 0.014 165);
   --success: oklch(0.84 0.22 132);
@@ -249,11 +249,11 @@
   /* Neon primary is unreadable as text on the light shell; darken text-primary
      only in light mode. Backgrounds/fills keep the bright brand color. */
   html:not(.dark) .text-primary {
-    color: oklch(0.55 0.19 138);
+    color: oklch(0.5 0.19 138);
   }
   html:not(.dark) .bg-primary-soft.text-primary,
   html:not(.dark) .fill-primary {
-    color: oklch(0.55 0.19 138);
+    color: oklch(0.5 0.19 138);
   }
 
   /* Smooth interactive feedback across the app */

@@ -4,7 +4,7 @@ import { Eye, Search } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { FilterBar } from "@/components/app/filter-bar";
 import { DataTable, type DataColumn } from "@/components/app/data-table";
-import { StatusBadge } from "@/components/app/status-badge";
+import { StatusBadge, getStatusTone } from "@/components/app/status-badge";
 import { StatCard } from "@/components/app/stat-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,7 +107,7 @@ function OrdersPage() {
           <div className="flex items-center justify-between text-xs">
             <span>{o.deliveryProgress}%</span>
           </div>
-          <Progress value={o.deliveryProgress} className="h-2" />
+          <Progress value={o.deliveryProgress} tone={getStatusTone(o.status)} className="h-2" />
         </div>
       ),
     },
