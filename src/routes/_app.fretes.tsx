@@ -238,7 +238,8 @@ function FreightsPage() {
     (freight: FreightRecord, order?: Order) => {
       if (freight.freightValue <= 0 || !freight.freightPaymentDueDate) return;
       const existing = financialTitles.find(
-        (title) => title.id === (freight.freightPaymentTitleId || buildFreightPayableTitleId(freight)),
+        (title) =>
+          title.id === (freight.freightPaymentTitleId || buildFreightPayableTitleId(freight)),
       );
       const nextTitle = buildFreightPayableTitle(freight, order, existing);
       if (!nextTitle) return;
@@ -461,7 +462,10 @@ function FreightsPage() {
             ) : null}
             {visibleFreights.map((freight) => {
               const order = orders.find((item) => item.id === freight.orderId);
-              const status = getChecklistStatus(freight, selectedFreightId === freight.id ? documents : []);
+              const status = getChecklistStatus(
+                freight,
+                selectedFreightId === freight.id ? documents : [],
+              );
               const releaseLabel = getFreightReleaseStatusLabel(order, financialTitles);
               return (
                 <button
@@ -947,12 +951,7 @@ function StatusPill({
     <div className="rounded-2xl border p-3">
       <div className="flex items-center justify-between text-sm">
         <span className="font-medium">{label}</span>
-        <span
-          className={cn(
-            "text-xs",
-            ready ? "text-success" : "text-muted-foreground",
-          )}
-        >
+        <span className={cn("text-xs", ready ? "text-success" : "text-muted-foreground")}>
           {done}/{total}
         </span>
       </div>
@@ -1264,30 +1263,28 @@ function DriverAccessCard({
 
         <div className="space-y-3 rounded-2xl border p-4">
           <h3 className="font-semibold">Timeline do motorista</h3>
-          {access?.events.length ? (
-            access.events.map((event) => (
-              <div key={event.id} className="flex items-start gap-3 text-sm">
-                <div className="mt-1 h-3 w-3 rounded-full bg-primary" />
-                <div>
-                  <p className="font-medium">{event.eventLabel}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDateTime(event.occurredAt)}
-                    {event.latitude ? " • localização registrada" : ""}
-                  </p>
+          {access?.events.length
+            ? access.events.map((event) => (
+                <div key={event.id} className="flex items-start gap-3 text-sm">
+                  <div className="mt-1 h-3 w-3 rounded-full bg-primary" />
+                  <div>
+                    <p className="font-medium">{event.eventLabel}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDateTime(event.occurredAt)}
+                      {event.latitude ? " • localização registrada" : ""}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))
-          ) : (
-            DRIVER_EVENT_FLOW.map((step) => (
-              <div key={step.type} className="flex items-start gap-3 text-sm">
-                <div className="mt-1 h-3 w-3 rounded-full bg-muted" />
-                <div>
-                  <p className="font-medium">{step.label}</p>
-                  <p className="text-xs text-muted-foreground">Pendente</p>
+              ))
+            : DRIVER_EVENT_FLOW.map((step) => (
+                <div key={step.type} className="flex items-start gap-3 text-sm">
+                  <div className="mt-1 h-3 w-3 rounded-full bg-muted" />
+                  <div>
+                    <p className="font-medium">{step.label}</p>
+                    <p className="text-xs text-muted-foreground">Pendente</p>
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
+              ))}
 
           {access?.proofs.length ? (
             <div className="space-y-2 rounded-xl border bg-muted/30 p-3">

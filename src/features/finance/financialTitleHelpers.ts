@@ -604,4 +604,3 @@ export function buildFreightPayableTitle(
   };
   return { ...title, status: getFinancialTitleStatus(title, now) };
 }
-
