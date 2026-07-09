@@ -47,6 +47,7 @@ Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 | 022 | `fix_freights_status_constraint` *(proposto)* | Remove a constraint dupla/enganosa de `freights.status`, deixando só a canônica (6 valores). ⚠️ Testar em preview. |
 | 023 | `add_organization_id_to_core_tables` *(proposto)* | Adiciona `organization_id` + backfill em `simulations`/`orders`/`order_items`/`approvals`. ⚠️ Rodar `diagnostics/002` antes. |
 | 024 | `role_based_rls_core_tables` *(proposto)* | RLS por organização nessas 4 tabelas, substituindo as policies provisórias do 021. ⚠️ **Só após 023 com 0 nulos.** |
+| 025 | `role_based_rls_followup_tables` *(proposto)* | RLS nas tabelas restantes: filhas de simulação e realized_results (org via pai), negotiations (add org + backfill), units, profiles. ⚠️ Depende de 021 + 023. |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 
