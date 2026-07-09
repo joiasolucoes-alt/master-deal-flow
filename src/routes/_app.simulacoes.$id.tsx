@@ -93,6 +93,7 @@ import {
   isPendingApprovalStatus,
   normalizeRole,
 } from "@/lib/permissions";
+import { matchesUserIdentity } from "@/lib/userIdentity";
 import { filterSimulationsForUser } from "@/lib/visibility";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
@@ -2448,6 +2449,8 @@ function canValidatePaymentProof(user: User | null | undefined, simulation: Simu
   const role = normalizeRole(user.role);
   if (role === "Admin") return true;
   if (role !== "Comercial") return false;
-  const owner = simulation.owner.trim().toLowerCase();
-  return owner === user.name.trim().toLowerCase() || owner === user.email.trim().toLowerCase();
+  // Usa o matcher robusto (trata "Junior"->"jr", acentos, prefixo de e-mail e id),
+  // em vez de comparação exata de string, que falhava quando o nome de login diferia
+  // do texto salvo como dono (ex.: "Djalma Junior" vs "djalma_jr").
+  return matchesUserIdentity(simulation.owner, user);
 }
