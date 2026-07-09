@@ -1015,7 +1015,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password.trim()) {
+    // Espelha o cadastro (registerUser), que grava a senha com trim(). Sem isso,
+    // um espaço acidental no login gera "Credenciais inválidas" mesmo com a senha correta.
+    const normalizedPassword = password.trim();
+    if (!normalizedEmail || !normalizedPassword) {
       return { ok: false, message: "E-mail e senha são obrigatórios." };
     }
 
@@ -1030,7 +1033,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loginResult = await withTimeout(
           client.auth.signInWithPassword({
             email: normalizedEmail,
-            password,
+            password: normalizedPassword,
           }),
           "O login demorou mais que o esperado. Verifique a conexão e tente novamente.",
         );
@@ -1067,7 +1070,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (getDataProvider() === "local") {
       const localUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
-      if (!localUser || localUser.password !== password) {
+      if (!localUser || localUser.password !== normalizedPassword) {
         clearAuthContext();
         return { ok: false, message: supabaseLoginErrorMessage ?? "Credenciais inválidas." };
       }
