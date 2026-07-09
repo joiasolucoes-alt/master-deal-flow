@@ -1,5 +1,11 @@
 export type ThemeMode = "light" | "dark" | "system";
-export type UserRole = "Comercial" | "Negociações" | "Aprovador" | "Financeiro" | "Admin";
+export type UserRole =
+  | "Comercial"
+  | "Negociações"
+  | "Aprovador"
+  | "Financeiro"
+  | "Frete"
+  | "Admin";
 export type UserStatus = "Pendente" | "Ativo" | "Bloqueado";
 
 export type AppStatus =

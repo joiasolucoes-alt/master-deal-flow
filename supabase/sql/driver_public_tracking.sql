@@ -1,3 +1,11 @@
+-- ============================================================================
+-- ⚠️ OBSOLETO / NÃO APLICAR — desenho antigo do portal do motorista (só token).
+-- Substituído por: supabase/manual-sql/018_temporary_driver_portal.sql
+--                  == supabase/migrations/202607070003_driver_portal.sql (token + PIN).
+-- O frontend (src/lib/driverTracking.ts) e as edge functions usam o desenho novo.
+-- Mantido apenas para rastreabilidade. Ver docs/schema-consolidation.md (Conflito 2).
+-- ============================================================================
+
 -- Driver public tracking for Fretes/Entregas.
 -- Apply after the base Master Flow schema. Keeps RLS enabled and exposes public access only via RPC token validation.
 

@@ -48,7 +48,14 @@ function SettingsPage() {
     orders,
   } = app;
   const user = auth.user;
-  const roleOptions: UserRole[] = ["Comercial", "Negociações", "Aprovador", "Financeiro", "Admin"];
+  const roleOptions: UserRole[] = [
+    "Comercial",
+    "Negociações",
+    "Aprovador",
+    "Financeiro",
+    "Frete",
+    "Admin",
+  ];
   const statusOptions: UserStatus[] = ["Ativo", "Bloqueado"];
 
   async function changeUserAccess(id: string, payload: { role?: UserRole; status?: UserStatus }) {

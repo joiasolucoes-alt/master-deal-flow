@@ -154,6 +154,7 @@ const DATABASE_ROLE_BY_APP_ROLE: Record<UserRole, string> = {
   Negociações: "gestor",
   Aprovador: "aprovador",
   Financeiro: "financeiro",
+  Frete: "frota",
   Admin: "admin",
 };
 const DEFAULT_SIGNUP_ROLE = "comercial";
@@ -175,7 +176,7 @@ function getAvatarHue(seed: string) {
 }
 
 function chooseHighestRole(roles: Array<string | null | undefined>) {
-  const priority = ["admin", "gestor", "aprovador", "financeiro", "comercial"];
+  const priority = ["admin", "gestor", "aprovador", "financeiro", "frota", "comercial"];
   const normalizedRoles = roles.map(normalizeDatabaseRole).filter(Boolean);
 
   return priority.find((role) => normalizedRoles.includes(role)) ?? normalizedRoles[0] ?? null;
@@ -364,6 +365,8 @@ function normalizeDatabaseRole(role?: string | null): string | null {
   if (normalized.includes("gest") || normalized.includes("negocia")) return "gestor";
   if (normalized.includes("aprov")) return "aprovador";
   if (normalized.includes("financ")) return "financeiro";
+  if (normalized.includes("frota") || normalized.includes("frete") || normalized.includes("logist"))
+    return "frota";
   if (normalized.includes("comerc")) return "comercial";
   return normalized;
 }
@@ -419,7 +422,7 @@ async function resolveMembershipRole(
   organizationId: string,
   profileRole?: string | null,
 ) {
-  const roles = ["admin", "gestor", "aprovador", "financeiro", "comercial"];
+  const roles = ["admin", "gestor", "aprovador", "financeiro", "frota", "comercial"];
 
   for (const role of roles) {
     const { data, error } = await client.rpc("has_role", {
@@ -639,6 +642,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (normalized === "gestor") return "Negociações";
     if (normalized === "aprovador") return "Aprovador";
     if (normalized === "financeiro") return "Financeiro";
+    if (normalized === "frota") return "Frete";
     return "Comercial";
   };
 
