@@ -70,8 +70,31 @@ seus) continua sendo decisão de produto — exige um vínculo estável com `aut
 5. Só então replique em produção, em janela de baixo movimento.
 6. **Reversão**: reaplicar `003_basic_rls_for_homologation.sql` restaura as políticas abertas.
 
+## Estado APLICADO (2026-07, banco de homologação)
+
+Os scripts `022 → 021 → 023 → 024` foram aplicados e validados sob RLS (impersonando um
+usuário autenticado real): financial_titles (51), simulations (6), orders (3), freights (7),
+clients (6) — todos visíveis. Descobertas e ações durante a aplicação:
+
+- **Bug `min(uuid)`**: o backfill usava `min(id)` (inexistente para uuid). Trocado por
+  `select id ... limit 1` (organização única). Corrigido em 021 e 023.
+- **`organization_members` sem policy** (RLS ligada, 0 policies = nega tudo): fazia a
+  subconsulta `exists(...)` de TODAS as policies rbac_* retornar 0, escondendo tudo. Corrigido
+  com `rbac_read_own_membership` (`user_id = auth.uid()`, não recursiva) — **PASSO 1.5 do 021**.
+  Sem essa policy, todo o esquema de RLS por papel não funciona.
+
+### Follow-up conhecido (não bloqueante)
+
+Tabelas ainda com policies abertas (não estavam no escopo do 021, seguem legíveis como antes):
+`negotiations`, `profiles`, `units`, `realized_results` e as filhas de simulação
+(`simulation_items`, `simulation_costs`, `simulation_purchase_costs`, `simulation_installments`).
+Num cenário de organização única com todos admin isso não vaza nada; para multi-org, dar a elas
+o mesmo tratamento (org-based onde houver `organization_id`; herança do pai nas filhas de
+simulação).
+
 ## O que fica para uma próxima etapa (decisão de produto)
 
 Visibilidade **por linha** para o perfil Comercial (ver só os próprios registros), espelhando
-`src/lib/visibility.ts`. Depende de padronizar o nome da coluna de "responsável/dono" em
-`simulations`/`orders` e decidir a regra exata. Há um exemplo comentado no fim do script 021.
+`src/lib/visibility.ts`. Está **bloqueada por dado**: `responsible_id` é 100% nulo em
+`simulations`/`orders` (embora `profiles.auth_user_id` exista). Exige o app passar a gravar
+esse vínculo. Há um exemplo comentado no fim do script 024.

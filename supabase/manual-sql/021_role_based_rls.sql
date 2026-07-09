@@ -37,10 +37,11 @@ begin;
 do $$
 declare org_count int; the_org uuid;
 begin
-  select count(*), min(id) into org_count, the_org from public.organizations;
+  select count(*) into org_count from public.organizations;
   if org_count <> 1 then
     raise exception 'Este script assume organizacao unica (encontrei %). Ajuste o PASSO 0 antes de rodar.', org_count;
   end if;
+  select id into the_org from public.organizations limit 1;
 
   update public.clients          set organization_id = the_org where organization_id is null;
   update public.suppliers        set organization_id = the_org where organization_id is null;
@@ -82,6 +83,18 @@ begin
     execute format('alter table public.%I enable row level security;', t);
   end loop;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- PASSO 1.5 — organization_members precisa ser LEGÍVEL pelo próprio usuário.
+-- CRÍTICO: todas as policies rbac_* fazem `exists (select 1 from organization_members
+-- where user_id = auth.uid())`. Se organization_members tiver RLS ligada e NENHUMA
+-- policy (que era o caso), essa subconsulta retorna 0 para o usuário autenticado e a
+-- RLS esconde TUDO. Esta policy (não recursiva: só a própria associação) destrava.
+-- ---------------------------------------------------------------------------
+alter table public.organization_members enable row level security;
+drop policy if exists rbac_read_own_membership on public.organization_members;
+create policy rbac_read_own_membership on public.organization_members
+  for select to authenticated using (user_id = auth.uid());
 
 -- ---------------------------------------------------------------------------
 -- PASSO 2 — G1: RLS por papel nas tabelas COM organization_id.

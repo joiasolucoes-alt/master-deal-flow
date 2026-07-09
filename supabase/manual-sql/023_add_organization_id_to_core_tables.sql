@@ -34,7 +34,8 @@ alter table public.approvals    add column if not exists organization_id uuid;
 do $$
 declare org_count int; the_org uuid;
 begin
-  select count(*), min(id) into org_count, the_org from public.organizations;
+  select count(*) into org_count from public.organizations;
+  select id into the_org from public.organizations limit 1;
 
   if org_count = 1 then
     update public.simulations set organization_id = the_org where organization_id is null;
