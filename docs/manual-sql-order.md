@@ -43,11 +43,12 @@ Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 | 018 | `temporary_driver_portal` | Portal do motorista (token + PIN). **Idêntico** à migration `202607070003` — aplique só um. |
 | 019 | `pre_order_payment_release` | Pagamento antecipado antes do pedido + comprovante em `financial_titles`. |
 | 020 | `wave_4_freight_checklist` | Checklist documental do frete por tipo de carga. |
-| 021 | `role_based_rls` *(proposto)* | Refinamento de RLS por papel + limpeza das policies abertas empilhadas. Fecha o buraco da RLS das carteiras. ⚠️ **Revisar antes de aplicar** — ver `docs/rls-refinement.md`. |
-| 022 | `fix_freights_status_constraint` *(proposto)* | Remove a constraint dupla/enganosa de `freights.status`, deixando só a canônica (6 valores). ⚠️ Testar em preview. |
-| 023 | `add_organization_id_to_core_tables` *(proposto)* | Adiciona `organization_id` + backfill em `simulations`/`orders`/`order_items`/`approvals`. ⚠️ Rodar `diagnostics/002` antes. |
-| 024 | `role_based_rls_core_tables` *(proposto)* | RLS por organização nessas 4 tabelas, substituindo as policies provisórias do 021. ⚠️ **Só após 023 com 0 nulos.** |
-| 025 | `role_based_rls_followup_tables` *(proposto)* | RLS nas tabelas restantes: filhas de simulação e realized_results (org via pai), negotiations (add org + backfill), units, profiles. ⚠️ Depende de 021 + 023. |
+| 021 | `role_based_rls` | ⚠️ **APLICADO E REVERTIDO** (quebrou a criação de registros). Não reaplicar sem o app gravar `organization_id`. Ver `docs/rls-refinement.md`. |
+| 022 | `fix_freights_status_constraint` | ✅ **Aplicado** em produção. Remove a constraint dupla de `freights.status`, deixando só a canônica (6 valores). |
+| 023 | `add_organization_id_to_core_tables` | ✅ Colunas **aplicadas** (aditivas, mantidas). Adiciona `organization_id` em `simulations`/`orders`/`order_items`/`approvals`. |
+| 024 | `role_based_rls_core_tables` | ⚠️ **APLICADO E REVERTIDO** — ver 021. |
+| 025 | `role_based_rls_followup_tables` | ⚠️ **APLICADO E REVERTIDO** — ver 021. |
+| 026 | `rollback_role_based_rls` | ✅ **Aplicado** em produção. Reverte 021/024/025 para políticas abertas (restaura a criação de registros). |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 

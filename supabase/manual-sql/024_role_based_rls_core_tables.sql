@@ -1,3 +1,8 @@
+-- ============================================================================
+-- ⚠️⚠️ APLICADO E DEPOIS REVERTIDO EM PRODUÇÃO (2026-07-09) — NÃO REAPLICAR.
+-- Ver o banner do 021 e docs/rls-refinement.md ("Incidente e reversão").
+-- Rollback em manual-sql/026.
+-- ============================================================================
 -- Nome da alteração: RLS por organização no núcleo comercial (pós-organization_id)
 -- Objetivo: Trocar as policies provisórias authenticated_all_* (criadas pelo 021)
 --           por RLS por organização em simulations/orders/order_items/approvals.

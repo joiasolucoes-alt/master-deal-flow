@@ -1,3 +1,10 @@
+-- ============================================================================
+-- ⚠️⚠️ APLICADO E DEPOIS REVERTIDO EM PRODUÇÃO (2026-07-09) — NÃO REAPLICAR.
+-- Quebrou a CRIAÇÃO de registros: o app não grava organization_id no INSERT, então
+-- o `with check` rejeitava as gravações. Rollback em manual-sql/026. Só reaplicar
+-- DEPOIS que o app (ou um trigger) passar a preencher organization_id. Ver
+-- docs/rls-refinement.md ("Incidente e reversão").
+-- ============================================================================
 -- Nome da alteração: RLS por papel + limpeza de políticas abertas redundantes
 -- Objetivo: Substituir as várias gerações de políticas abertas (using true) por um
 --           conjunto único, e aplicar RLS por papel nas tabelas que têm organization_id.
