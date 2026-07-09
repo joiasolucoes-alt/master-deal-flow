@@ -8,7 +8,9 @@ export function canViewAllFlows(user: User | null | undefined) {
 
 export function canViewOperationalQueues(user: User | null | undefined) {
   const role = normalizeRole(user?.role ?? "Comercial");
-  return role === "Admin" || role === "Financeiro" || role === "Aprovador";
+  return (
+    role === "Admin" || role === "Financeiro" || role === "Aprovador" || role === "Frete"
+  );
 }
 
 export function belongsToUser(owner: string | null | undefined, user: User | null | undefined) {

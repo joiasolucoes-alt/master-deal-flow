@@ -219,6 +219,18 @@ function FreightsPage() {
     void refreshDriverAccess(selectedFreight);
   }, [refreshDriverAccess, refreshFreightDocuments, selectedFreight]);
 
+  // Auto-gera o registro de frete para pedidos JÁ LIBERADOS que ainda não têm frete,
+  // para que apareçam na tela sem depender do botão "Gerar". Restrito a pedidos
+  // liberados (não gera para pedidos apenas confirmados, que ainda dependem do financeiro).
+  useEffect(() => {
+    const released = visibleOrders.filter(
+      (order) =>
+        (order.status === "Frete liberado" || order.status === "Aguardando frete") &&
+        !freights.some((freight) => freight.orderId === order.id),
+    );
+    released.forEach((order) => upsertFreight(createFreightFromOrder(order)));
+  }, [visibleOrders, freights, upsertFreight]);
+
   const checklistStatus = useMemo(
     () => (selectedFreight ? getChecklistStatus(selectedFreight, documents) : null),
     [documents, selectedFreight],

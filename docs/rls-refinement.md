@@ -70,7 +70,28 @@ seus) continua sendo decisão de produto — exige um vínculo estável com `aut
 5. Só então replique em produção, em janela de baixo movimento.
 6. **Reversão**: reaplicar `003_basic_rls_for_homologation.sql` restaura as políticas abertas.
 
-## Estado APLICADO (2026-07, banco de homologação)
+## ⚠️ Incidente e reversão (2026-07-09)
+
+A RLS por papel (`021`/`024`/`025`) foi aplicada em produção e **revertida no mesmo dia**
+(`manual-sql/026_rollback_role_based_rls.sql`).
+
+**Causa:** as políticas de escrita (`with check`) exigem `organization_id`, mas **o app não
+grava esse campo no INSERT** (a coluna não existia quando o app foi escrito). Resultado: o
+banco passou a **rejeitar a criação** de simulações/pedidos/etc. — os registros novos não eram
+salvos. Descoberto ao testar a criação de uma simulação nova (não chegava à fila de aprovação
+porque nunca era persistida).
+
+**Lição / pré-requisito para refazer:** a RLS por organização só pode ser reativada **depois**
+que o `organization_id` for preenchido na gravação, por uma das vias:
+1. **No app** — os repositórios em `src/features/*/repositories/*.ts` passarem a incluir
+   `organization_id` no `insert` (resolvido a partir da organização do usuário logado); ou
+2. **No banco** — um trigger `BEFORE INSERT` que preencha `organization_id` a partir de
+   `organization_members` do usuário (roda antes do `with check`).
+
+Só com (1) ou (2) no lugar é seguro reaplicar `021` → `024` → `025`. Mantidos e seguros:
+`022` (constraint de freights) e as colunas `organization_id` (aditivas).
+
+## Estado (histórico) — aplicado e depois revertido
 
 Os scripts `022 → 021 → 023 → 024` foram aplicados e validados sob RLS (impersonando um
 usuário autenticado real): financial_titles (51), simulations (6), orders (3), freights (7),

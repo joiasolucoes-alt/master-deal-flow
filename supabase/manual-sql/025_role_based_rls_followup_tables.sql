@@ -1,3 +1,8 @@
+-- ============================================================================
+-- ⚠️⚠️ APLICADO E DEPOIS REVERTIDO EM PRODUÇÃO (2026-07-09) — NÃO REAPLICAR.
+-- Ver o banner do 021 e docs/rls-refinement.md ("Incidente e reversão").
+-- Rollback em manual-sql/026.
+-- ============================================================================
 -- Nome da alteração: RLS por organização nas tabelas restantes (follow-up do 021/024)
 -- Objetivo: Fechar a lacuna deixada pelo 021 — tabelas que ficaram com policies abertas
 --           por não estarem no escopo inicial: filhas de simulação, realized_results,
