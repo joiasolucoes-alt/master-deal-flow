@@ -248,8 +248,8 @@ function rowToFreightDocument(row: FreightDocumentRow): FreightDocumentRecord {
 }
 
 function normalizeDocumentType(type: string): FreightDocumentType {
-  if (type === "contract" || type === "proposal" || type === "invoice" || type === "other") {
-    return type;
+  if (type in FREIGHT_DOCUMENT_TYPE_LABEL) {
+    return type as FreightDocumentType;
   }
   return "other";
 }
