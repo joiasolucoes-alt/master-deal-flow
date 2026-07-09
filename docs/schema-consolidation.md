@@ -12,6 +12,32 @@ explícita e rastreável.
 
 ---
 
+## Estado confirmado pelo diagnóstico (2026-07)
+
+Rodando `supabase/diagnostics/001_quick_report.sql` no banco de produção, os conflitos
+deixaram de ser hipóteses. Resumo do que está **de fato** aplicado:
+
+- **Trilha de schema: A (waves). CONFIRMADO.** `freights`/`deliveries`/`financial_titles` têm
+  `external_id`, `driver_cpf`, `cargo_type`, `proof_file_path`, `simulation_external_id` — a
+  trilha B (`sql/001`) **não** está viva. O bucket `master-flow-documents` (exclusivo da B)
+  não existe. → Conflito 1 resolvido: adotar A, aposentar B.
+- **`organization_id` está pela metade.** Existe em `clients`, `suppliers`, `products`,
+  `freights`, `deliveries`, `financial_titles`; **falta** em `simulations`, `orders`,
+  `order_items`, `approvals`, `freight_documents`, `audit_events`, `notifications`. Isso
+  divide a RLS em dois grupos (ver `docs/rls-refinement.md` e `manual-sql/021`).
+- **Políticas abertas empilhadas.** Cada tabela acumulou 2–4 gerações de policy `using (true)`
+  (`wave_1_1_*`, `authenticated_*`, `wave_2_*`, `wave_3_*`). Limpeza no `manual-sql/021`.
+- **🔓 RLS das carteiras ANULADA.** `negotiation_wallets` e `negotiation_wallet_entries` têm as
+  policies por papel corretas **e também** `wave_2_*` com `using (true)`. Como o Postgres
+  combina policies permissivas com **OU**, hoje qualquer autenticado lê/escreve as carteiras.
+  Corrigido no `manual-sql/021` (remove as dupes abertas).
+- **Constraint dupla em `freights.status`.** Coexistem `freights_status_check` (6 valores
+  canônicos) e `freights_status_driver_tracking_check` (união gigante PT+EN+eventos). Como
+  CHECKs são combinadas com **E**, o efetivo já é a interseção = os 6 canônicos. A gigante é
+  letra morta enganosa. Corrigido no `manual-sql/022`.
+
+---
+
 ## Conflito 1 — Duas definições concorrentes de `financial_titles`, `freights` e `deliveries`
 
 Existem **duas trilhas de schema** que criam as mesmas três tabelas, ambas com
@@ -74,20 +100,24 @@ Hoje convivem, na mesma coluna, valores em inglês (`quoted`, `hired`, `in_route
 português (`Cotação`, `Aprovado`, `Em rota`, `Entregue`) e nomes de evento do motorista
 (`arrived_loading`, `unloaded`…).
 
-### Decisão necessária
+### Decisão necessária — RESOLVIDA em `manual-sql/022`
 
-- Definir o **conjunto canônico** de valores de `status` de `freights` que o frontend
-  (`src/features/freights/freightHelpers.ts`, tipo `FreightStatus`) realmente usa, e alinhar a
-  constraint a ele em um único script — evitando que qualquer script antigo reintroduza uma
-  constraint restritiva.
+O diagnóstico confirmou que só os 6 valores canônicos (`quoted`, `hired`, `loading`,
+`in_route`, `delivered`, `cancelled`) passam hoje (interseção das duas CHECK), e que isso
+casa com o `FreightStatus` de `src/features/freights/freightHelpers.ts`. O script
+`manual-sql/022_fix_freights_status_constraint.sql` remove a constraint gigante enganosa e
+deixa apenas a canônica. Os eventos do motorista vão para `freight_events`, não para
+`freights.status`.
 
 ---
 
 ## Resumo das ações (todas manuais, sob revisão)
 
-- [ ] Inspecionar o schema real de `financial_titles` / `freights` / `deliveries` em produção.
-- [ ] Escolher a trilha canônica (recomendado: A — waves) e portar a RLS da trilha B.
-- [ ] Confirmar não-uso de `driver_public_tracking.sql` e planejar remoção.
-- [ ] Alinhar a constraint de `status` de `freights` ao `FreightStatus` do frontend.
-- [ ] Aplicar `manual-sql/021_role_based_rls.sql` (RLS por papel) após revisão — ver
-      `docs/rls-refinement.md`.
+- [x] ~~Inspecionar o schema real em produção~~ → feito via `diagnostics/001_quick_report.sql`.
+- [x] ~~Escolher a trilha canônica~~ → **A (waves)**, confirmada.
+- [ ] Confirmar não-uso de `driver_public_tracking.sql` e planejar remoção (banner já aposto).
+- [ ] Aplicar `manual-sql/022` (constraint de `status`) após validação em preview.
+- [ ] Aplicar `manual-sql/021` (RLS por papel + limpeza de policies abertas) após revisão — ver
+      `docs/rls-refinement.md`. **Fecha o buraco da RLS das carteiras.**
+- [ ] Decisão de produto: adicionar `organization_id` (ou `owner_user_id`) em `simulations`/
+      `orders`/`order_items`/`approvals` para isolamento real por org/dono (hoje sem coluna).

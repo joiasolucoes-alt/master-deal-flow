@@ -43,7 +43,8 @@ Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 | 018 | `temporary_driver_portal` | Portal do motorista (token + PIN). **Idêntico** à migration `202607070003` — aplique só um. |
 | 019 | `pre_order_payment_release` | Pagamento antecipado antes do pedido + comprovante em `financial_titles`. |
 | 020 | `wave_4_freight_checklist` | Checklist documental do frete por tipo de carga. |
-| 021 | `role_based_rls` *(proposto)* | Refinamento de RLS por papel. ⚠️ **Revisar antes de aplicar** — ver `docs/rls-refinement.md`. |
+| 021 | `role_based_rls` *(proposto)* | Refinamento de RLS por papel + limpeza das policies abertas empilhadas. Fecha o buraco da RLS das carteiras. ⚠️ **Revisar antes de aplicar** — ver `docs/rls-refinement.md`. |
+| 022 | `fix_freights_status_constraint` *(proposto)* | Remove a constraint dupla/enganosa de `freights.status`, deixando só a canônica (6 valores). ⚠️ Testar em preview. |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 

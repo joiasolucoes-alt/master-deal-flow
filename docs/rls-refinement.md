@@ -23,15 +23,26 @@ carteira, com o padrão:
 O script 021 aplica exatamente esse padrão às tabelas do fluxo comercial. Ele **não depende**
 das funções da trilha alternativa `sql/001` (usa `exists (...)` inline).
 
+## Estado real do `organization_id` (confirmado pelo diagnóstico)
+
+O diagnóstico (`supabase/diagnostics/001_quick_report.sql`) mostrou que `organization_id`
+existe só na **metade** das tabelas. Por isso o script 021 trata dois grupos:
+
+- **Com `organization_id`** → RLS por papel real (membro da organização):
+  `clients`, `suppliers`, `products`, `freights`, `deliveries`, `financial_titles`
+  (+ carteiras, que já tinham RLS por papel mas estavam anuladas por policies abertas).
+- **Sem `organization_id`** → o 021 apenas **desduplica** para uma política de autenticado
+  (sem ganho de isolamento, só limpeza): `simulations`, `orders`, `order_items`, `approvals`,
+  `freight_documents`, `audit_events`, `notifications`. Isolar de verdade estas exige uma
+  **decisão de produto**: adicionar `organization_id` (ou `owner_user_id`) + backfill.
+
 ## Pré-requisitos (obrigatórios)
 
-1. **Coluna `organization_id`** em todas as tabelas cobertas. As tabelas das waves
-   (`financial_titles`, `freights`, `deliveries`, `freight_documents`) podem não ter essa
-   coluna dependendo da trilha aplicada — ver `docs/schema-consolidation.md` (Conflito 1).
-   Verifique com o `select` do cabeçalho do script 021. Se faltar, ou você adiciona a coluna
-   + backfill antes, ou remove a tabela do script.
-2. **`organization_members` populada.** Sem membros cadastrados, a RLS bloqueia tudo — que é o
-   comportamento correto, mas exige cadastrar os usuários primeiro.
+1. **`organization_members` populada.** Sem membros cadastrados, a RLS por papel bloqueia tudo
+   — comportamento correto, mas exige cadastrar os usuários primeiro. Confirme quais papéis
+   existem (inclusive `frota`, que vira o perfil `Frete`) antes de aplicar.
+2. Para levar o isolamento às tabelas do segundo grupo, primeiro adicione a coluna de
+   organização/dono e faça backfill — ver o bloco final do script 021.
 
 ## Como aplicar com segurança
 

@@ -1,92 +1,95 @@
--- Nome da alteração: RLS por papel (substitui as políticas abertas da Onda 1.1)
--- Objetivo: Trocar as policies `using (true)` do 003_basic_rls_for_homologation por
---           políticas por organização + papel, no mesmo padrão já usado (e aprovado em
---           produção) na migration 202607070001_negotiation_wallets.sql.
--- Motivo: A RLS básica (qualquer autenticado lê/escreve tudo) é citada como pendência em
---         vários docs. Este script fecha essa dívida para as tabelas do fluxo comercial.
--- Risco: ALTO. RLS mal configurada pode travar acesso legítimo ou expor dados.
--- Pode rodar em produção? SOMENTE após revisão e teste em ambiente de preview.
+-- Nome da alteração: RLS por papel + limpeza de políticas abertas redundantes
+-- Objetivo: Substituir as várias gerações de políticas abertas (using true) por um
+--           conjunto único, e aplicar RLS por papel nas tabelas que têm organization_id.
+-- Motivo: O diagnóstico (supabase/diagnostics) mostrou que cada tabela acumulou 2–4
+--         políticas abertas empilhadas (wave_1_1_*, authenticated_*, wave_2_*, wave_3_*),
+--         e que a RLS por papel das carteiras está ANULADA por políticas wave_2_* abertas.
+-- Risco: ALTO. Mexe em RLS. Teste em branch/preview antes de produção.
+-- Pode rodar em produção? SOMENTE após revisão + teste por perfil em preview.
 --
 -- ============================================================================
--- ⚠️ NÃO APLIQUE ESTE SCRIPT SEM ANTES LER docs/rls-refinement.md
+-- ⚠️ LEIA docs/rls-refinement.md e docs/schema-consolidation.md ANTES.
 -- ============================================================================
--- PRÉ-REQUISITOS (confirme ANTES de rodar):
---   1. TODAS as tabelas abaixo precisam ter a coluna `organization_id uuid`.
---      As tabelas das waves (financial_titles, freights, deliveries, freight_documents)
---      podem NÃO ter essa coluna dependendo da trilha de schema aplicada
---      (ver docs/schema-consolidation.md, Conflito 1). Verifique com:
---        select table_name from information_schema.columns
---         where column_name = 'organization_id'
---           and table_name in ('clients','suppliers','products','simulations',
---             'orders','financial_titles','freights','deliveries');
---      Se faltar em alguma, adicione a coluna e faça backfill ANTES, ou remova essa
---      tabela deste script e trate-a à parte.
---   2. `public.organization_members (organization_id, user_id, role)` deve existir e estar
---      populada — sem membros, a RLS bloqueia TUDO (comportamento desejado, mas exige
---      cadastrar os usuários primeiro).
--- Reversão: reaplicar 003_basic_rls_for_homologation.sql (restaura as policies abertas).
+-- ESTADO REAL DO BANCO (confirmado via diagnóstico em 2026-07):
+--   • Trilha de schema: A (waves). organization_id existe em:
+--       clients, suppliers, products, freights, deliveries, financial_titles.
+--     E NÃO existe em:
+--       simulations, orders, order_items, approvals, freight_documents,
+--       audit_events, notifications.
+--   • Por isso este script trata as tabelas em DOIS grupos:
+--       G1 (com organization_id) -> RLS por papel real (membro da organização).
+--       G2 (sem organization_id) -> dedup para UMA política de autenticado + TODO
+--         de adicionar organization_id para isolar de verdade (ver fim do arquivo).
+--   • Pré-requisito G1: public.organization_members precisa estar POPULADA, senão a
+--     RLS por papel bloqueia tudo (comportamento correto, mas cadastre os usuários antes).
+-- Reversão: reaplicar 003_basic_rls_for_homologation.sql restaura o acesso aberto.
 -- ============================================================================
 
--- Papéis com escrita ampla no fluxo comercial. Ajuste conforme a operação real.
--- (admin, gestor, aprovador, financeiro, comercial, frota) — mesmos valores de
--- organization_members.role. 'frota' corresponde ao perfil "Frete" do frontend.
-
--- Função utilitária local: membro da organização (leitura).
--- Espelha o padrão inline usado em 202607070001; não depende de sql/001.
+begin;
 
 -- ---------------------------------------------------------------------------
--- Padrão aplicado por tabela:
---   SELECT  -> qualquer membro da organização dona da linha
---   ALL     -> membros com papel operacional (write_roles)
--- Substitua os nomes wave_1_1_* antigos (as policies abertas) pelos rbac_*.
+-- PASSO 1 — Remover TODAS as políticas das tabelas-alvo (limpa as gerações
+-- empilhadas). Recriamos o conjunto correto nos passos seguintes. Como está tudo
+-- dentro de uma transação, qualquer erro faz rollback e nada fica sem política.
 -- ---------------------------------------------------------------------------
-
 do $$
 declare
-  read_tables text[] := array[
-    'clients','suppliers','products',
-    'simulations','simulation_items','simulation_costs',
-    'simulation_purchase_costs','simulation_installments',
-    'approvals','orders','order_items',
-    'financial_titles','freights','deliveries','freight_documents',
+  target_tables text[] := array[
+    -- G1 (com organization_id)
+    'clients','suppliers','products','freights','deliveries','financial_titles',
+    -- carteiras (têm organization_id e RLS por papel, mas com dupes abertas)
+    'negotiation_wallets','negotiation_wallet_entries',
+    -- G2 (sem organization_id)
+    'simulations','orders','order_items','approvals','freight_documents',
     'audit_events','notifications'
   ];
+  pol record;
   t text;
 begin
-  foreach t in array read_tables loop
-    -- Garante RLS ligada.
+  for pol in
+    select policyname, tablename
+    from pg_policies
+    where schemaname = 'public' and tablename = any(target_tables)
+  loop
+    execute format('drop policy if exists %I on public.%I;', pol.policyname, pol.tablename);
+  end loop;
+
+  -- Garante RLS ligada em todas.
+  foreach t in array target_tables loop
     execute format('alter table public.%I enable row level security;', t);
+  end loop;
+end $$;
 
-    -- Remove as policies abertas da Onda 1.1, se existirem.
-    execute format('drop policy if exists wave_1_1_read_%1$s on public.%1$s;', t);
-    execute format('drop policy if exists wave_1_1_write_%1$s on public.%1$s;', t);
-    execute format('drop policy if exists wave_1_1_insert_%1$s on public.%1$s;', t);
-
-    -- Leitura: qualquer membro da organização dona da linha.
-    execute format('drop policy if exists rbac_read_%1$s on public.%1$s;', t);
+-- ---------------------------------------------------------------------------
+-- PASSO 2 — G1: RLS por papel nas tabelas COM organization_id.
+--   SELECT: qualquer membro da organização dona da linha.
+--   ALL:    membro com papel operacional (bloqueia viewer/motorista/não-membro).
+-- Ajuste a lista de papéis de escrita conforme a operação real.
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  g1 text[] := array['clients','suppliers','products','freights','deliveries','financial_titles'];
+  t text;
+begin
+  foreach t in array g1 loop
     execute format($p$
       create policy rbac_read_%1$s on public.%1$s for select to authenticated
       using (exists (
         select 1 from public.organization_members om
-        where om.organization_id = %1$s.organization_id
-          and om.user_id = auth.uid()
+        where om.organization_id = %1$s.organization_id and om.user_id = auth.uid()
       ));
     $p$, t);
 
-    -- Escrita: papéis operacionais da organização.
-    execute format('drop policy if exists rbac_write_%1$s on public.%1$s;', t);
     execute format($p$
       create policy rbac_write_%1$s on public.%1$s for all to authenticated
       using (exists (
         select 1 from public.organization_members om
-        where om.organization_id = %1$s.organization_id
-          and om.user_id = auth.uid()
+        where om.organization_id = %1$s.organization_id and om.user_id = auth.uid()
           and om.role in ('admin','gestor','aprovador','financeiro','comercial','frota')
       ))
       with check (exists (
         select 1 from public.organization_members om
-        where om.organization_id = %1$s.organization_id
-          and om.user_id = auth.uid()
+        where om.organization_id = %1$s.organization_id and om.user_id = auth.uid()
           and om.role in ('admin','gestor','aprovador','financeiro','comercial','frota')
       ));
     $p$, t);
@@ -94,13 +97,71 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- PRÓXIMO NÍVEL (não incluído — decisão de produto): visibilidade por linha.
--- O frontend (src/lib/visibility.ts) já restringe Comercial a ver apenas seus
--- próprios registros. Para espelhar isso no banco, refine a policy rbac_read_*
--- das tabelas simulations/orders para algo como:
---   using (
---     exists (... membro admin/gestor/aprovador/financeiro da org ...)
---     or responsible_id = auth.uid()   -- ajuste ao nome real da coluna de dono
---   )
--- Confirme o nome da coluna de responsável em cada tabela antes.
+-- PASSO 3 — Carteiras: recria a RLS por papel SEM as dupes abertas que a anulavam.
+-- (Mesma lógica da migration 202607070001, agora sem o wave_2_* using(true).)
 -- ---------------------------------------------------------------------------
+create policy rbac_read_negotiation_wallets on public.negotiation_wallets
+  for select to authenticated
+  using (exists (select 1 from public.organization_members om
+    where om.organization_id = negotiation_wallets.organization_id and om.user_id = auth.uid()));
+create policy rbac_manage_negotiation_wallets on public.negotiation_wallets
+  for all to authenticated
+  using (exists (select 1 from public.organization_members om
+    where om.organization_id = negotiation_wallets.organization_id and om.user_id = auth.uid()
+      and om.role in ('admin','gestor','financeiro')))
+  with check (exists (select 1 from public.organization_members om
+    where om.organization_id = negotiation_wallets.organization_id and om.user_id = auth.uid()
+      and om.role in ('admin','gestor','financeiro')));
+
+create policy rbac_read_wallet_entries on public.negotiation_wallet_entries
+  for select to authenticated
+  using (exists (select 1 from public.organization_members om
+    where om.organization_id = negotiation_wallet_entries.organization_id and om.user_id = auth.uid()));
+create policy rbac_insert_wallet_entries on public.negotiation_wallet_entries
+  for insert to authenticated
+  with check (exists (select 1 from public.organization_members om
+    where om.organization_id = negotiation_wallet_entries.organization_id and om.user_id = auth.uid()
+      and om.role in ('admin','gestor','financeiro','frota')));
+create policy rbac_update_wallet_entries on public.negotiation_wallet_entries
+  for update to authenticated
+  using (exists (select 1 from public.organization_members om
+    where om.organization_id = negotiation_wallet_entries.organization_id and om.user_id = auth.uid()
+      and om.role in ('admin','gestor','financeiro')))
+  with check (exists (select 1 from public.organization_members om
+    where om.organization_id = negotiation_wallet_entries.organization_id and om.user_id = auth.uid()
+      and om.role in ('admin','gestor','financeiro')));
+
+-- ---------------------------------------------------------------------------
+-- PASSO 4 — G2: tabelas SEM organization_id.
+-- Aqui NÃO dá para isolar por organização ainda (falta a coluna). Para não travar
+-- o app nem deixar 3 políticas abertas duplicadas, recriamos UMA única política de
+-- autenticado por tabela. Isso NÃO melhora o isolamento — apenas remove a duplicação.
+-- O isolamento real depende da decisão de produto no fim do arquivo.
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  g2 text[] := array['simulations','orders','order_items','approvals',
+                     'freight_documents','audit_events','notifications'];
+  t text;
+begin
+  foreach t in array g2 loop
+    execute format($p$
+      create policy authenticated_all_%1$s on public.%1$s for all to authenticated
+      using (true) with check (true);
+    $p$, t);
+  end loop;
+end $$;
+
+commit;
+
+-- ============================================================================
+-- DECISÃO DE PRODUTO PENDENTE (não incluída — exige mudança de schema):
+--   Para isolar de verdade simulations/orders/order_items/approvals/
+--   freight_documents, adicione `organization_id uuid` (com backfill) OU um
+--   `owner_user_id uuid` estável, e então troque a política authenticated_all_*
+--   por uma regra por organização/dono, espelhando src/lib/visibility.ts:
+--     - gestor/aprovador/financeiro/admin da org: veem tudo da org;
+--     - comercial: vê apenas os próprios registros (owner_user_id = auth.uid()).
+--   freight_documents pode ser isolada via JOIN no pai freights (que tem
+--   organization_id) assim que a coluna de FK for confirmada.
+-- ============================================================================
