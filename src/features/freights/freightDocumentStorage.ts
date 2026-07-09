@@ -11,7 +11,35 @@ const LOCAL_STORAGE_KEY = "master-flow:freight-documents";
 const MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_DOCUMENT_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 
-export type FreightDocumentType = "contract" | "proposal" | "invoice" | "other";
+export type FreightDocumentType =
+  | "driver_cnh"
+  | "driver_id"
+  | "driver_contact"
+  | "driver_employment"
+  | "driver_bank"
+  | "driver_selfie"
+  | "vehicle_crlv"
+  | "vehicle_crlv_trailer"
+  | "vehicle_antt"
+  | "vehicle_owner_doc"
+  | "vehicle_owner_authorization"
+  | "operation_proposal"
+  | "operation_contract"
+  | "operation_collection_order"
+  | "operation_invoice"
+  | "operation_cte_mdfe"
+  | "operation_insurance"
+  | "operation_payment_proof"
+  | "operation_toll_voucher"
+  | "operation_delivery_receipt"
+  | "cargo_mopp"
+  | "cargo_aet"
+  | "cargo_hygiene"
+  | "cargo_risk_management"
+  | "contract"
+  | "proposal"
+  | "invoice"
+  | "other";
 
 export type FreightDocumentRecord = {
   id: string;
@@ -44,9 +72,33 @@ type FreightDocumentRow = {
 };
 
 export const FREIGHT_DOCUMENT_TYPE_LABEL: Record<FreightDocumentType, string> = {
-  contract: "Contrato",
-  proposal: "Proposta",
-  invoice: "Nota/documento",
+  driver_cnh: "CNH do motorista",
+  driver_id: "CPF/RG do motorista",
+  driver_contact: "Contato do motorista",
+  driver_employment: "Vínculo (autônomo/transportadora)",
+  driver_bank: "Dados bancários / PIX",
+  driver_selfie: "Foto/selfie do motorista",
+  vehicle_crlv: "CRLV do cavalo/caminhão",
+  vehicle_crlv_trailer: "CRLV da carreta",
+  vehicle_antt: "RNTRC / ANTT",
+  vehicle_owner_doc: "Documento do proprietário",
+  vehicle_owner_authorization: "Autorização de uso do veículo",
+  operation_proposal: "Proposta de frete",
+  operation_contract: "Contrato / aceite do frete",
+  operation_collection_order: "Ordem de coleta",
+  operation_invoice: "NF da mercadoria",
+  operation_cte_mdfe: "CT-e / MDF-e",
+  operation_insurance: "Seguro / averbação da carga",
+  operation_payment_proof: "Comprovante pagamento / sinal",
+  operation_toll_voucher: "Vale-pedágio",
+  operation_delivery_receipt: "Canhoto / comprovante de entrega",
+  cargo_mopp: "MOPP + ficha de emergência",
+  cargo_aet: "AET - Autorização especial",
+  cargo_hygiene: "Comprovante de higienização",
+  cargo_risk_management: "Gerenciadora de risco / PGR",
+  contract: "Contrato (legado)",
+  proposal: "Proposta (legado)",
+  invoice: "Nota / documento (legado)",
   other: "Outro",
 };
 
@@ -196,8 +248,8 @@ function rowToFreightDocument(row: FreightDocumentRow): FreightDocumentRecord {
 }
 
 function normalizeDocumentType(type: string): FreightDocumentType {
-  if (type === "contract" || type === "proposal" || type === "invoice" || type === "other") {
-    return type;
+  if (type in FREIGHT_DOCUMENT_TYPE_LABEL) {
+    return type as FreightDocumentType;
   }
   return "other";
 }

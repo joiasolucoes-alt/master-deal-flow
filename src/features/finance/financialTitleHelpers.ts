@@ -565,3 +565,42 @@ function startOfDay(date: Date) {
 function roundCurrency(value: number) {
   return Math.round(value * 100) / 100;
 }
+
+export function buildFreightPayableTitleId(freight: FreightRecord) {
+  return `pay-freight-${freight.id}`;
+}
+
+export function buildFreightPayableTitle(
+  freight: FreightRecord,
+  order: Order | undefined,
+  existing?: FinancialTitle,
+  now = new Date(),
+): FinancialTitle | null {
+  if (freight.freightValue <= 0) return null;
+  const dueDate = freight.freightPaymentDueDate || freight.pickupDate || now.toISOString();
+  const id = existing?.id ?? buildFreightPayableTitleId(freight);
+  const title: FinancialTitle = {
+    id,
+    orderId: order?.id,
+    orderNumber: order?.number,
+    client: freight.carrierName || "Transportadora do frete",
+    titleNumber: `${order?.number ?? freight.code}-PAG-FRETE`,
+    type: "payable",
+    status: existing?.status ?? "open",
+    dueDate,
+    amount: roundCurrency(freight.freightValue),
+    paidAmount: existing?.paidAmount ?? 0,
+    paymentMethod: existing?.paymentMethod ?? "Transferência",
+    bankName: existing?.bankName ?? "",
+    notes: `Frete ${freight.code} — ${freight.route}. Motorista ${freight.driverName || "a definir"} (${freight.vehiclePlate || "placa a definir"}).`,
+    owner: freight.owner,
+    unit: freight.unit,
+    createdAt: existing?.createdAt ?? now.toISOString(),
+    paidAt: existing?.paidAt,
+    proofFileName: existing?.proofFileName,
+    proofFilePath: existing?.proofFilePath,
+    proofAttachedAt: existing?.proofAttachedAt,
+    proofAttachedBy: existing?.proofAttachedBy,
+  };
+  return { ...title, status: getFinancialTitleStatus(title, now) };
+}

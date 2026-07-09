@@ -334,6 +334,9 @@ export interface RealizedResultRecord {
 
 export type FreightStatus = "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled";
 
+export type FreightCargoType = "comum" | "perigosa" | "refrigerada" | "excesso" | "rastreada";
+export type FreightDriverEmploymentType = "autonomo" | "transportadora";
+
 export interface FreightRecord {
   id: string;
   code: string;
@@ -341,15 +344,24 @@ export interface FreightRecord {
   orderNumber?: string;
   client: string;
   carrierName: string;
+  carrierDocument?: string;
   driverName: string;
+  driverCpf?: string;
+  driverPhone?: string;
+  driverEmploymentType?: FreightDriverEmploymentType;
   vehicleDescription: string;
   vehiclePlate: string;
+  trailerPlate?: string;
+  anttRegistration?: string;
   route: string;
   freightValue: number;
   weight: string;
   status: FreightStatus;
+  cargoType?: FreightCargoType;
   pickupDate: string;
   expectedDeliveryDate: string;
+  freightPaymentDueDate?: string;
+  freightPaymentTitleId?: string;
   owner: string;
   unit: string;
   notes: string;
