@@ -28,6 +28,29 @@
 begin;
 
 -- ---------------------------------------------------------------------------
+-- PASSO 0 — Backfill de organization_id nulo (OBRIGATÓRIO antes da RLS por org).
+-- O diagnóstico encontrou linhas com organization_id NULL em freights/deliveries/
+-- financial_titles. Com a RLS por organização ligada, linhas sem org ficariam
+-- INVISÍVEIS no app. Como o banco tem organização única, preenchemos os nulos com
+-- ela. Guardado: se houver != 1 organização, ABORTA (não dá para inferir com segurança).
+-- ---------------------------------------------------------------------------
+do $$
+declare org_count int; the_org uuid;
+begin
+  select count(*), min(id) into org_count, the_org from public.organizations;
+  if org_count <> 1 then
+    raise exception 'Este script assume organizacao unica (encontrei %). Ajuste o PASSO 0 antes de rodar.', org_count;
+  end if;
+
+  update public.clients          set organization_id = the_org where organization_id is null;
+  update public.suppliers        set organization_id = the_org where organization_id is null;
+  update public.products         set organization_id = the_org where organization_id is null;
+  update public.freights         set organization_id = the_org where organization_id is null;
+  update public.deliveries       set organization_id = the_org where organization_id is null;
+  update public.financial_titles set organization_id = the_org where organization_id is null;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- PASSO 1 — Remover TODAS as políticas das tabelas-alvo (limpa as gerações
 -- empilhadas). Recriamos o conjunto correto nos passos seguintes. Como está tudo
 -- dentro de uma transação, qualquer erro faz rollback e nada fica sem política.

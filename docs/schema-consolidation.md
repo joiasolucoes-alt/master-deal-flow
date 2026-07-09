@@ -36,6 +36,20 @@ deixaram de ser hipóteses. Resumo do que está **de fato** aplicado:
   CHECKs são combinadas com **E**, o efetivo já é a interseção = os 6 canônicos. A gigante é
   letra morta enganosa. Corrigido no `manual-sql/022`.
 
+### Fatos adicionais confirmados via MCP (banco de homologação)
+
+- **Organização única** (`organizations = 1`) e **volume minúsculo** (6 simulações, 3 pedidos)
+  → risco de aplicação baixo; backfill por organização única é o caminho válido.
+- **4 usuários, todos `admin`**, todos membros válidos da org (`organization_members.user_id`
+  bate com `auth.users`). → a RLS por papel **não tranca ninguém**.
+- **`organization_id` NULO em linhas existentes:** `financial_titles` (51), `freights` (7),
+  `deliveries` (1). Sem backfill, a RLS por org **esconderia** essas linhas (quebraria o
+  Financeiro). Por isso o `manual-sql/021` ganhou um **PASSO 0** que preenche os nulos com a
+  organização única antes de ligar a RLS.
+- **`units.organization_id` e `profiles.auth_user_id` existem**, mas `unit_id` e
+  `responsible_id` estão **100% nulos** em simulations/orders → isolamento por unidade ou por
+  dono não é viável hoje sem o app passar a gravar esses vínculos (ver nota no `024`).
+
 ---
 
 ## Conflito 1 — Duas definições concorrentes de `financial_titles`, `freights` e `deliveries`

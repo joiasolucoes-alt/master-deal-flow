@@ -70,12 +70,15 @@ end $$;
 commit;
 
 -- ============================================================================
--- REFINAMENTO FUTURO (por dono) — decisão de produto:
+-- REFINAMENTO FUTURO (por dono) — BLOQUEADO por dado, é decisão de produto:
 --   O frontend (src/lib/visibility.ts) restringe Comercial a ver só os próprios
---   registros. Para espelhar no banco, é preciso um vínculo estável entre a linha
---   e auth.uid() (ex.: coluna owner_user_id, ou profiles.auth_user_id + responsible_id).
---   Hoje o "dono" é texto (responsible_name/owner). Definido isso, refine a
---   policy rbac_read_simulations/orders para:
+--   registros. O vínculo natural seria simulations.responsible_id -> profiles.id
+--   -> profiles.auth_user_id = auth.uid(). A coluna profiles.auth_user_id EXISTE,
+--   MAS o diagnóstico mostrou que responsible_id está 100% NULO em simulations e
+--   orders — ou seja, hoje não há como amarrar a linha a um auth.uid().
+--   Pré-requisito: o app passar a gravar responsible_id (ou um owner_user_id)
+--   apontando para o usuário dono. Só então dá para refinar:
 --     using ( <membro gestor/aprovador/financeiro/admin da org>  -- vê tudo da org
---             or owner_user_id = auth.uid() )                     -- comercial: só os seus
+--             or exists (select 1 from public.profiles p
+--                        where p.id = %I.responsible_id and p.auth_user_id = auth.uid()) )
 -- ============================================================================
