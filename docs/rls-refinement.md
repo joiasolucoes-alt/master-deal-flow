@@ -33,8 +33,24 @@ existe só na **metade** das tabelas. Por isso o script 021 trata dois grupos:
   (+ carteiras, que já tinham RLS por papel mas estavam anuladas por policies abertas).
 - **Sem `organization_id`** → o 021 apenas **desduplica** para uma política de autenticado
   (sem ganho de isolamento, só limpeza): `simulations`, `orders`, `order_items`, `approvals`,
-  `freight_documents`, `audit_events`, `notifications`. Isolar de verdade estas exige uma
-  **decisão de produto**: adicionar `organization_id` (ou `owner_user_id`) + backfill.
+  `freight_documents`, `audit_events`, `notifications`.
+
+### Isolando o segundo grupo (scripts 023 → 024)
+
+Para `simulations`/`orders`/`order_items`/`approvals`, o caminho já está preparado:
+
+1. `diagnostics/002_org_backfill_readiness.sql` — confirma nº de organizações e colunas.
+2. `manual-sql/023_add_organization_id_to_core_tables.sql` — adiciona `organization_id`
+   e faz backfill (caminho de organização única por padrão; `order_items`/`approvals`
+   herdam do pai).
+3. `manual-sql/024_role_based_rls_core_tables.sql` — troca as policies provisórias do 021
+   por RLS por organização. **Só rode após 023 com 0 nulos.**
+
+`freight_documents`, `audit_events` e `notifications` seguem no nível de autenticado por ora
+(podem ser isoladas depois: `freight_documents` via JOIN no pai `freights`; `notifications`
+por usuário-alvo; `audit_events` append-only). Isolamento **por dono** (Comercial vê só os
+seus) continua sendo decisão de produto — exige um vínculo estável com `auth.uid()`
+(ver bloco final do 024).
 
 ## Pré-requisitos (obrigatórios)
 
