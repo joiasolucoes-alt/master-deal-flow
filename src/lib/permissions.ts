@@ -75,6 +75,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "reports:view",
   ],
   Financeiro: ["dashboard:view", "orders:view", "finance:view", "freights:view", "reports:view"],
+  Frete: ["dashboard:view", "orders:view", "freights:view", "deliveries:view"],
   Admin: allPermissions,
 };
 
@@ -94,11 +95,13 @@ const routePermissions: Array<{ prefix: string; permission: Permission }> = [
 
 export function normalizeRole(role: string): UserRole {
   if (role === "Aprovação") return "Aprovador";
+  if (role === "Frota" || role === "Logística" || role === "Logistica") return "Frete";
   if (
     role === "Comercial" ||
     role === "Negociações" ||
     role === "Aprovador" ||
     role === "Financeiro" ||
+    role === "Frete" ||
     role === "Admin"
   ) {
     return role;

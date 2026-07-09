@@ -4,6 +4,15 @@
 -- (SQL Editor) OU via ferramenta de migration quando estiver disponível,
 -- pois esta sessão do agente não expôs a ferramenta de migration.
 -- =====================================================================
+-- ⚠️ ATENÇÃO — TRILHA DE SCHEMA ALTERNATIVA / NÃO ADOTADA PELO FRONTEND.
+-- Este script cria versões próprias de `financial_titles`, `freights` e
+-- `deliveries` que CONFLITAM com as das waves (supabase/manual-sql/004-006),
+-- ambas via `create table if not exists`. Os repositórios em src/features/*
+-- usam a trilha das waves, NÃO esta. Não aplique junto sem ler antes:
+--   docs/schema-consolidation.md (Conflito 1).
+-- Os helpers de RLS por papel daqui (has_role, is_member_of_organization)
+-- são a referência para o refinamento de RLS — ver manual-sql/021.
+-- =====================================================================
 
 create extension if not exists pgcrypto;
 
