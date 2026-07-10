@@ -32,6 +32,7 @@ import {
   calculateBillingProgress,
   getFinancialTitleStatus,
 } from "@/features/finance/financialTitleHelpers";
+import { createFreightFromOrder } from "@/features/freights/freightHelpers";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { hasPermission } from "@/lib/permissions";
 import { filterOrdersForUser } from "@/lib/visibility";
@@ -48,10 +49,12 @@ function OrderDetailPage() {
   const {
     auth,
     orders,
+    freights,
     financialTitles,
     negotiationWallets,
     upsertFinancialTitle,
     upsertOrder,
+    upsertFreight,
     upsertNegotiationWallet,
     addNotification,
   } = useAppContext();
@@ -195,6 +198,14 @@ function OrderDetailPage() {
       targetUserName: order.owner,
       href: `/pedidos/${order.id}`,
     });
+    // Assim que o faturamento libera o pedido, o frete é gerado automaticamente
+    // (sem botão manual) e fica disponível para o perfil Frete acompanhar/executar.
+    if (
+      updatedOrder.status === "Frete liberado" &&
+      !freights.some((freight) => freight.orderId === updatedOrder.id)
+    ) {
+      upsertFreight(createFreightFromOrder(updatedOrder));
+    }
     const discount = roundCurrency(
       getRemainingBillingAmount(order, financialTitles) - invoiceAmount,
     );
