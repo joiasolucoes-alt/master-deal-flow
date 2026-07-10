@@ -33,6 +33,7 @@ import {
   getFinancialTitleStatus,
 } from "@/features/finance/financialTitleHelpers";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
+import { hasPermission } from "@/lib/permissions";
 import { filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
 import { createWalletEntry, upsertWalletEntry } from "@/features/negotiation-wallets";
@@ -52,6 +53,7 @@ function OrderDetailPage() {
     upsertFinancialTitle,
     upsertOrder,
     upsertNegotiationWallet,
+    addNotification,
   } = useAppContext();
   const [billingOpen, setBillingOpen] = useState(false);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
@@ -75,12 +77,16 @@ function OrderDetailPage() {
     .filter((title) => title.status !== "cancelled")
     .reduce((sum, title) => sum + title.amount, 0);
   const receivedAmount = orderReceivables.reduce((sum, title) => sum + title.paidAmount, 0);
-  const canBillOrder =
+  // O registro de faturamento é responsabilidade do Financeiro/Faturamento/Admin.
+  // O Comercial e o Frete apenas visualizam o status; não executam o faturamento.
+  const canRegisterBilling = hasPermission(auth.user, "orders:invoice");
+  const orderIsInBillingStage =
     order.status === "Pedido confirmado" ||
     order.status === "Frete liberado" ||
     order.status === "Aguardando frete" ||
     order.status === "Aguardando faturamento" ||
     order.status === "Em faturamento";
+  const canBillOrder = canRegisterBilling && orderIsInBillingStage;
   const wallet = negotiationWallets.find((item) => item.orderId === order.id);
 
   const handleOpenBilling = () => {
@@ -106,6 +112,19 @@ function OrderDetailPage() {
     }
     if (!billingForm.invoiceIssuedAt || !billingForm.billingDueDate) {
       toast.error("Informe a emissão e o vencimento da NF.");
+      return;
+    }
+    if (!canRegisterBilling) {
+      toast.error("Seu perfil não pode registrar faturamento.");
+      return;
+    }
+    const remaining = getRemainingBillingAmount(order, financialTitles);
+    if (remaining <= 0) {
+      toast.info("Pedido já está totalmente faturado.");
+      return;
+    }
+    if (invoiceAmount > remaining + 0.01) {
+      toast.error(`Valor acima do restante a faturar (${formatCurrency(remaining)}).`);
       return;
     }
 
@@ -164,6 +183,18 @@ function OrderDetailPage() {
 
     upsertFinancialTitle(title);
     upsertOrder(updatedOrder);
+    // Notifica o Comercial (dono do pedido) que o faturamento foi registrado.
+    addNotification({
+      title: `Faturamento registrado — ${order.number}`,
+      description: `${invoiceNumber} no valor de ${formatCurrency(invoiceAmount)} registrado por ${
+        auth.user?.name ?? "Financeiro"
+      }.`,
+      type: "success",
+      entityType: "order",
+      entityId: order.id,
+      targetUserName: order.owner,
+      href: `/pedidos/${order.id}`,
+    });
     const discount = roundCurrency(
       getRemainingBillingAmount(order, financialTitles) - invoiceAmount,
     );
@@ -217,9 +248,11 @@ function OrderDetailPage() {
             <Button variant="outline">
               <Download /> Exportar PDF
             </Button>
-            <Button onClick={handleOpenBilling}>
-              <FileText /> Faturar pedido
-            </Button>
+            {canBillOrder && order.billingProgress < 100 ? (
+              <Button onClick={handleOpenBilling}>
+                <FileText /> Registrar faturamento/NF
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -227,9 +260,10 @@ function OrderDetailPage() {
       <Dialog open={billingOpen} onOpenChange={setBillingOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Faturar pedido</DialogTitle>
+            <DialogTitle>Registrar faturamento/NF</DialogTitle>
             <DialogDescription>
-              Registre os dados da NF para liberar o pedido para a próxima etapa.
+              Registro interno dos dados de faturamento/NF (o sistema não emite nota fiscal
+              oficial). Gera as contas a receber e libera o pedido para a próxima etapa.
             </DialogDescription>
           </DialogHeader>
 

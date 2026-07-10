@@ -1029,4 +1029,165 @@ assert.equal(
 );
 assert.equal(getNextDriverEventForTest(["arrived_pickup"], true, "revoked"), null);
 
+// --- Fluxo de faturamento após validação comercial (nova regra) --------------
+// Regra: após a validação comercial do comprovante, o pedido nasce
+// "Aguardando faturamento" e o registro de faturamento/NF é restrito a
+// Financeiro/Faturamento/Admin. O Comercial não fatura.
+function convertToOrderForTest(simulation, existingOrders = []) {
+  if (existingOrders.some((order) => order.simulationId === simulation.id)) {
+    throw new Error("Simulação já convertida.");
+  }
+  return {
+    id: `ord-${simulation.id}`,
+    number: `PED-${simulation.number}`,
+    simulationId: simulation.id,
+    owner: simulation.owner,
+    totalValue: simulation.totalValue,
+    status: "Aguardando faturamento",
+    billingProgress: 0,
+    timeline: [{ title: "Pedido criado", description: "Aguardando registro de faturamento/NF." }],
+  };
+}
+
+const BILLING_ROLES = ["Financeiro", "Faturamento", "Admin"];
+function canRegisterBillingForTest(role) {
+  return BILLING_ROLES.includes(role);
+}
+function getBilledAmountForTest(titles, orderId) {
+  return titles
+    .filter((t) => t.orderId === orderId && t.type === "receivable" && t.status !== "cancelled")
+    .reduce((sum, t) => sum + t.amount, 0);
+}
+function getRemainingForTest(order, titles) {
+  return Math.max(0, order.totalValue - getBilledAmountForTest(titles, order.id));
+}
+function registerBillingForTest({ order, titles, user, invoiceNumber, invoiceAmount }) {
+  if (!canRegisterBillingForTest(user.role)) throw new Error("Perfil não pode faturar.");
+  const remaining = getRemainingForTest(order, titles);
+  if (remaining <= 0) throw new Error("Pedido já totalmente faturado.");
+  if (invoiceAmount > remaining + 0.01) throw new Error("Valor acima do restante a faturar.");
+  const receivable = {
+    id: `fin-${order.id}-${invoiceNumber}`,
+    orderId: order.id,
+    type: "receivable",
+    status: "open",
+    amount: invoiceAmount,
+    paidAmount: 0,
+    invoiceNumber,
+  };
+  const nextTitles = [...titles, receivable];
+  const billed = getBilledAmountForTest(nextTitles, order.id);
+  const billingProgress = Math.min(100, Math.round((billed / order.totalValue) * 100));
+  const status =
+    billingProgress >= 100
+      ? "Frete liberado"
+      : billingProgress > 0
+        ? "Em faturamento"
+        : order.status;
+  const timeline = [
+    ...order.timeline,
+    { title: "Nota fiscal registrada", description: invoiceNumber },
+  ];
+  const notification = {
+    targetUserName: order.owner,
+    title: "Faturamento registrado",
+    type: "success",
+  };
+  return {
+    order: { ...order, billingProgress, status, timeline },
+    titles: nextTitles,
+    receivable,
+    notification,
+  };
+}
+
+// 1-3: validação comercial cria pedido que nasce "Aguardando faturamento".
+const billingSim = { id: "sim-bill", number: "2026-BILL", owner: "Comercial X", totalValue: 1000 };
+const billingOrder = convertToOrderForTest(billingSim);
+assert.equal(billingOrder.status, "Aguardando faturamento");
+assert.equal(billingOrder.billingProgress, 0);
+assert.equal(billingOrder.timeline[0].title, "Pedido criado");
+assert.throws(() => convertToOrderForTest(billingSim, [billingOrder]), /já convertida/);
+
+// 4: Comercial (e Frete) não conseguem faturar.
+assert.equal(canRegisterBillingForTest("Comercial"), false);
+assert.equal(canRegisterBillingForTest("Frete"), false);
+assert.throws(
+  () =>
+    registerBillingForTest({
+      order: billingOrder,
+      titles: [],
+      user: { role: "Comercial" },
+      invoiceNumber: "NF-X",
+      invoiceAmount: 1000,
+    }),
+  /Perfil não pode faturar/,
+);
+
+// 5-6: Financeiro e Admin conseguem faturar.
+assert.equal(canRegisterBillingForTest("Financeiro"), true);
+assert.equal(canRegisterBillingForTest("Admin"), true);
+
+// 7-8-9-10-12: faturamento total gera recebível, timeline, notificação e muda o status.
+const billedFull = registerBillingForTest({
+  order: billingOrder,
+  titles: [],
+  user: { role: "Financeiro" },
+  invoiceNumber: "NF-1",
+  invoiceAmount: 1000,
+});
+assert.equal(billedFull.receivable.type, "receivable");
+assert.equal(billedFull.receivable.amount, 1000);
+assert.equal(billedFull.order.billingProgress, 100);
+assert.equal(billedFull.order.status, "Frete liberado");
+assert.ok(billedFull.order.timeline.some((e) => e.title === "Nota fiscal registrada"));
+assert.equal(billedFull.notification.targetUserName, "Comercial X");
+
+// 11: não permite faturar acima do restante (controle de duplicidade/valor).
+assert.throws(
+  () =>
+    registerBillingForTest({
+      order: billedFull.order,
+      titles: billedFull.titles,
+      user: { role: "Financeiro" },
+      invoiceNumber: "NF-2",
+      invoiceAmount: 500,
+    }),
+  /já totalmente faturado/,
+);
+
+// 11b: faturamento parcial mantém o pedido em faturamento e barra valor acima do restante.
+const partialOrder = convertToOrderForTest({
+  id: "sim-part",
+  number: "2026-PART",
+  owner: "Comercial Y",
+  totalValue: 1000,
+});
+const partial = registerBillingForTest({
+  order: partialOrder,
+  titles: [],
+  user: { role: "Admin" },
+  invoiceNumber: "NF-P1",
+  invoiceAmount: 400,
+});
+assert.equal(partial.order.billingProgress, 40);
+assert.equal(partial.order.status, "Em faturamento");
+assert.throws(
+  () =>
+    registerBillingForTest({
+      order: partial.order,
+      titles: partial.titles,
+      user: { role: "Financeiro" },
+      invoiceNumber: "NF-P2",
+      invoiceAmount: 700,
+    }),
+  /acima do restante/,
+);
+
+// 13: modo local e supabase continuam resolvendo o provider.
+assert.equal(getDataProvider("local"), "local");
+assert.equal(getDataProvider("supabase"), "supabase");
+
+console.log("Testes de faturamento passaram.");
+
 console.log("Todos os testes passaram.");

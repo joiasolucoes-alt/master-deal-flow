@@ -28,6 +28,7 @@ import type {
   Product,
   RealizedResultRecord,
   NegotiationWallet,
+  NotificationItem,
   OpportunityPool,
   Simulation,
   Supplier,
@@ -127,6 +128,13 @@ interface AppContextValue {
   setSimulations: (value: Simulation[]) => void;
   upsertSimulation: (simulation: Simulation) => void;
   upsertOrder: (order: Order) => void;
+  addNotification: (
+    input: Omit<NotificationItem, "id" | "createdAt" | "unread"> & {
+      id?: string;
+      createdAt?: string;
+      unread?: boolean;
+    },
+  ) => void;
   upsertFinancialTitle: (title: FinancialTitle) => void;
   upsertRealizedResult: (result: RealizedResultRecord) => void;
   upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
@@ -583,6 +591,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setProductsStore = useAppStore((store) => store.setProducts);
   const upsertSimulationStore = useAppStore((store) => store.upsertSimulation);
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
+  const addNotificationStore = useAppStore((store) => store.addNotification);
   const negotiationWallets = useAppStore((store) => store.negotiationWallets);
   const opportunityPools = useAppStore((store) => store.opportunityPools);
   const upsertNegotiationWalletStore = useAppStore((store) => store.upsertNegotiationWallet);
@@ -1327,6 +1336,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const addNotification = (
+    input: Omit<NotificationItem, "id" | "createdAt" | "unread"> & {
+      id?: string;
+      createdAt?: string;
+      unread?: boolean;
+    },
+  ) => {
+    addNotificationStore({
+      ...input,
+      id: input.id ?? `ntf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: input.createdAt ?? new Date().toISOString(),
+      unread: input.unread ?? true,
+    });
+  };
+
   const upsertOrder = (order: Order) => {
     upsertOrderStore(order);
     if (!isSupabaseProvider()) return;
@@ -1544,6 +1568,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSimulations,
       upsertSimulation,
       upsertOrder,
+      addNotification,
       upsertFinancialTitle,
       upsertRealizedResult,
       upsertNegotiationWallet,
@@ -1578,6 +1603,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSimulations,
       upsertSimulation,
       upsertOrder,
+      addNotification,
       upsertFinancialTitle,
       upsertRealizedResult,
       upsertNegotiationWallet,

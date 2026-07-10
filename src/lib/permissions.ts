@@ -14,6 +14,7 @@ export type Permission =
   | "approvals:decide"
   | "orders:view"
   | "orders:convert"
+  | "orders:invoice"
   | "finance:view"
   | "freights:view"
   | "deliveries:view"
@@ -33,6 +34,7 @@ const allPermissions: Permission[] = [
   "approvals:decide",
   "orders:view",
   "orders:convert",
+  "orders:invoice",
   "finance:view",
   "freights:view",
   "deliveries:view",
@@ -74,7 +76,14 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "orders:convert",
     "reports:view",
   ],
-  Financeiro: ["dashboard:view", "orders:view", "finance:view", "freights:view", "reports:view"],
+  Financeiro: [
+    "dashboard:view",
+    "orders:view",
+    "orders:invoice",
+    "finance:view",
+    "freights:view",
+    "reports:view",
+  ],
   Frete: ["dashboard:view", "orders:view", "freights:view", "deliveries:view"],
   Admin: allPermissions,
 };
