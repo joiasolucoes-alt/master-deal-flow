@@ -2204,18 +2204,53 @@ function ResultStep({
               <TabsTrigger value="purchase">NF/Custos</TabsTrigger>
             </TabsList>
             <TabsContent value="overview" className="space-y-2 pt-4 text-sm">
-              <p>
-                <strong>Cliente:</strong> {draft.client}
-              </p>
-              <p>
-                <strong>Fornecedor:</strong> {draft.supplier}
-              </p>
-              <p>
-                <strong>Prazo:</strong> {draft.paymentCondition}
-              </p>
-              <p>
-                <strong>Margem líquida (%):</strong> {formatPercent(totals.marginPercent, 2)}
-              </p>
+              <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                <p>
+                  <strong>Cliente:</strong> {draft.client}
+                </p>
+                <p>
+                  <strong>Fornecedor:</strong> {draft.supplier}
+                </p>
+                <p>
+                  <strong>Unidade:</strong> {draft.unit}
+                </p>
+                <p>
+                  <strong>Entrega:</strong> {draft.deliveryCity} • {draft.deliveryState}
+                </p>
+                <p>
+                  <strong>Prazo de pagamento:</strong> {draft.paymentCondition}
+                </p>
+                <p>
+                  <strong>Validade:</strong> {draft.validUntil ? formatDate(draft.validUntil) : "-"}
+                </p>
+              </div>
+              <div className="my-2 h-px bg-border" />
+              <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                <p>
+                  <strong>Receita total:</strong> {formatCurrency(totals.revenue)}
+                </p>
+                <p>
+                  <strong>Custo mercadoria:</strong> {formatCurrency(totals.merchandiseCost)}
+                </p>
+                <p>
+                  <strong>Custo de compra/NF:</strong> {formatCurrency(totals.purchaseTotal)}
+                </p>
+                <p>
+                  <strong>Despesas:</strong> {formatCurrency(totals.expenses)}
+                </p>
+                <p>
+                  <strong>Lucro bruto:</strong> {formatCurrency(totals.grossProfit)}
+                </p>
+                <p>
+                  <strong>Lucro líquido:</strong> {formatCurrency(totals.netProfit)}
+                </p>
+                <p>
+                  <strong>Margem bruta (%):</strong> {formatPercent(totals.grossMarginPercent, 2)}
+                </p>
+                <p>
+                  <strong>Margem líquida (%):</strong> {formatPercent(totals.marginPercent, 2)}
+                </p>
+              </div>
             </TabsContent>
             <TabsContent value="products" className="pt-4">
               <ul className="space-y-1 text-sm">

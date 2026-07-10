@@ -292,8 +292,23 @@ export function getRequiredPayablesForFreightRelease(
   );
 }
 
+// Status de pedido em que ele já está liberado para o frete. A partir do
+// faturamento (nova regra), o pedido vira "Frete liberado" e a contratação/geração
+// do link do motorista fica a cargo do perfil Frete — sem depender de um gate
+// separado de contas a pagar (que travava quando não havia payables lançados).
+const FREIGHT_RELEASED_ORDER_STATUSES: ReadonlyArray<Order["status"]> = [
+  "Frete liberado",
+  "Aguardando frete",
+  "Em separação",
+  "Em rota",
+  "Entregue",
+];
+
 export function isOrderFinanciallyReleased(order: Order | undefined, titles: FinancialTitle[]) {
   if (!order) return false;
+  // Pedido já faturado/liberado => liberado para o frete operar.
+  if (FREIGHT_RELEASED_ORDER_STATUSES.includes(order.status)) return true;
+  // Caminho legado: se houver contas a pagar do pedido, exige que estejam quitadas.
   const requiredPayables = getRequiredPayablesForFreightRelease(titles, order.id);
   if (requiredPayables.length === 0) return false;
   return requiredPayables.every((title) => getFinancialTitleStatus(title) === "paid");

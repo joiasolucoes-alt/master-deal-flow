@@ -145,10 +145,6 @@ function FreightsPage() {
       }),
     [auth.user, freights, visibleOrderIds],
   );
-  const eligibleOrders = visibleOrders.filter(
-    (order) =>
-      order.status !== "Entregue" && !freights.some((freight) => freight.orderId === order.id),
-  );
   const total = visibleFreights.length;
   const transit = visibleFreights.filter((f) => f.status === "in_route").length;
   const value = visibleFreights.reduce((s, f) => s + f.freightValue, 0);
@@ -235,16 +231,6 @@ function FreightsPage() {
     () => (selectedFreight ? getChecklistStatus(selectedFreight, documents) : null),
     [documents, selectedFreight],
   );
-
-  const handleGenerateFreights = () => {
-    if (eligibleOrders.length === 0) {
-      toast.info("Não há pedidos liberados sem frete.");
-      return;
-    }
-
-    eligibleOrders.forEach((order) => upsertFreight(createFreightFromOrder(order)));
-    toast.success("Fretes gerados a partir dos pedidos em curso.");
-  };
 
   const syncFreightPayableTitle = useCallback(
     (freight: FreightRecord, order?: Order) => {
@@ -461,10 +447,6 @@ function FreightsPage() {
         <Card className="shadow-card">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Painel de fretes</CardTitle>
-            <Button size="sm" variant="soft" onClick={handleGenerateFreights}>
-              <Plus />
-              Gerar
-            </Button>
           </CardHeader>
           <CardContent className="space-y-2">
             {visibleFreights.length === 0 ? (
@@ -859,18 +841,8 @@ function FreightDetailPanel({
             onUploadDocument={onUploadDocument}
             onOpenDocument={onOpenDocument}
           />
-          <div className="mt-4">
-            <ChecklistBlock
-              title="Entrega final"
-              block="delivery"
-              freight={freight}
-              documents={documents}
-              documentsLoading={documentsLoading}
-              documentsError={documentsError}
-              onUploadDocument={onUploadDocument}
-              onOpenDocument={onOpenDocument}
-            />
-          </div>
+          {/* "Entrega final/Canhoto" removido da Operação: o comprovante de entrega
+              é responsabilidade do motorista, na seção de Rastreamento. */}
         </TabsContent>
 
         <TabsContent value="payment" className="mt-4">
