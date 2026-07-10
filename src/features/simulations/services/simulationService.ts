@@ -106,20 +106,23 @@ export function convertSimulationToOrder(
     date: createdAt,
     expectedDelivery: simulation.deliveryDate,
     totalValue: totals.revenue,
-    status: "Pedido confirmado",
+    // Regra: após a validação comercial do comprovante, o pedido NÃO nasce liberado.
+    // Ele nasce aguardando o registro de faturamento/NF pelo Financeiro/Faturamento.
+    status: "Aguardando faturamento",
     priority: simulation.priority,
     products: simulation.products,
     billingProgress: 0,
     deliveryProgress: 0,
     paymentTerms: simulation.paymentCondition,
-    logisticsStatus: "Pedido confirmado após pagamento e validação comercial.",
+    logisticsStatus:
+      "Pagamento validado pelo Comercial. Aguardando registro de faturamento/NF pelo Financeiro.",
     documents: ["Pedido interno"],
     notes: [`Origem: conversão da simulação ${simulation.number}.`],
     timeline: [
       {
         id: `tl-${Date.now()}`,
-        title: "Pedido confirmado",
-        description: "Pagamento validado pelo Comercial antes da liberação operacional.",
+        title: "Pedido criado",
+        description: "Pagamento validado pelo Comercial. Aguardando registro de faturamento/NF.",
         date: createdAt,
         completed: true,
       },

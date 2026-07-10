@@ -1,11 +1,5 @@
 export type ThemeMode = "light" | "dark" | "system";
-export type UserRole =
-  | "Comercial"
-  | "Negociações"
-  | "Aprovador"
-  | "Financeiro"
-  | "Frete"
-  | "Admin";
+export type UserRole = "Comercial" | "Negociações" | "Aprovador" | "Financeiro" | "Frete" | "Admin";
 export type UserStatus = "Pendente" | "Ativo" | "Bloqueado";
 
 export type AppStatus =
@@ -376,14 +370,7 @@ export interface FreightRecord {
 }
 
 export type DeliveryStatus =
-  | "pending"
-  | "loading"
-  | "loaded"
-  | "in_route"
-  | "arrived"
-  | "delivered"
-  | "issue"
-  | "cancelled";
+  "pending" | "loading" | "loaded" | "in_route" | "arrived" | "delivered" | "issue" | "cancelled";
 
 export interface DeliveryOccurrence {
   id: string;
