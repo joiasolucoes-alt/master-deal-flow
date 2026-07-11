@@ -38,6 +38,17 @@ Antes de testar esta onda em producao, confirme que os SQLs anteriores ja foram 
 
 Crie uma simulacao, aprove no Financeiro e no Gestor, confirme se o pedido gerou contas no Financeiro e se o frete aparece bloqueado ate a baixa das contas a pagar.
 
+## fix: separate freight release from financial invoicing — SEM mudança de schema
+
+Esta entrega **não requer nenhum SQL**. Toda a mudança é de regra de negócio/UI no frontend:
+- liberação do frete desacoplada do faturamento (derivada do status do pedido);
+- status separados por área (derivados de `orders.status`/`billingProgress`);
+- permissão `freights:operate` (apenas no frontend);
+- correção do bug de SIM fantasma (estado inicial vazio no modo Supabase — não toca no banco);
+- auto-refresh por polling (frontend).
+
+Nenhuma tabela/coluna/constraint/RLS/trigger foi alterada.
+
 ## feat: expose approved simulations to freight preparation — SEM mudança de schema
 
 A regra "SIM aprovada pelo Gestor fica visível para o Frete como preparação" **não requer nenhuma alteração de banco**:

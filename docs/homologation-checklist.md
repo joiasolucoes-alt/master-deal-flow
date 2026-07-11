@@ -1,3 +1,22 @@
+# Checklist — Frete e faturamento em paralelo (fix: separate freight release from financial invoicing)
+
+1. Criar SIM (Comercial) → enviar para o Gestor.
+2. Aprovar (Gestor) → confirmar que aparece p/ Financeiro (pagar) e p/ Frete (preparação).
+3. Financeiro paga e anexa comprovante.
+4. Comercial valida o comprovante.
+5. Confirmar que a SIM virou **Pedido** e **nenhuma SIM duplicada** apareceu.
+6. Em **Pedidos**: badges = **Pedido confirmado** / Frete: **Liberado para contratação** / Faturamento: **Aguardando faturamento**.
+7. Como **Frete**: o pedido está em **Liberados**; contratar o frete **sem** faturar antes → status vira **"Frete contratado"**.
+8. Confirmar que o Frete consegue **gerar link/PIN** do motorista após contratar.
+9. Como **Financeiro**: registrar faturamento/NF em paralelo → o frete **continua** liberado (não trava).
+10. Confirmar que **Financeiro não contrata frete** nem gera link/PIN (botões bloqueados/ação negada).
+11. Confirmar que **Frete e Comercial não faturam** (sem acesso à ação de faturamento).
+12. Ver resumo da carga no Frete: produto, descrição, **QTD.(CX)**, cliente, origem/destino, previsões.
+13. Aba **Financeiro > Pagamento de Negociação**: botão **"Fazer pagamento"** abre modal com **todos** os lançamentos a pagar; pagar um item específico.
+14. Deixar duas telas abertas (ex.: Aprovações e Fretes) e confirmar que **atualizam sem F5** (~12s).
+15. Conferir notificações (aprovação, pagamento, validação, contratação) e o histórico/auditoria.
+16. Conferir dados no Supabase.
+
 # Checklist da onda atual
 
 1. Comercial cria proposta.

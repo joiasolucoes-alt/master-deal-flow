@@ -34,6 +34,11 @@ import {
 } from "@/features/finance/financialTitleHelpers";
 import { createFreightFromOrder } from "@/features/freights/freightHelpers";
 import {
+  getOrderBillingLabel,
+  getOrderFreightLabel,
+  getOrderGeneralLabel,
+} from "@/features/orders/orderStatus";
+import {
   fetchDriverAccessSummary,
   getDeliveryProofSignedUrl,
   type DriverAccessSummary,
@@ -402,7 +407,15 @@ function OrderDetailPage() {
       </Dialog>
 
       <div className="flex flex-wrap items-center gap-3">
-        <StatusBadge status={order.status} />
+        {/* Status separados por área (fix: separate freight release from financial invoicing):
+            geral (operacional), frete (liberação) e faturamento seguem em paralelo. */}
+        <StatusBadge status={getOrderGeneralLabel(order)} />
+        <Badge variant="outline" className="rounded-full">
+          Frete: {getOrderFreightLabel(order, financialTitles)}
+        </Badge>
+        <Badge variant="outline" className="rounded-full text-muted-foreground">
+          Faturamento: {getOrderBillingLabel(order)}
+        </Badge>
         <Badge variant="outline" className="rounded-full">
           Prioridade: {order.priority}
         </Badge>
@@ -677,21 +690,13 @@ function createEmptyBillingForm(): BillingForm {
 }
 
 function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
+  // Regra (fix: separate freight release from financial invoicing): faturamento é
+  // frente paralela e não altera o status operacional do pedido. O rótulo de
+  // faturamento é derivado (ver getOrderBillingLabel em orderStatus.ts).
   const billingProgress = calculateBillingProgress(titles, order.totalValue);
-  const status =
-    billingProgress >= 100 &&
-    (order.status === "Aguardando faturamento" ||
-      order.status === "Em faturamento" ||
-      order.status === "Pedido confirmado")
-      ? "Frete liberado"
-      : billingProgress > 0 && order.status === "Aguardando faturamento"
-        ? "Em faturamento"
-        : order.status;
-
   return {
     ...order,
     billingProgress,
-    status,
   };
 }
 

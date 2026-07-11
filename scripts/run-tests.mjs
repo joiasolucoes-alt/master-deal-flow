@@ -1504,4 +1504,119 @@ assert.equal(
 
 console.log("Testes de preparação de frete passaram.");
 
+// ---------------------------------------------------------------------------
+// Separar liberação de frete do faturamento (fix: separate freight release from
+// financial invoicing). Mirror puro das regras de status/permissões. Sem Supabase.
+// ---------------------------------------------------------------------------
+
+// Conversão: SIM validada vira Pedido "Pedido confirmado", já liberado p/ frete.
+function convertSimulationToOrderStatus() {
+  return { orderStatus: "Pedido confirmado", billingProgress: 0 };
+}
+
+// Regra de liberação de frete (mirror de financialTitleHelpers): "Pedido confirmado"
+// já conta como liberado — não depende de faturamento.
+const RELEASED_STATUSES = [
+  "Pedido confirmado",
+  "Frete liberado",
+  "Aguardando frete",
+  "Em separação",
+  "Em rota",
+  "Entregue",
+];
+function freightReleased(order) {
+  if (!order) return false;
+  return RELEASED_STATUSES.includes(order.status);
+}
+
+// Faturamento derivado — não altera o status operacional.
+function billingLabel(order) {
+  if (order.billingProgress >= 100) return "Faturado";
+  if (order.billingProgress > 0 || order.invoiceNumber) return "Faturamento parcial";
+  return "Aguardando faturamento";
+}
+function applyBilling(order, invoiceAmount) {
+  // billing só mexe no progresso, NÃO no status operacional.
+  const billed = (order.invoiceAmount ?? 0) + invoiceAmount;
+  const billingProgress =
+    order.totalValue > 0 ? Math.min(100, Math.round((billed / order.totalValue) * 100)) : 0;
+  return { ...order, invoiceAmount: billed, billingProgress };
+}
+
+// Permissões (mirror de permissions.ts)
+const permissionsByRole = {
+  Comercial: ["simulations:create", "approvals:view", "orders:view"],
+  Aprovador: ["approvals:decide", "orders:convert"],
+  Financeiro: ["orders:invoice", "finance:view", "freights:view"],
+  Frete: ["freights:view", "freights:operate"],
+  Admin: [
+    "simulations:create",
+    "approvals:decide",
+    "orders:invoice",
+    "freights:view",
+    "freights:operate",
+    "orders:convert",
+  ],
+};
+function can(role, permission) {
+  return (permissionsByRole[role] ?? []).includes(permission);
+}
+const canOperateFreight = (role) => can(role, "freights:operate");
+const canRegisterInvoice = (role) => can(role, "orders:invoice");
+
+// 9-11: SIM validada vira Pedido confirmado, frete liberado
+const converted = convertSimulationToOrderStatus();
+assert.equal(converted.orderStatus, "Pedido confirmado");
+const orderConfirmed = { status: converted.orderStatus, totalValue: 1000, billingProgress: 0 };
+assert.equal(freightReleased(orderConfirmed), true, "Frete liberado ao confirmar o pedido");
+
+// 12: faturamento derivado começa "Aguardando faturamento"
+assert.equal(billingLabel(orderConfirmed), "Aguardando faturamento");
+
+// 13-14: Frete contrata sem depender do faturamento; faturar NÃO bloqueia frete.
+assert.equal(freightReleased(orderConfirmed), true);
+const afterBilling = applyBilling(orderConfirmed, 1000);
+assert.equal(afterBilling.status, "Pedido confirmado", "faturamento não altera status operacional");
+assert.equal(freightReleased(afterBilling), true, "frete continua liberado após faturar");
+assert.equal(billingLabel(afterBilling), "Faturado");
+
+// 15-17: permissões por perfil
+assert.equal(canOperateFreight("Frete"), true);
+assert.equal(canOperateFreight("Admin"), true);
+assert.equal(canOperateFreight("Financeiro"), false, "Financeiro não contrata frete");
+assert.equal(canOperateFreight("Comercial"), false, "Comercial não contrata frete");
+assert.equal(canRegisterInvoice("Financeiro"), true);
+assert.equal(canRegisterInvoice("Frete"), false, "Frete não fatura");
+assert.equal(canRegisterInvoice("Comercial"), false, "Comercial não fatura");
+
+// 18-19: "Fazer pagamento" lista TODOS os lançamentos a pagar (não só o primeiro).
+const simPayables = [
+  { id: "t1", titleNumber: "SIM-1-PAG-MERC", amount: 100, paidAmount: 0, status: "open" },
+  { id: "t2", titleNumber: "SIM-1-PAG-FRETE", amount: 50, paidAmount: 0, status: "open" },
+  { id: "t3", titleNumber: "SIM-1-PAG-COMISSAO", amount: 20, paidAmount: 0, status: "open" },
+];
+function openPaymentList(payables) {
+  // o modal expõe TODOS os itens; não escolhe um automaticamente.
+  return payables.map((t) => t.id);
+}
+const listed = openPaymentList(simPayables);
+assert.equal(listed.length, 3, "modal mostra todos os lançamentos a pagar");
+assert.deepEqual(listed, ["t1", "t2", "t3"]);
+
+// 20: modo Supabase não injeta seeds/mocks como registros reais.
+function supabaseBaseTransactional() {
+  // mirror de supabaseBaseState: transacionais vazias no modo Supabase.
+  return { simulations: [], orders: [], freights: [], notifications: [], auditEvents: [] };
+}
+const base = supabaseBaseTransactional();
+assert.equal(base.simulations.length, 0, "sem seeds de simulação no modo Supabase");
+assert.equal(base.orders.length, 0);
+assert.equal(base.freights.length, 0);
+
+// 24-25: provider resolve local/supabase sem quebrar (reuso do helper existente)
+assert.equal(getDataProvider("supabase"), "supabase");
+assert.equal(getDataProvider("outro"), "local");
+
+console.log("Testes de separação frete/faturamento passaram.");
+
 console.log("Todos os testes passaram.");

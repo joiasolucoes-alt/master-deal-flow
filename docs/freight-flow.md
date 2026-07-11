@@ -6,6 +6,16 @@ Depois da validacao comercial, o pedido e confirmado e o frete fica liberado par
 
 # Fluxo de Frete
 
+## Liberação do frete NÃO depende do faturamento (fix: separate freight release from financial invoicing)
+
+Assim que o Comercial valida o comprovante e a SIM vira **Pedido confirmado**, o frete fica **liberado para contratação** — não espera o faturamento/NF. `isOrderFinanciallyReleased` trata "Pedido confirmado" como liberado.
+
+- O Frete vê o pedido como: **Frete liberado**, pronto para contratação, pedido confirmado, pagamento validado, e "Faturamento: aguardando" **apenas como informação**.
+- Contratar (quoted → hired) marca **"Frete contratado"**, registra histórico e notifica Comercial e Financeiro.
+- Após contratar, gera-se o **link/PIN** do motorista; os status operacionais seguintes vêm do **checklist externo do motorista**.
+- Apenas **Frete/Logística e Admin** operam o frete (permissão `freights:operate`). **Financeiro** tem só visualização — não contrata nem gera link/PIN. Frete/Comercial **não faturam**.
+- Resumo da carga (produto, descrição, **QTD.(CX)**, qtd. total, cliente, fornecedor, origem/destino, previsões) aparece na aba **Resumo** do frete, tanto na preparação quanto no pedido.
+
 ## Baldes da tela de Fretes (preparação vs execução)
 
 A tela de Fretes separa as operações em quatro abas/filtros, para não confundir o que já pode ser executado com o que é apenas preparação:

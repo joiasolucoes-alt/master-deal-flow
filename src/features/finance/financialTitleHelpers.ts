@@ -292,11 +292,13 @@ export function getRequiredPayablesForFreightRelease(
   );
 }
 
-// Status de pedido em que ele já está liberado para o frete. A partir do
-// faturamento (nova regra), o pedido vira "Frete liberado" e a contratação/geração
-// do link do motorista fica a cargo do perfil Frete — sem depender de um gate
-// separado de contas a pagar (que travava quando não havia payables lançados).
+// Status de pedido em que ele já está liberado para o frete.
+// Regra vigente (fix: separate freight release from financial invoicing): o frete
+// é liberado assim que a SIM vira Pedido ("Pedido confirmado"), em paralelo ao
+// faturamento. O faturamento/NF NÃO bloqueia o frete. Por isso "Pedido confirmado"
+// já conta como liberado, junto com os status operacionais seguintes.
 const FREIGHT_RELEASED_ORDER_STATUSES: ReadonlyArray<Order["status"]> = [
+  "Pedido confirmado",
   "Frete liberado",
   "Aguardando frete",
   "Em separação",

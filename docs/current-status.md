@@ -4,6 +4,8 @@ Nova regra validada com o cliente: a proposta aprovada pelo Gestor nao vira pedi
 
 Fluxo atual da onda: Comercial cria proposta -> Gestor aprova -> Financeiro paga/anexa comprovante -> Comercial valida -> Pedido confirmado -> Frete liberado -> Motorista/entrega -> Fechamento.
 
+**Atualização (fix: separate freight release from financial invoicing):** após a validação comercial, o **frete é liberado imediatamente** (não espera o faturamento). Faturamento vira **frente paralela** do Financeiro ("Aguardando faturamento"), sem bloquear o frete. Status separados por área (geral **Pedido confirmado** / **Frete liberado** / **Aguardando faturamento**). Permissões: Financeiro não contrata frete/gera link; Frete/Comercial não faturam. Aba Pagamento de Negociação: **"Fazer pagamento"** lista todos os lançamentos. Corrigido o bug de **SIM fantasma** (seeds/mocks não entram no modo Supabase). **Auto-refresh** sem F5 (polling leve 12s). Sem mudança de schema. Ver `docs/operational-flow.md`.
+
 **Novidade (feat: expose approved simulations to freight preparation):** ao Gestor aprovar, a operação passa a ficar visível para o **Frete/Logística como preparação** (aba **Preparação** na tela de Fretes), em paralelo ao pagamento — mas a execução (contratação, link/PIN, carregamento, entrega, canhoto) continua **bloqueada** até a SIM virar Pedido e ser liberada no faturamento. Notificações vão para Financeiro, Frete e Comercial; auditoria registrada. Sem mudança de schema (reutiliza `freights.order_id NULL`). Ver `docs/operational-flow.md` e `docs/freight-flow.md`.
 
 # Status atual - Onda 3 iniciada
