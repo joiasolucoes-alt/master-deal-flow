@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { ArrowLeft, Download, FileText, Printer } from "lucide-react";
+import { ArrowLeft, Download, FileText, PackageCheck, Printer } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Timeline } from "@/components/app/timeline";
@@ -33,6 +33,11 @@ import {
   getFinancialTitleStatus,
 } from "@/features/finance/financialTitleHelpers";
 import { createFreightFromOrder } from "@/features/freights/freightHelpers";
+import {
+  fetchDriverAccessSummary,
+  getDeliveryProofSignedUrl,
+  type DriverAccessSummary,
+} from "@/lib/driverTracking";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { hasPermission } from "@/lib/permissions";
 import { filterOrdersForUser } from "@/lib/visibility";
@@ -60,6 +65,27 @@ function OrderDetailPage() {
   } = useAppContext();
   const [billingOpen, setBillingOpen] = useState(false);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
+  const [driverSummary, setDriverSummary] = useState<DriverAccessSummary | null>(null);
+  const orderFreight = freights.find((freight) => freight.orderId === id);
+  const orderFreightId = orderFreight?.id;
+  useEffect(() => {
+    if (!orderFreight) {
+      setDriverSummary(null);
+      return;
+    }
+    let active = true;
+    fetchDriverAccessSummary(orderFreight)
+      .then((summary) => {
+        if (active) setDriverSummary(summary);
+      })
+      .catch(() => {
+        if (active) setDriverSummary(null);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderFreightId]);
   const order = filterOrdersForUser(orders, auth.user).find((o) => o.id === id);
   if (!order) {
     return (
@@ -101,6 +127,15 @@ function OrderDetailPage() {
     setBillingForm(createBillingForm(order, financialTitles));
     setBillingOpen(true);
   };
+
+  async function openDriverProof(path: string) {
+    try {
+      const url = await getDeliveryProofSignedUrl(path);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível abrir o comprovante.");
+    }
+  }
 
   const handleRegisterBilling = () => {
     const invoiceNumber = billingForm.invoiceNumber.trim();
@@ -455,6 +490,81 @@ function OrderDetailPage() {
                   {order.billingNotes || "Sem observação registrada."}
                 </p>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PackageCheck className="h-4 w-4 text-primary" /> Entrega e comprovante
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(() => {
+                const proof = driverSummary?.proofs?.[0];
+                const completedEvent = driverSummary?.events?.find(
+                  (event) => event.eventType === "completed",
+                );
+                const receiverEvent = driverSummary?.events?.find((event) => event.receiverName);
+                const delivered = order.status === "Entregue" || Boolean(proof);
+                if (!orderFreight) {
+                  return (
+                    <p className="text-sm text-muted-foreground">
+                      Frete ainda não gerado para este pedido.
+                    </p>
+                  );
+                }
+                return (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Info
+                      label="Situação"
+                      value={delivered ? "Entrega comprovada" : "Em andamento"}
+                      highlight={delivered}
+                    />
+                    <Info
+                      label="Data da entrega"
+                      value={
+                        completedEvent
+                          ? formatDateTime(completedEvent.occurredAt)
+                          : driverSummary?.completedAt
+                            ? formatDateTime(driverSummary.completedAt)
+                            : "-"
+                      }
+                    />
+                    <Info label="Recebedor" value={receiverEvent?.receiverName ?? "-"} />
+                    <div className="flex items-end">
+                      {proof ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void openDriverProof(proof.filePath)}
+                        >
+                          <FileText className="h-4 w-4" /> Ver canhoto ({proof.fileName})
+                        </Button>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          Canhoto ainda não anexado.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+              {driverSummary?.events?.some((event) => event.eventType === "occurrence") ? (
+                <div className="rounded-lg border border-warning/40 bg-warning-soft/30 p-3">
+                  <p className="text-xs font-semibold text-warning">Ocorrências registradas</p>
+                  <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                    {driverSummary.events
+                      .filter((event) => event.eventType === "occurrence")
+                      .map((event) => (
+                        <li key={event.id}>
+                          {event.occurrenceType || "Ocorrência"}
+                          {event.notes ? ` — ${event.notes}` : ""} ({formatDate(event.occurredAt)})
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
