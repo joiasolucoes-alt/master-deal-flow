@@ -4,6 +4,8 @@ O Financeiro passa a atuar depois da aprovacao do Gestor e antes da criacao do p
 
 Contas a receber continuam nascendo quando o pedido for confirmado.
 
+**Preparação de frete em paralelo:** a partir da aprovação do Gestor, além das contas a pagar da proposta, a operação também fica visível para o Frete como **preparação** (sem virar pedido). O Financeiro é notificado para pagar; o Frete é notificado para preparar. A liberação do frete para execução continua condicionada ao pagamento, à validação comercial e ao faturamento/NF. Ver `docs/operational-flow.md`.
+
 # Fluxo Financeiro
 
 ## O que foi automatizado

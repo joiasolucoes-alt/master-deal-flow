@@ -37,3 +37,13 @@ Antes de testar esta onda em producao, confirme que os SQLs anteriores ja foram 
 ## Como validar
 
 Crie uma simulacao, aprove no Financeiro e no Gestor, confirme se o pedido gerou contas no Financeiro e se o frete aparece bloqueado ate a baixa das contas a pagar.
+
+## feat: expose approved simulations to freight preparation — SEM mudança de schema
+
+A regra "SIM aprovada pelo Gestor fica visível para o Frete como preparação" **não requer nenhuma alteração de banco**:
+
+- O frete de preparação é gravado em `public.freights` com `order_id NULL` — coluna já nullable (`005_wave_2_freights.sql`).
+- Notificações por papel (Financeiro/Frete/Comercial) e auditoria acontecem na aplicação (store/localStorage como fallback) e nas funções/gatilhos já existentes; nada novo é necessário.
+- Único arquivo entregue: `supabase/manual-sql/029_verify_freight_preparation.sql` — **somente leitura** (SELECTs de verificação). Pode rodar em produção sem risco.
+
+**Ordem de execução manual:** nenhuma DDL nova. Opcionalmente rode `029` para conferir.

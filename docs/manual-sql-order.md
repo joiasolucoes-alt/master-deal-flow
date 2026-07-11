@@ -51,6 +51,7 @@ Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 | 026 | `rollback_role_based_rls` | ✅ **Aplicado** em produção. Reverte 021/024/025 para políticas abertas (restaura a criação de registros). |
 | 027 | `fix_driver_portal_pgcrypto` | ⚠️ **RODAR** — corrige o erro do PIN do motorista (`digest()` sem schema). Sem isto, o portal do motorista não funciona. |
 | 028 | `driver_journey_expansion` | ⚠️ **RODAR após 027** — ocorrências, recebedor, `last_access_at`, notificações/auditoria nos RPCs e policy de upload do canhoto. Ver `docs/driver-flow.md`. |
+| 029 | `verify_freight_preparation` | ✅ **Somente leitura** — verificação da feature "SIM aprovada visível para o Frete como preparação". **Não altera schema** (reutiliza `freights.order_id NULL`). Rode os SELECTs para conferir. Ver `docs/operational-flow.md` e `docs/freight-flow.md`. |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 

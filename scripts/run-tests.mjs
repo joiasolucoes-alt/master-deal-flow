@@ -1326,4 +1326,182 @@ assert.equal(getDataProvider("qualquer-coisa"), "local");
 
 console.log("Testes da jornada do motorista passaram.");
 
+// ---------------------------------------------------------------------------
+// Frete/Logística: SIM aprovada visível como preparação (feat: expose approved
+// simulations to freight preparation). Mirror puro dos helpers de
+// src/features/freights/freightPreparation.ts, src/lib/visibility.ts e
+// src/features/approvals/approvalNotifications.ts. Não depende de Supabase.
+// ---------------------------------------------------------------------------
+
+const FREIGHT_RELEASED_ORDER_STATUSES = [
+  "Frete liberado",
+  "Aguardando frete",
+  "Em separação",
+  "Em rota",
+  "Entregue",
+];
+
+function isOrderReleasedForFreight(order, titles = []) {
+  if (!order) return false;
+  if (FREIGHT_RELEASED_ORDER_STATUSES.includes(order.status)) return true;
+  const required = titles.filter(
+    (t) =>
+      t.orderId === order.id && t.type === "payable" && t.status !== "cancelled" && t.amount > 0,
+  );
+  if (required.length === 0) return false;
+  return required.every((t) => t.status === "paid");
+}
+
+function isPreparationFreight(freight) {
+  return !freight.orderId;
+}
+
+function canExecuteFreight(freight, order, titles = []) {
+  if (isPreparationFreight(freight)) return false;
+  return isOrderReleasedForFreight(order, titles);
+}
+
+function canGenerateDriverLink(freight, order, titles = []) {
+  return canExecuteFreight(freight, order, titles);
+}
+
+function getFreightBucket(freight, order, titles = []) {
+  if (freight.status === "delivered" || freight.status === "cancelled") return "finished";
+  if (freight.status === "loading" || freight.status === "in_route") return "in_progress";
+  if (canExecuteFreight(freight, order, titles)) return "released";
+  return "preparation";
+}
+
+function canViewOperationalQueues(role) {
+  return role === "Admin" || role === "Financeiro" || role === "Aprovador" || role === "Frete";
+}
+
+function filterFreightsForUser(freights, orders, user) {
+  if (canViewOperationalQueues(user.role)) return freights;
+  const ownedOrderIds = new Set(orders.filter((o) => o.owner === user.name).map((o) => o.id));
+  return freights.filter((f) => ownedOrderIds.has(f.orderId ?? "") || f.owner === user.name);
+}
+
+function buildGestorApprovalNotifications(sim) {
+  return [
+    { title: "Simulação aprovada pelo Gestor", targetRole: "Financeiro", entityId: sim.id },
+    { title: "Nova operação disponível para preparação", targetRole: "Frete", entityId: sim.id },
+    { title: "Simulação aprovada pelo Gestor", targetUserName: sim.owner, entityId: sim.id },
+  ];
+}
+
+// Cenários da especificação (§14)
+
+// Fixtures
+const prepFreight = {
+  id: "freight-sim1",
+  orderId: undefined,
+  owner: "Ana Comercial",
+  status: "quoted",
+};
+const orderAwaitingBilling = {
+  id: "ord1",
+  owner: "Ana Comercial",
+  status: "Aguardando faturamento",
+};
+const linkedFreightAwaiting = {
+  id: "freight-sim1",
+  orderId: "ord1",
+  owner: "Ana Comercial",
+  status: "quoted",
+};
+const orderReleased = { id: "ord1", owner: "Ana Comercial", status: "Frete liberado" };
+const releasedFreight = {
+  id: "freight-sim1",
+  orderId: "ord1",
+  owner: "Ana Comercial",
+  status: "quoted",
+};
+const movingFreight = {
+  id: "freight-sim1",
+  orderId: "ord1",
+  owner: "Ana Comercial",
+  status: "in_route",
+};
+const doneFreight = {
+  id: "freight-sim1",
+  orderId: "ord1",
+  owner: "Ana Comercial",
+  status: "delivered",
+};
+
+const freteUser = { role: "Frete", name: "Bruno Frete" };
+const comercialUser = { role: "Comercial", name: "Ana Comercial" };
+const otherComercial = { role: "Comercial", name: "Carla Outra" };
+
+// 5-6: Frete enxerga a SIM aprovada (frete de preparação) mesmo sem ser dono
+assert.equal(
+  filterFreightsForUser([prepFreight], [], freteUser).length,
+  1,
+  "Frete deve ver o frete de preparação",
+);
+
+// Comercial dono também vê a própria operação em preparação
+assert.equal(filterFreightsForUser([prepFreight], [], comercialUser).length, 1);
+// Comercial de outro dono NÃO vê
+assert.equal(filterFreightsForUser([prepFreight], [], otherComercial).length, 0);
+
+// Classificação em balde "preparação" enquanto não virou pedido
+assert.equal(getFreightBucket(prepFreight, undefined, []), "preparation");
+
+// 7: Frete NÃO consegue executar antes da liberação
+assert.equal(canExecuteFreight(prepFreight, undefined, []), false);
+// pedido criado, mas aguardando faturamento => ainda bloqueado
+assert.equal(canExecuteFreight(linkedFreightAwaiting, orderAwaitingBilling, []), false);
+assert.equal(getFreightBucket(linkedFreightAwaiting, orderAwaitingBilling, []), "preparation");
+
+// 8: Frete NÃO consegue gerar link/PIN antes de virar Pedido e ser liberado
+assert.equal(canGenerateDriverLink(prepFreight, undefined, []), false);
+assert.equal(canGenerateDriverLink(linkedFreightAwaiting, orderAwaitingBilling, []), false);
+
+// 12-14: após faturamento, pedido liberado => Frete pode executar e gerar link
+assert.equal(canExecuteFreight(releasedFreight, orderReleased, []), true);
+assert.equal(canGenerateDriverLink(releasedFreight, orderReleased, []), true);
+assert.equal(getFreightBucket(releasedFreight, orderReleased, []), "released");
+
+// Baldes em andamento / finalizado
+assert.equal(getFreightBucket(movingFreight, orderReleased, []), "in_progress");
+assert.equal(getFreightBucket(doneFreight, orderReleased, []), "finished");
+
+// 15: notificações da aprovação do Gestor — Financeiro, Frete e Comercial
+const approvalNots = buildGestorApprovalNotifications({
+  id: "sim1",
+  number: "SIM-1",
+  owner: "Ana Comercial",
+});
+assert.ok(
+  approvalNots.some((n) => n.targetRole === "Financeiro"),
+  "notifica Financeiro",
+);
+assert.ok(
+  approvalNots.some((n) => n.targetRole === "Frete"),
+  "notifica Frete (não Financeiro)",
+);
+assert.ok(
+  approvalNots.some((n) => n.targetUserName === "Ana Comercial"),
+  "notifica Comercial dono",
+);
+assert.equal(approvalNots.length, 3);
+
+// 17-18: liberação financeira depende de payables quitados quando existem
+assert.equal(
+  isOrderReleasedForFreight({ id: "ord2", status: "Pedido confirmado" }, [
+    { orderId: "ord2", type: "payable", status: "open", amount: 100 },
+  ]),
+  false,
+);
+assert.equal(
+  isOrderReleasedForFreight({ id: "ord2", status: "Pedido confirmado" }, [
+    { orderId: "ord2", type: "payable", status: "paid", amount: 100 },
+  ]),
+  true,
+);
+
+console.log("Testes de preparação de frete passaram.");
+
 console.log("Todos os testes passaram.");
