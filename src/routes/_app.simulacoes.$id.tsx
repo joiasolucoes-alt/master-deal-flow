@@ -664,6 +664,17 @@ function SimulationDetailPage() {
     upsertSimulation(conversion.simulation);
     linkedTitles.filter((title) => title.simulationId === draft.id).forEach(upsertFinancialTitle);
     upsertOrder(finalOrder);
+    // Reaproveita o frete de preparação (gerado na aprovação do Gestor, sem orderId),
+    // vinculando-o ao pedido em vez de criar um novo registro duplicado. A execução
+    // continua bloqueada até o pedido ser liberado financeiramente (faturamento).
+    const preparationFreight = freights.find(
+      (freight) =>
+        freight.id === `freight-${draft.id}` ||
+        (!freight.orderId && freight.orderNumber === draft.number),
+    );
+    if (preparationFreight && !preparationFreight.orderId) {
+      upsertFreight(linkFreightToConfirmedOrder(preparationFreight, finalOrder));
+    }
     upsertNegotiationWallet(
       createWalletFromSimulationOrder({
         simulation: draft,
@@ -697,6 +708,19 @@ function SimulationDetailPage() {
       entityType: "order",
       entityId: finalOrder.id,
       targetRole: "Financeiro",
+    });
+    // Notifica o Frete/Logística: a operação virou pedido e ficou vinculada. A
+    // execução será liberada após o faturamento/NF.
+    addNotification({
+      id: `not-${Date.now()}-freight-order`,
+      title: "Operação virou pedido",
+      description: `${finalOrder.number}: operação vinculada ao pedido. Execução liberada após o faturamento/NF.`,
+      type: "info",
+      createdAt: new Date().toISOString(),
+      unread: true,
+      entityType: "order",
+      entityId: finalOrder.id,
+      targetRole: "Frete",
     });
     setDraft(conversion.simulation);
     toast.success(`Pedido ${finalOrder.number} confirmado.`, {

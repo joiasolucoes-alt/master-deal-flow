@@ -4,6 +4,8 @@ Nova regra validada com o cliente: a proposta aprovada pelo Gestor nao vira pedi
 
 Fluxo atual da onda: Comercial cria proposta -> Gestor aprova -> Financeiro paga/anexa comprovante -> Comercial valida -> Pedido confirmado -> Frete liberado -> Motorista/entrega -> Fechamento.
 
+**Novidade (feat: expose approved simulations to freight preparation):** ao Gestor aprovar, a operação passa a ficar visível para o **Frete/Logística como preparação** (aba **Preparação** na tela de Fretes), em paralelo ao pagamento — mas a execução (contratação, link/PIN, carregamento, entrega, canhoto) continua **bloqueada** até a SIM virar Pedido e ser liberada no faturamento. Notificações vão para Financeiro, Frete e Comercial; auditoria registrada. Sem mudança de schema (reutiliza `freights.order_id NULL`). Ver `docs/operational-flow.md` e `docs/freight-flow.md`.
+
 # Status atual - Onda 3 iniciada
 
 O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou a operação financeira pós-pedido.

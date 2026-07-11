@@ -499,14 +499,14 @@ function FinancialPage() {
           });
           addNotification({
             id: `not-${Date.now()}-freight-release`,
-            title: "Frete liberado para contratação",
-            description: `${order.number} já pode avançar no módulo de Fretes.`,
+            title: "Frete liberado para execução",
+            description: `${order.number} foi liberado e já pode avançar no módulo de Fretes.`,
             type: "success",
             createdAt: new Date().toISOString(),
             unread: true,
             entityType: "order",
             entityId: order.id,
-            targetRole: "Financeiro",
+            targetRole: "Frete",
           });
         }
       }

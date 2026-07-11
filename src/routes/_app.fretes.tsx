@@ -77,7 +77,15 @@ import {
   type DriverAccessSummary,
   type GeneratedDriverAccess,
 } from "@/lib/driverTracking";
-import { belongsToUser, canViewAllFlows, filterOrdersForUser } from "@/lib/visibility";
+import { filterFreightsForUser, filterOrdersForUser } from "@/lib/visibility";
+import {
+  FREIGHT_BUCKET_LABEL,
+  getFreightBucket,
+  getPreparationBlockedReason,
+  getPreparationStageLabel,
+  isPreparationFreight,
+  type FreightBucket,
+} from "@/features/freights/freightPreparation";
 import { toast } from "sonner";
 import {
   createFreightWalletEntry,
@@ -130,20 +138,41 @@ function FreightsPage() {
     upsertNegotiationWallet,
   } = useAppContext();
   const [selectedFreightId, setSelectedFreightId] = useState<string | null>(null);
+  const [bucketFilter, setBucketFilter] = useState<FreightBucket | "all">("all");
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
-  const visibleOrderIds = useMemo(
-    () => new Set(visibleOrders.map((order) => order.id)),
-    [visibleOrders],
-  );
   const visibleFreights = useMemo(
+    () => filterFreightsForUser(freights, orders, auth.user),
+    [auth.user, freights, orders],
+  );
+  // Classifica cada frete visível em um "balde" (Preparação / Liberados / Em
+  // andamento / Finalizados) para separar visualmente as operações que ainda não
+  // podem ser executadas das que já estão liberadas.
+  const bucketByFreightId = useMemo(() => {
+    const map = new Map<string, FreightBucket>();
+    visibleFreights.forEach((freight) => {
+      const order = orders.find((item) => item.id === freight.orderId);
+      map.set(freight.id, getFreightBucket(freight, order, financialTitles));
+    });
+    return map;
+  }, [visibleFreights, orders, financialTitles]);
+  const bucketCounts = useMemo(() => {
+    const counts: Record<FreightBucket, number> = {
+      preparation: 0,
+      released: 0,
+      in_progress: 0,
+      finished: 0,
+    };
+    bucketByFreightId.forEach((bucket) => {
+      counts[bucket] += 1;
+    });
+    return counts;
+  }, [bucketByFreightId]);
+  const filteredFreights = useMemo(
     () =>
-      freights.filter((freight) => {
-        if (canViewAllFlows(auth.user)) return true;
-        return (
-          visibleOrderIds.has(freight.orderId ?? "") || belongsToUser(freight.owner, auth.user)
-        );
-      }),
-    [auth.user, freights, visibleOrderIds],
+      bucketFilter === "all"
+        ? visibleFreights
+        : visibleFreights.filter((freight) => bucketByFreightId.get(freight.id) === bucketFilter),
+    [bucketFilter, visibleFreights, bucketByFreightId],
   );
   const total = visibleFreights.length;
   const transit = visibleFreights.filter((f) => f.status === "in_route").length;
@@ -445,22 +474,47 @@ function FreightsPage() {
 
       <div className="grid gap-4 lg:grid-cols-[380px_1fr]">
         <Card className="shadow-card">
-          <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardHeader className="space-y-3">
             <CardTitle className="text-base">Painel de fretes</CardTitle>
+            <Tabs
+              value={bucketFilter}
+              onValueChange={(value) => setBucketFilter(value as FreightBucket | "all")}
+            >
+              <TabsList className="w-full flex-wrap justify-start gap-1">
+                <TabsTrigger value="all">Todos ({total})</TabsTrigger>
+                <TabsTrigger value="preparation">
+                  {FREIGHT_BUCKET_LABEL.preparation} ({bucketCounts.preparation})
+                </TabsTrigger>
+                <TabsTrigger value="released">
+                  {FREIGHT_BUCKET_LABEL.released} ({bucketCounts.released})
+                </TabsTrigger>
+                <TabsTrigger value="in_progress">
+                  {FREIGHT_BUCKET_LABEL.in_progress} ({bucketCounts.in_progress})
+                </TabsTrigger>
+                <TabsTrigger value="finished">
+                  {FREIGHT_BUCKET_LABEL.finished} ({bucketCounts.finished})
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </CardHeader>
           <CardContent className="space-y-2">
-            {visibleFreights.length === 0 ? (
+            {filteredFreights.length === 0 ? (
               <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                Nenhum frete no momento. Gere a partir de pedidos liberados.
+                {bucketFilter === "preparation"
+                  ? "Nenhuma operação em preparação. Simulações aprovadas pelo Gestor aparecem aqui antes de virar pedido."
+                  : "Nenhum frete nesta lista no momento."}
               </div>
             ) : null}
-            {visibleFreights.map((freight) => {
+            {filteredFreights.map((freight) => {
               const order = orders.find((item) => item.id === freight.orderId);
               const status = getChecklistStatus(
                 freight,
                 selectedFreightId === freight.id ? documents : [],
               );
-              const releaseLabel = getFreightReleaseStatusLabel(order, financialTitles);
+              const preparation = isPreparationFreight(freight);
+              const releaseLabel = preparation
+                ? getPreparationStageLabel(freight, order)
+                : getFreightReleaseStatusLabel(order, financialTitles);
               return (
                 <button
                   key={freight.id}
@@ -469,6 +523,7 @@ function FreightsPage() {
                   className={cn(
                     "w-full rounded-2xl border p-3 text-left transition hover:border-primary/60 hover:bg-muted/40",
                     selectedFreightId === freight.id && "border-primary bg-primary-soft",
+                    preparation && "border-dashed border-warning/50",
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -481,8 +536,19 @@ function FreightsPage() {
                     <StatusBadge status={getFreightStatusLabel(freight.status)} />
                   </div>
                   <p className="mt-2 truncate text-xs text-muted-foreground">{freight.route}</p>
+                  {preparation ? (
+                    <p className="mt-1 text-[11px] font-medium text-warning">
+                      Ainda não virou pedido • bloqueada para execução
+                    </p>
+                  ) : null}
                   <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-                    <Badge variant="outline" className="rounded-full">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "rounded-full",
+                        preparation && "border-warning/40 text-warning",
+                      )}
+                    >
                       {releaseLabel}
                     </Badge>
                     <span className="text-muted-foreground">
@@ -585,9 +651,21 @@ function FreightDetailPanel({
   const advanceDisabled =
     !financiallyReleased || freight.status === "delivered" || freight.status === "cancelled";
   const advanceLabel = getAdvanceLabel(freight.status);
+  const preparation = isPreparationFreight(freight);
 
   return (
     <>
+      {preparation ? (
+        <div className="rounded-2xl border border-warning/40 bg-warning-soft p-4 text-sm text-warning">
+          <p className="font-semibold">Operação em preparação</p>
+          <p className="mt-1 text-warning/90">{getPreparationBlockedReason(freight, order)}</p>
+          <p className="mt-2 text-xs text-warning/80">
+            Você pode preparar dados (transportadora, veículo, rota, observações), mas a contratação
+            oficial, a geração de link/PIN do motorista e o avanço operacional ficam bloqueados até
+            a liberação.
+          </p>
+        </div>
+      ) : null}
       <Card className="shadow-card">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
@@ -1214,9 +1292,11 @@ function DriverAccessCard({
 
               {!canRelease ? (
                 <p className="rounded-xl border border-warning/30 bg-warning-soft p-3 text-xs text-warning">
-                  {financiallyReleased
-                    ? "Complete os documentos obrigatórios (motorista, veículo e operação) antes de gerar o link."
-                    : "Aguardando liberação financeira do pedido."}
+                  {isPreparationFreight(freight)
+                    ? "Operação em preparação: o link/PIN do motorista só pode ser gerado após a proposta virar pedido e ser liberada financeiramente."
+                    : financiallyReleased
+                      ? "Complete os documentos obrigatórios (motorista, veículo e operação) antes de gerar o link."
+                      : "Aguardando liberação financeira do pedido."}
                 </p>
               ) : null}
 

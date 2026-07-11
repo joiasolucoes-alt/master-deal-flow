@@ -4,6 +4,24 @@ O pedido operacional so nasce depois da validacao comercial do comprovante de pa
 
 Fluxo oficial: Comercial cria proposta -> Gestor aprova -> Financeiro registra pagamento e comprovante -> Comercial valida -> Pedido confirmado -> Frete liberado -> Motorista atualiza entrega -> Financeiro e Comercial acompanham fechamento.
 
+## Preparação logística antecipada (feat: expose approved simulations to freight preparation)
+
+A partir da aprovação do Gestor, a operação já fica **visível para o Frete/Logística como preparação**, em paralelo ao pagamento do Financeiro — mas **a simulação ainda NÃO virou pedido** e a execução continua bloqueada.
+
+- Ao Gestor aprovar (status **Aguardando pagamento**), o sistema gera um registro de frete de **preparação** (sem `orderId`) e notifica **Financeiro**, **Frete** e **Comercial**.
+- O Frete enxerga cliente, carga, quantidade, origem, destino, previsões e valor previsto de frete, e pode **preparar dados e registrar observações internas**.
+- O Frete **não pode** contratar oficialmente, gerar link/PIN do motorista, carregar, rodar, finalizar entrega ou anexar canhoto antes da liberação.
+- Quando o Comercial valida o comprovante e a SIM vira **Pedido**, o mesmo frete de preparação é **vinculado ao pedido** (não duplica). A execução é liberada após o **faturamento/NF** (regra vigente da onda anterior).
+
+Sequência: Gestor aprova → Financeiro recebe para pagamento **e** Frete recebe para preparação → Financeiro paga → Comercial valida → SIM vira Pedido → Pedido segue para Faturamento e para o Frete executar.
+
+### Como validar no preview
+
+1. Aprove uma simulação como Gestor.
+2. Entre em **Fretes** como Frete/Financeiro/Admin: a operação aparece na aba **Preparação** com o rótulo "Ainda não virou pedido • bloqueada para execução".
+3. Confirme que o botão de avançar e o "Gerar link do motorista" estão desabilitados.
+4. Pague/valide/converta a proposta; após o faturamento, o mesmo frete migra para **Liberados** e as ações são habilitadas.
+
 # Fluxo Operacional
 
 ## Onda - Automacao Financeira e Liberacao do Frete

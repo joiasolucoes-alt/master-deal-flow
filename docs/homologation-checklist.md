@@ -15,6 +15,25 @@
 13. Motorista atualiza entrega.
 14. Conferir registros no Supabase.
 
+## Checklist — Preparação de frete (SIM aprovada visível para o Frete)
+
+1. Criar uma nova simulação (Comercial).
+2. Enviar para aprovação do Gestor.
+3. Acessar como Gestor e aprovar.
+4. Confirmar que a simulação foi para o Financeiro (status **Aguardando pagamento**) e que **nenhum pedido** foi criado.
+5. Acessar **Fretes** como Frete/Financeiro/Admin e confirmar a operação na aba **Preparação**, com rótulo "Ainda não virou pedido • bloqueada para execução".
+6. Confirmar que o Frete consegue **visualizar** cliente, carga, quantidade, origem, destino, previsões e valor previsto.
+7. Confirmar que o Frete **não consegue gerar link/PIN** do motorista (aba Rastreamento com o botão desabilitado e aviso).
+8. Confirmar que o Frete **não consegue avançar** a operação (botão de avançar desabilitado).
+9. Registrar uma observação interna de preparação (salvar dados do frete) e confirmar que persiste.
+10. Conferir as notificações da aprovação: **Financeiro**, **Frete** e **Comercial**.
+11. Acessar como Financeiro e registrar pagamento + comprovante.
+12. Acessar como Comercial e validar o comprovante.
+13. Confirmar que a SIM virou **Pedido** e que o mesmo frete migrou de **Preparação** para o pedido (sem duplicar).
+14. Registrar o faturamento/NF e confirmar que o frete migra para **Liberados** e as ações são habilitadas.
+15. Conferir histórico/auditoria (`audit_events`) e as notificações de liberação para o Frete.
+16. Rodar `supabase/manual-sql/029_verify_freight_preparation.sql` (somente leitura) e conferir os fretes de preparação.
+
 # Checklist de homologação - Onda 1.1
 
 ## Login e ambiente
