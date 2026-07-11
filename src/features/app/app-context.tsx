@@ -991,8 +991,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     void loadRemoteData();
 
+    // Auto-refresh sem F5 (§14): polling leve. Como o Realtime exigiria configurar
+    // publicações/políticas por tabela no Supabase (fora do escopo desta rodada), usamos
+    // polling a cada 12s. Todas as telas leem do store, então recarregar o store atualiza
+    // Simulações, Aprovações, Financeiro, Pagamento de Negociação, Pedidos, Fretes,
+    // Notificações e os detalhes abertos. Pausa quando a aba está em segundo plano.
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadRemoteData();
+    }, 12000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void loadRemoteData();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [
     auth.hasAccess,

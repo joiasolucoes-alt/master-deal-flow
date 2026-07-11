@@ -41,6 +41,7 @@ import type {
   FreightDriverEmploymentType,
   FreightRecord,
   Order,
+  SimulationProduct,
 } from "@/data/types";
 import {
   createFreightFromOrder,
@@ -78,6 +79,8 @@ import {
   type GeneratedDriverAccess,
 } from "@/lib/driverTracking";
 import { filterFreightsForUser, filterOrdersForUser } from "@/lib/visibility";
+import { canOperateFreight } from "@/lib/permissions";
+import { useAppStore } from "@/store/useAppStore";
 import {
   FREIGHT_BUCKET_LABEL,
   getFreightBucket,
@@ -86,6 +89,7 @@ import {
   isPreparationFreight,
   type FreightBucket,
 } from "@/features/freights/freightPreparation";
+import { getOrderBillingLabel } from "@/features/orders/orderStatus";
 import { toast } from "sonner";
 import {
   createFreightWalletEntry,
@@ -137,6 +141,11 @@ function FreightsPage() {
     upsertFinancialTitle,
     upsertNegotiationWallet,
   } = useAppContext();
+  const addNotification = useAppStore((store) => store.addNotification);
+  const addAuditEvents = useAppStore((store) => store.addAuditEvents);
+  // Só Frete/Logística e Admin operam o frete (contratar, avançar, gerar link/PIN).
+  // Financeiro tem apenas visualização.
+  const canOperate = canOperateFreight(auth.user);
   const [selectedFreightId, setSelectedFreightId] = useState<string | null>(null);
   const [bucketFilter, setBucketFilter] = useState<FreightBucket | "all">("all");
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
@@ -179,6 +188,13 @@ function FreightsPage() {
   const value = visibleFreights.reduce((s, f) => s + f.freightValue, 0);
   const selectedFreight = visibleFreights.find((freight) => freight.id === selectedFreightId);
   const selectedOrder = orders.find((order) => order.id === selectedFreight?.orderId);
+  // Resumo da carga (§11): produtos/QTD.(CX) vêm do pedido vinculado ou, na
+  // preparação, da simulação de origem.
+  const selectedFreightSimulation = simulations.find(
+    (simulation) => simulation.number === selectedFreight?.orderNumber,
+  );
+  const cargoProducts = selectedOrder?.products ?? selectedFreightSimulation?.products ?? [];
+  const cargoSupplier = selectedFreightSimulation?.supplier;
   const [form, setForm] = useState<FreightFormState>(() => createFreightFormState());
   const [documents, setDocuments] = useState<FreightDocumentRecord[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
@@ -223,13 +239,16 @@ function FreightsPage() {
     }
   }, [selectedFreight, selectedFreightId, visibleFreights.length]);
 
+  // Chaveamos pelos ids (não pelo objeto) para o auto-refresh (polling) não resetar
+  // o formulário nem re-buscar documentos a cada ciclo enquanto o mesmo frete está aberto.
   useEffect(() => {
     if (!selectedFreight) {
       setForm(createFreightFormState());
       return;
     }
     setForm(createFreightFormState(selectedFreight));
-  }, [selectedFreight]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFreightId]);
 
   useEffect(() => {
     if (!selectedFreight) {
@@ -242,7 +261,8 @@ function FreightsPage() {
 
     void refreshFreightDocuments(selectedFreight.id);
     void refreshDriverAccess(selectedFreight);
-  }, [refreshDriverAccess, refreshFreightDocuments, selectedFreight]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFreightId, refreshDriverAccess, refreshFreightDocuments]);
 
   // Auto-gera o registro de frete para pedidos JÁ LIBERADOS que ainda não têm frete,
   // para que apareçam na tela sem depender do botão "Gerar". Restrito a pedidos
@@ -279,9 +299,13 @@ function FreightsPage() {
   );
 
   const handleAdvanceFreight = (freight: FreightRecord, force = false) => {
+    if (!canOperate) {
+      toast.error("Seu perfil pode acompanhar o frete, mas não pode contratar/operar.");
+      return;
+    }
     const order = orders.find((item) => item.id === freight.orderId);
     if (!isOrderFinanciallyReleased(order, financialTitles)) {
-      toast.warning("Frete aguardando liberação financeira para avançar.");
+      toast.warning("Frete ainda em preparação (pedido não confirmado). Aguarde a liberação.");
       return;
     }
 
@@ -320,6 +344,47 @@ function FreightsPage() {
     upsertFreight(nextFreight);
 
     if (order) upsertOrder(updateOrderFromFreight(order, nextFreight));
+
+    // §7/§15/§16 — Contratação do frete (quoted → hired): "Frete contratado",
+    // notifica Comercial e Financeiro e registra auditoria.
+    if (freight.status === "quoted" && nextStatus === "hired") {
+      const now = new Date().toISOString();
+      const ref = order?.number ?? freight.orderNumber ?? freight.code;
+      addNotification({
+        id: `not-${Date.now()}-contract-com`,
+        title: "Frete contratado",
+        description: `${ref}: frete contratado (${nextFreight.carrierName || "transportadora a definir"}).`,
+        type: "success",
+        createdAt: now,
+        unread: true,
+        entityType: "order",
+        entityId: order?.id ?? freight.id,
+        targetUserName: freight.owner,
+      });
+      addNotification({
+        id: `not-${Date.now()}-contract-fin`,
+        title: "Frete contratado",
+        description: `${ref}: frete contratado pelo time de Logística.`,
+        type: "info",
+        createdAt: now,
+        unread: true,
+        entityType: "order",
+        entityId: order?.id ?? freight.id,
+        targetRole: "Financeiro",
+      });
+      addAuditEvents([
+        {
+          id: `aud-${now}-freight-hired-${freight.id}`,
+          entityType: "order",
+          entityId: order?.id ?? freight.id,
+          action: "freight_contracted",
+          description: `${ref}: frete contratado (${nextFreight.carrierName || "transportadora a definir"}).`,
+          userId: auth.user?.id ?? "system",
+          createdAt: now,
+          metadata: { role: auth.user?.role ?? "Frete", freightCode: freight.code },
+        },
+      ]);
+    }
 
     toast.success(`Frete atualizado para ${getFreightStatusLabel(nextStatus)}.`);
   };
@@ -407,9 +472,13 @@ function FreightsPage() {
 
   const handleGenerateDriverAccess = async () => {
     if (!selectedFreight) return;
+    if (!canOperate) {
+      toast.error("Seu perfil não pode gerar o link/PIN do motorista.");
+      return;
+    }
     const order = orders.find((item) => item.id === selectedFreight.orderId);
     if (!isOrderFinanciallyReleased(order, financialTitles)) {
-      toast.warning("Libere a operação no Financeiro antes de acionar o motorista.");
+      toast.warning("Operação em preparação. Aguarde o pedido ser confirmado.");
       return;
     }
     if (checklistStatus && !checklistStatus.canReleaseDriver) {
@@ -575,6 +644,9 @@ function FreightsPage() {
               freight={selectedFreight}
               order={selectedOrder}
               financialTitles={financialTitles}
+              canOperate={canOperate}
+              cargoProducts={cargoProducts}
+              cargoSupplier={cargoSupplier}
               form={form}
               onChangeForm={updateForm}
               onSaveForm={handleSaveFreightDetails}
@@ -603,6 +675,9 @@ function FreightDetailPanel({
   freight,
   order,
   financialTitles,
+  canOperate,
+  cargoProducts,
+  cargoSupplier,
   form,
   onChangeForm,
   onSaveForm,
@@ -623,6 +698,9 @@ function FreightDetailPanel({
   freight: FreightRecord;
   order?: Order;
   financialTitles: FinancialTitle[];
+  canOperate: boolean;
+  cargoProducts: SimulationProduct[];
+  cargoSupplier?: string;
   form: FreightFormState;
   onChangeForm: (key: keyof FreightFormState, value: string) => void;
   onSaveForm: () => void;
@@ -649,7 +727,10 @@ function FreightDetailPanel({
     (title) => title.id === (freight.freightPaymentTitleId || buildFreightPayableTitleId(freight)),
   );
   const advanceDisabled =
-    !financiallyReleased || freight.status === "delivered" || freight.status === "cancelled";
+    !canOperate ||
+    !financiallyReleased ||
+    freight.status === "delivered" ||
+    freight.status === "cancelled";
   const advanceLabel = getAdvanceLabel(freight.status);
   const preparation = isPreparationFreight(freight);
 
@@ -680,6 +761,11 @@ function FreightDetailPanel({
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={getFreightStatusLabel(freight.status)} />
             <StatusBadge status={getFreightReleaseStatusLabel(order, financialTitles)} />
+            {order ? (
+              <Badge variant="outline" className="rounded-full text-muted-foreground">
+                Faturamento: {getOrderBillingLabel(order)}
+              </Badge>
+            ) : null}
             <Button size="sm" onClick={() => onAdvance(freight)} disabled={advanceDisabled}>
               <ArrowRight />
               {advanceLabel}
@@ -718,7 +804,8 @@ function FreightDetailPanel({
           <TabsTrigger value="tracking">Rastreamento</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="summary" className="mt-4">
+        <TabsContent value="summary" className="mt-4 space-y-4">
+          <CargoSummaryCard freight={freight} supplier={cargoSupplier} products={cargoProducts} />
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="text-base">Dados do frete</CardTitle>
@@ -983,6 +1070,7 @@ function FreightDetailPanel({
             freight={freight}
             order={order}
             financialTitles={financialTitles}
+            canOperate={canOperate}
             checklist={checklist}
             access={driverAccess}
             generatedAccess={generatedDriverAccess}
@@ -994,6 +1082,81 @@ function FreightDetailPanel({
         </TabsContent>
       </Tabs>
     </>
+  );
+}
+
+function CargoSummaryCard({
+  freight,
+  supplier,
+  products,
+}: {
+  freight: FreightRecord;
+  supplier?: string;
+  products: SimulationProduct[];
+}) {
+  const totalBoxes = products.reduce((sum, product) => sum + (product.boxes ?? 0), 0);
+  const totalUnits = products.reduce((sum, product) => sum + (product.quantityTotal ?? 0), 0);
+  const [origin, destination] = freight.route.split("→").map((part) => part.trim());
+  const pairs: Array<[string, string]> = [
+    ["Cliente", freight.client || "—"],
+    ["Fornecedor", supplier || "—"],
+    ["Origem", origin || freight.unit || "—"],
+    ["Destino", destination || "—"],
+    ["Previsão de coleta", freight.pickupDate ? formatDateTime(freight.pickupDate) : "—"],
+    [
+      "Previsão de entrega",
+      freight.expectedDeliveryDate ? formatDateTime(freight.expectedDeliveryDate) : "—",
+    ],
+  ];
+  return (
+    <Card className="shadow-card">
+      <CardHeader>
+        <CardTitle className="text-base">Resumo da carga</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {pairs.map(([label, value]) => (
+            <div key={label} className="space-y-0.5">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+              <p className="text-sm font-medium">{value}</p>
+            </div>
+          ))}
+        </div>
+        {products.length ? (
+          <div className="overflow-hidden rounded-xl border">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+              <span>Produto</span>
+              <span className="text-right">QTD.(CX)</span>
+              <span className="text-right">Qtd. total</span>
+            </div>
+            {products.map((product) => (
+              <div
+                key={product.id}
+                className="grid grid-cols-[1fr_auto_auto] gap-3 border-b px-3 py-2 text-sm last:border-b-0"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{product.product}</p>
+                  {product.code ? (
+                    <p className="truncate text-xs text-muted-foreground">{product.code}</p>
+                  ) : null}
+                </div>
+                <span className="text-right">{(product.boxes ?? 0).toLocaleString("pt-BR")}</span>
+                <span className="text-right">
+                  {(product.quantityTotal ?? 0).toLocaleString("pt-BR")}
+                </span>
+              </div>
+            ))}
+            <div className="grid grid-cols-[1fr_auto_auto] gap-3 bg-muted/40 px-3 py-2 text-sm font-semibold">
+              <span>Total</span>
+              <span className="text-right">{totalBoxes.toLocaleString("pt-BR")}</span>
+              <span className="text-right">{totalUnits.toLocaleString("pt-BR")}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Sem itens de carga informados.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1199,6 +1362,7 @@ function DriverAccessCard({
   freight,
   order,
   financialTitles,
+  canOperate,
   checklist,
   access,
   generatedAccess,
@@ -1210,6 +1374,7 @@ function DriverAccessCard({
   freight?: FreightRecord;
   order?: Order;
   financialTitles: FinancialTitle[];
+  canOperate: boolean;
   checklist: FreightChecklistStatus | null;
   access: DriverAccessSummary | null;
   generatedAccess: GeneratedDriverAccess | null;
@@ -1220,7 +1385,7 @@ function DriverAccessCard({
 }) {
   const [copying, setCopying] = useState<string | null>(null);
   const financiallyReleased = isOrderFinanciallyReleased(order, financialTitles);
-  const canRelease = financiallyReleased && (checklist?.canReleaseDriver ?? false);
+  const canRelease = canOperate && financiallyReleased && (checklist?.canReleaseDriver ?? false);
 
   const copyText = async (label: string, value: string) => {
     setCopying(label);
@@ -1292,11 +1457,13 @@ function DriverAccessCard({
 
               {!canRelease ? (
                 <p className="rounded-xl border border-warning/30 bg-warning-soft p-3 text-xs text-warning">
-                  {isPreparationFreight(freight)
-                    ? "Operação em preparação: o link/PIN do motorista só pode ser gerado após a proposta virar pedido e ser liberada financeiramente."
-                    : financiallyReleased
-                      ? "Complete os documentos obrigatórios (motorista, veículo e operação) antes de gerar o link."
-                      : "Aguardando liberação financeira do pedido."}
+                  {!canOperate
+                    ? "Seu perfil pode acompanhar, mas não pode gerar o link/PIN do motorista."
+                    : isPreparationFreight(freight)
+                      ? "Operação em preparação: o link/PIN do motorista só pode ser gerado após a proposta virar pedido."
+                      : financiallyReleased
+                        ? "Complete os documentos obrigatórios (motorista, veículo e operação) antes de gerar o link."
+                        : "Aguardando confirmação do pedido."}
                 </p>
               ) : null}
 

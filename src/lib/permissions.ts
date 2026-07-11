@@ -17,6 +17,7 @@ export type Permission =
   | "orders:invoice"
   | "finance:view"
   | "freights:view"
+  | "freights:operate"
   | "deliveries:view"
   | "reports:view"
   | "settings:manage";
@@ -37,6 +38,7 @@ const allPermissions: Permission[] = [
   "orders:invoice",
   "finance:view",
   "freights:view",
+  "freights:operate",
   "deliveries:view",
   "reports:view",
   "settings:manage",
@@ -84,7 +86,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "freights:view",
     "reports:view",
   ],
-  Frete: ["dashboard:view", "orders:view", "freights:view", "deliveries:view"],
+  Frete: ["dashboard:view", "orders:view", "freights:view", "freights:operate", "deliveries:view"],
   Admin: allPermissions,
 };
 
@@ -180,4 +182,18 @@ export function canApproveSimulation(user: User | null | undefined, simulation: 
 
 export function canConvertSimulationToOrder(user: User | null | undefined) {
   return hasPermission(user, "orders:convert");
+}
+
+// Operar frete = contratar, avançar status, gerar link/PIN do motorista, anexar
+// documentos. Apenas Frete/Logística e Admin. Financeiro tem apenas visualização
+// (freights:view) e NÃO pode contratar nem gerar link (fix: separate freight release
+// from financial invoicing).
+export function canOperateFreight(user: User | null | undefined) {
+  return hasPermission(user, "freights:operate");
+}
+
+// Registrar faturamento/NF. Apenas Financeiro/Faturamento e Admin. Comercial e Frete
+// não podem faturar.
+export function canRegisterInvoice(user: User | null | undefined) {
+  return hasPermission(user, "orders:invoice");
 }

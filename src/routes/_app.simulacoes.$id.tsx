@@ -665,8 +665,9 @@ function SimulationDetailPage() {
     linkedTitles.filter((title) => title.simulationId === draft.id).forEach(upsertFinancialTitle);
     upsertOrder(finalOrder);
     // Reaproveita o frete de preparação (gerado na aprovação do Gestor, sem orderId),
-    // vinculando-o ao pedido em vez de criar um novo registro duplicado. A execução
-    // continua bloqueada até o pedido ser liberado financeiramente (faturamento).
+    // vinculando-o ao pedido em vez de criar um novo registro duplicado. Como o pedido
+    // nasce liberado (Pedido confirmado), o frete já fica liberado para contratação —
+    // sem depender do faturamento.
     const preparationFreight = freights.find(
       (freight) =>
         freight.id === `freight-${draft.id}` ||
@@ -683,11 +684,13 @@ function SimulationDetailPage() {
       }),
     );
     clearSavedSimulationFormDraft(draftStorageKey);
-    // Notifica o Comercial (dono) que a proposta virou pedido, aguardando faturamento.
+    // §15 — Comercial validou o comprovante: Pedido criado, Frete liberado e
+    // Financeiro/Faturamento com pendência separada (frentes paralelas).
+    // Comercial (dono): pedido criado com sucesso.
     addNotification({
       id: `not-${Date.now()}`,
-      title: "Pedido criado — aguardando faturamento",
-      description: `${finalOrder.number} criado após validação do pagamento. Aguardando registro de faturamento/NF.`,
+      title: "Pedido criado com sucesso",
+      description: `${finalOrder.number} confirmado. Frete liberado; faturamento em paralelo.`,
       type: "success",
       createdAt: new Date().toISOString(),
       unread: true,
@@ -697,11 +700,11 @@ function SimulationDetailPage() {
       targetUserEmail: currentUser?.email,
       targetUserName: draft.owner,
     });
-    // Notifica o Financeiro/Faturamento de que há um pedido aguardando faturamento.
+    // Financeiro/Faturamento: pedido confirmado, aguardando faturamento (paralelo).
     addNotification({
       id: `not-${Date.now()}-await-billing`,
-      title: "Pedido aguardando faturamento",
-      description: `${finalOrder.number} aguarda o registro de faturamento/NF.`,
+      title: "Pedido confirmado — aguardando faturamento",
+      description: `${finalOrder.number} aguarda o registro de faturamento/NF. Não bloqueia o frete.`,
       type: "info",
       createdAt: new Date().toISOString(),
       unread: true,
@@ -709,13 +712,12 @@ function SimulationDetailPage() {
       entityId: finalOrder.id,
       targetRole: "Financeiro",
     });
-    // Notifica o Frete/Logística: a operação virou pedido e ficou vinculada. A
-    // execução será liberada após o faturamento/NF.
+    // Frete/Logística: pedido confirmado, frete liberado para contratação.
     addNotification({
       id: `not-${Date.now()}-freight-order`,
-      title: "Operação virou pedido",
-      description: `${finalOrder.number}: operação vinculada ao pedido. Execução liberada após o faturamento/NF.`,
-      type: "info",
+      title: "Frete liberado para contratação",
+      description: `${finalOrder.number}: pedido confirmado. O frete já pode ser contratado, sem esperar o faturamento.`,
+      type: "success",
       createdAt: new Date().toISOString(),
       unread: true,
       entityType: "order",

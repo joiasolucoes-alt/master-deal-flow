@@ -1,3 +1,31 @@
+# Atualização — frete e faturamento em frentes paralelas (fix: separate freight release from financial invoicing)
+
+**Regra vigente:** após o Comercial validar o comprovante, a SIM vira **Pedido** e abre **duas frentes paralelas**:
+
+1. **Frete/Logística** — o pedido nasce **liberado**: status de frete "Frete liberado", pronto para contratação, geração de link/PIN do motorista e checklist externo. **Não depende do faturamento.**
+2. **Financeiro/Faturamento** — pendência separada: "Aguardando faturamento". Registra NF, contas a receber e vencimentos **sem travar o frete**.
+
+Status separados por área no mesmo pedido:
+
+| Área | Status |
+| --- | --- |
+| Geral do pedido | **Pedido confirmado** |
+| Pagamento | Pagamento validado |
+| Frete | **Frete liberado** → contratado → (checklist do motorista) |
+| Faturamento | **Aguardando faturamento** → Faturado |
+
+> O faturamento **não bloqueia** o carregamento nesta entrega. A possibilidade de exigir NF/documento fiscal antes do carregamento será validada com o cliente numa próxima reunião.
+
+Sequência: Gestor aprova → Financeiro recebe p/ pagamento **e** Frete recebe p/ preparação → Financeiro paga → Comercial valida → **SIM vira Pedido** → Frete **liberado** + Financeiro **aguardando faturamento** (seguem em paralelo).
+
+### Como validar no preview
+1. Aprove uma SIM (Gestor) → pague/valide (Financeiro/Comercial) → confirme o Pedido.
+2. Em **Pedidos**, veja os 3 badges: Pedido confirmado / Frete: Liberado para contratação / Faturamento: Aguardando faturamento.
+3. Em **Fretes** (perfil Frete), a operação está em **Liberados**: contrate e gere o link/PIN — **sem** faturar antes.
+4. Em **Financeiro**, registre a NF em paralelo; o frete continua liberado.
+
+---
+
 # Onda atual - fluxo operacional aprovado pelo cliente
 
 O pedido operacional so nasce depois da validacao comercial do comprovante de pagamento. A aprovacao do Gestor muda a proposta para **Aguardando pagamento**, sem criar pedido.

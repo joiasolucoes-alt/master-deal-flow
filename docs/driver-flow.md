@@ -4,6 +4,11 @@ Jornada externa do motorista/entregador: acessa por **link temporário + PIN**, 
 andamento da operação, registra ocorrências e finaliza a entrega **anexando o canhoto
 assinado**. O comprovante volta para os painéis internos (Frete, Financeiro, Pedido).
 
+> **Quando o link/PIN é gerado (fix: separate freight release from financial invoicing):**
+> o link/PIN é gerado pelo **Frete/Admin** após a **contratação** do frete — que já é possível
+> assim que o pedido é confirmado, **sem** depender do faturamento. A partir do momento em que
+> o motorista assume, os status operacionais passam a vir do **checklist externo**, não do painel interno.
+
 ## Onde entra no fluxo geral
 
 ```

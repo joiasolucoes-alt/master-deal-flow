@@ -127,6 +127,31 @@ function baseState(): PersistedState {
   };
 }
 
+// No modo Supabase, os dados transacionais (simulações, pedidos, fretes, títulos,
+// etc.) vêm SEMPRE do banco. Começar com os seeds/mocks faria registros fantasmas
+// aparecerem como se fossem reais até o carregamento do Supabase (e o merge de
+// "pendentes locais" podia reinjetá-los). Por isso, em Supabase, zeramos as coleções
+// transacionais e deixamos o app-context popular com os dados reais. Os catálogos
+// (clientes/fornecedores/produtos) permanecem como referência até o Supabase carregar.
+function supabaseBaseState(): PersistedState {
+  return {
+    ...baseState(),
+    simulations: [],
+    negotiations: [],
+    orders: [],
+    financialTitles: [],
+    realizedResults: [],
+    negotiationWallets: [],
+    opportunityPools: [],
+    freights: [],
+    deliveries: [],
+    auditEvents: [],
+    notifications: [],
+    selectedApprovalId: null,
+    selectedOrderId: null,
+  };
+}
+
 function mergeSeedSimulations(persisted: PersistedState): PersistedState {
   const existingIds = new Set(persisted.simulations.map((simulation) => simulation.id));
   const missingSeeds = simulationsSeed.filter((simulation) => !existingIds.has(simulation.id));
@@ -144,14 +169,15 @@ function mergeSeedSimulations(persisted: PersistedState): PersistedState {
 }
 
 function readPersisted(): PersistedState {
-  if (typeof window === "undefined") return baseState();
+  if (typeof window === "undefined")
+    return isSupabaseProvider() ? supabaseBaseState() : baseState();
   if (isSupabaseProvider()) {
     try {
       window.localStorage.removeItem(STORE_KEY);
     } catch (error) {
       console.warn("Falha ao limpar cache local do estado global.", error);
     }
-    return baseState();
+    return supabaseBaseState();
   }
 
   try {
