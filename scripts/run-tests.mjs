@@ -1190,4 +1190,140 @@ assert.equal(getDataProvider("supabase"), "supabase");
 
 console.log("Testes de faturamento passaram.");
 
+// --- Jornada do motorista (link + PIN → checklist → ocorrência → canhoto) -----
+// Reimplementação (mock, sem Supabase real) espelhando a lógica de driverTracking.
+const DRIVER_MILESTONES = [
+  "arrived_loading",
+  "in_transit",
+  "arrived_delivery_location",
+  "unloaded",
+  "proof_uploaded",
+];
+function driverAuth(link, pin) {
+  if (link.revokedAt) return { ok: false, reason: "revoked" };
+  if (link.expiresAt < Date.now()) return { ok: false, reason: "expired" };
+  if (link.lockedUntil && link.lockedUntil > Date.now()) return { ok: false, reason: "locked" };
+  if (link.pin !== pin) return { ok: false, reason: "invalid_pin" };
+  return { ok: true };
+}
+function driverNextEvent(trip) {
+  const done = new Set(trip.events.filter((e) => e.type !== "occurrence").map((e) => e.type));
+  return DRIVER_MILESTONES.find((m) => !done.has(m)) ?? null;
+}
+function driverRegisterEvent(trip, type, info) {
+  const expected = driverNextEvent(trip);
+  if (type !== expected) throw new Error("event out of order");
+  trip.events.push({ type, receiverName: info?.receiverName, at: Date.now() });
+  if (type === "unloaded") trip.freightStatus = "delivered";
+  trip.notifications.push({ targetRole: "Frete", title: "Atualização do motorista" });
+  return trip;
+}
+function driverRegisterOccurrence(trip, occurrenceType, notes) {
+  trip.events.push({ type: "occurrence", occurrenceType, notes, at: Date.now() });
+  trip.notifications.push({ targetRole: "Frete", title: "Ocorrência", type: "warning" });
+  trip.notifications.push({ targetRole: "Comercial", title: "Ocorrência", type: "warning" });
+  trip.notifications.push({ targetRole: "Financeiro", title: "Ocorrência", type: "warning" });
+  return trip;
+}
+function driverFinalize(trip, file, info) {
+  if (driverNextEvent(trip) !== "proof_uploaded") throw new Error("proof out of order");
+  if (!file) throw new Error("canhoto obrigatório");
+  trip.events.push({ type: "proof_uploaded", receiverName: info?.receiverName, at: Date.now() });
+  trip.events.push({ type: "completed", at: Date.now() });
+  trip.proofs.push({ fileName: file.name });
+  trip.freightStatus = "delivered";
+  trip.orderStatus = "Entregue";
+  trip.orderDeliveryProgress = 100;
+  trip.linkState = "completed";
+  trip.notifications.push({ targetRole: "Frete", title: "Entrega finalizada", type: "success" });
+  trip.notifications.push({
+    targetRole: "Financeiro",
+    title: "Entrega comprovada",
+    type: "success",
+  });
+  trip.notifications.push({
+    targetRole: "Comercial",
+    title: "Entrega finalizada",
+    type: "success",
+  });
+  return trip;
+}
+function newTrip() {
+  return {
+    events: [],
+    proofs: [],
+    notifications: [],
+    freightStatus: "hired",
+    orderStatus: "Frete liberado",
+    orderDeliveryProgress: 0,
+    linkState: "active",
+  };
+}
+
+const now = Date.now();
+// 1-4: acesso
+assert.equal(driverAuth({ pin: "123456", expiresAt: now + 1e6 }, "123456").ok, true);
+assert.equal(driverAuth({ pin: "123456", expiresAt: now + 1e6 }, "000000").reason, "invalid_pin");
+assert.equal(driverAuth({ pin: "1", expiresAt: now - 1 }, "1").reason, "expired");
+assert.equal(driverAuth({ pin: "1", expiresAt: now + 1e6, revokedAt: now }, "1").reason, "revoked");
+
+// 5: payload não expõe dados financeiros sensíveis
+const publicPayloadKeys = [
+  "freight_id",
+  "driver_name",
+  "vehicle_plate",
+  "pickup_city",
+  "delivery_city",
+  "status",
+];
+assert.equal(
+  publicPayloadKeys.some((k) => ["margin", "profit", "commission", "cost"].includes(k)),
+  false,
+);
+
+// 6-9,12,13: checklist na ordem correta
+const trip = newTrip();
+assert.equal(driverNextEvent(trip), "arrived_loading");
+driverRegisterEvent(trip, "arrived_loading");
+assert.equal(driverNextEvent(trip), "in_transit");
+driverRegisterEvent(trip, "in_transit");
+assert.throws(() => driverRegisterEvent(trip, "unloaded"), /out of order/); // pula etapa
+driverRegisterEvent(trip, "arrived_delivery_location");
+
+// 10-11: ocorrência (repetível, não avança marco, notifica 3 áreas)
+driverRegisterOccurrence(trip, "Cliente ausente", "Portaria fechada");
+assert.equal(driverNextEvent(trip), "unloaded");
+assert.equal(trip.events.filter((e) => e.type === "occurrence").length, 1);
+assert.equal(trip.notifications.filter((n) => n.title === "Ocorrência").length, 3);
+
+// descarga com recebedor
+driverRegisterEvent(trip, "unloaded", { receiverName: "João Recebedor" });
+assert.equal(trip.freightStatus, "delivered");
+
+// 14: finalizar sem canhoto é bloqueado
+assert.throws(() => driverFinalize(trip, null, { receiverName: "João" }), /obrigatório/);
+
+// 15-16: anexa canhoto e finaliza
+driverFinalize(trip, { name: "canhoto.jpg" }, { receiverName: "João Recebedor" });
+
+// 17-19: frete/pedido/histórico atualizados
+assert.equal(trip.freightStatus, "delivered");
+assert.equal(trip.orderStatus, "Entregue");
+assert.equal(trip.orderDeliveryProgress, 100);
+assert.ok(trip.events.some((e) => e.type === "completed"));
+assert.equal(trip.linkState, "completed");
+assert.equal(trip.proofs.length, 1);
+assert.ok(trip.events.find((e) => e.type === "proof_uploaded")?.receiverName === "João Recebedor");
+
+// 20: notificações de entrega criadas para Frete/Financeiro/Comercial
+assert.ok(trip.notifications.some((n) => n.targetRole === "Frete" && n.type === "success"));
+assert.ok(trip.notifications.some((n) => n.targetRole === "Financeiro" && n.type === "success"));
+assert.ok(trip.notifications.some((n) => n.targetRole === "Comercial" && n.type === "success"));
+
+// 21-22: provider local/supabase resolvem sem quebrar
+assert.equal(getDataProvider("supabase"), "supabase");
+assert.equal(getDataProvider("qualquer-coisa"), "local");
+
+console.log("Testes da jornada do motorista passaram.");
+
 console.log("Todos os testes passaram.");

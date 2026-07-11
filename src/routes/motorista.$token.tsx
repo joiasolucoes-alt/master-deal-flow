@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  AlertTriangle,
   Camera,
   CheckCircle2,
   FileText,
@@ -14,13 +15,16 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
 import {
   DRIVER_EVENT_FLOW,
+  DRIVER_OCCURRENCE_TYPES,
   authenticateDriverLink,
   getNextDriverEvent,
   registerDriverEvent,
+  registerDriverOccurrence,
   uploadDeliveryProof,
   type DriverEventType,
   type DriverTrip,
@@ -54,9 +58,18 @@ function DriverTrackingPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [receiverName, setReceiverName] = useState("");
+  const [receiverDocument, setReceiverDocument] = useState("");
+
+  const [occurrenceOpen, setOccurrenceOpen] = useState(false);
+  const [occurrenceType, setOccurrenceType] = useState<string>(DRIVER_OCCURRENCE_TYPES[0]);
+  const [occurrenceNotes, setOccurrenceNotes] = useState("");
+  const [occurrenceSubmitting, setOccurrenceSubmitting] = useState(false);
 
   const nextEvent = useMemo(() => (trip ? getNextDriverEvent(trip) : null), [trip]);
   const proofStep = nextEvent?.type === "proof_uploaded";
+  const deliveryStep = nextEvent?.type === "unloaded";
+  const needsReceiver = proofStep || deliveryStep;
   const completed = trip?.linkState === "completed" || trip?.nextEvent === "completed";
 
   async function submitPin() {
@@ -73,10 +86,10 @@ function DriverTrackingPage() {
         return;
       }
       setTrip(result.trip);
-    } catch (error) {
+    } catch (err) {
       setError(
-        error instanceof Error
-          ? `Não foi possível validar o acesso: ${error.message}`
+        err instanceof Error
+          ? `Não foi possível validar o acesso: ${err.message}`
           : "Não foi possível validar o acesso. Tente novamente em instantes.",
       );
     } finally {
@@ -90,14 +103,14 @@ function DriverTrackingPage() {
       setPreviewUrl(null);
       return;
     }
-
-    if (!ALLOWED_TYPES.has(file.type) || file.size > MAX_FILE_SIZE) {
-      toast.error("Envie JPG, PNG ou PDF com até 10 MB.");
-      setSelectedFile(null);
-      setPreviewUrl(null);
+    if (!ALLOWED_TYPES.has(file.type)) {
+      toast.error("Formato inválido. Envie JPG, PNG ou PDF.");
       return;
     }
-
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("Arquivo muito grande (máx. 10 MB).");
+      return;
+    }
     setSelectedFile(file);
     setPreviewUrl(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
   }
@@ -105,30 +118,75 @@ function DriverTrackingPage() {
   async function submitNextEvent() {
     if (!trip || !nextEvent) return;
     if (proofStep && !selectedFile) {
-      toast.error("Tire uma foto ou selecione o comprovante antes de enviar.");
+      toast.error("Anexe a foto do canhoto assinado antes de finalizar.");
+      return;
+    }
+    if (needsReceiver && !receiverName.trim()) {
+      toast.error("Informe quem recebeu a mercadoria.");
       return;
     }
 
     setSubmitting(true);
     try {
       const coords = await getLocation();
+      const info = needsReceiver
+        ? { receiverName: receiverName.trim(), receiverDocument: receiverDocument.trim() }
+        : undefined;
       const updated =
         proofStep && selectedFile
-          ? await uploadDeliveryProof(token, pin.trim(), selectedFile, coords)
+          ? await uploadDeliveryProof(token, pin.trim(), selectedFile, coords, info)
           : await registerDriverEvent(
               token,
               pin.trim(),
-              nextEvent.type as Exclude<DriverEventType, "proof_uploaded" | "completed">,
+              nextEvent.type as Exclude<
+                DriverEventType,
+                "proof_uploaded" | "completed" | "occurrence" | "checkpoint"
+              >,
               coords,
+              info,
             );
       setTrip(updated);
       setSelectedFile(null);
       setPreviewUrl(null);
       toast.success(nextEvent.success);
-    } catch {
-      toast.error(proofStep ? "Falha ao enviar comprovante." : "Falha ao registrar etapa.");
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : proofStep
+            ? "Falha ao enviar comprovante."
+            : "Falha ao registrar etapa.",
+      );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function submitOccurrence() {
+    if (!trip) return;
+    if (!occurrenceNotes.trim()) {
+      toast.error("Descreva a ocorrência.");
+      return;
+    }
+    setOccurrenceSubmitting(true);
+    try {
+      const coords = await getLocation();
+      const updated = await registerDriverOccurrence(
+        token,
+        pin.trim(),
+        occurrenceType,
+        occurrenceNotes.trim(),
+        undefined,
+        coords,
+      );
+      setTrip(updated);
+      setOccurrenceOpen(false);
+      setOccurrenceNotes("");
+      toast.success("Ocorrência registrada. A equipe foi avisada.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao registrar ocorrência.");
+    } finally {
+      setOccurrenceSubmitting(false);
     }
   }
 
@@ -143,7 +201,7 @@ function DriverTrackingPage() {
               </div>
               <h1 className="text-2xl font-bold text-slate-950">Master Flow</h1>
               <p className="mt-1 text-sm text-slate-600">
-                Digite a senha enviada pelo responsável do frete.
+                Digite a senha (PIN) enviada pelo responsável do frete.
               </p>
             </div>
 
@@ -166,7 +224,8 @@ function DriverTrackingPage() {
             </div>
 
             {error ? (
-              <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <p className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
                 {error}
               </p>
             ) : null}
@@ -195,17 +254,19 @@ function DriverTrackingPage() {
             <Truck className="h-7 w-7" />
           </div>
           <h1 className="text-2xl font-bold text-slate-950">Master Flow</h1>
-          <p className="text-sm text-slate-600">Entrega do motorista</p>
+          <p className="text-sm text-slate-600">Acompanhamento da entrega</p>
         </div>
 
+        {/* Resumo da operação */}
         <Card className="border-slate-200 bg-white shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-lg text-slate-950">
-              Entrega
+              Operação
               <Badge className="rounded-full">{statusLabel(trip.status, trip.linkState)}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-slate-900">
+            <Info label="Frete" value={trip.freightId || "-"} />
             <Info label="Motorista" value={trip.driverName || "Não informado"} />
             <Info label="Placa" value={trip.vehiclePlate || "Não informada"} />
             <RoutePoint
@@ -221,20 +282,42 @@ function DriverTrackingPage() {
           </CardContent>
         </Card>
 
+        {/* Próxima ação */}
         <Card className="border-slate-200 bg-white shadow-sm">
           <CardContent className="space-y-3 pt-6">
             <p className="text-sm font-medium text-slate-600">Próxima ação</p>
             <h2 className="text-2xl font-bold text-slate-950">
               {completed
-                ? "Entrega registrada com sucesso"
+                ? "Entrega finalizada com sucesso"
                 : (nextEvent?.label ?? getLockedMessage(trip.linkState))}
             </h2>
+
+            {needsReceiver && !completed ? (
+              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-800">Dados de quem recebeu</p>
+                <Input
+                  placeholder="Nome do recebedor"
+                  value={receiverName}
+                  onChange={(event) => setReceiverName(event.target.value)}
+                  className="bg-white"
+                />
+                <Input
+                  placeholder="Documento / setor (opcional)"
+                  value={receiverDocument}
+                  onChange={(event) => setReceiverDocument(event.target.value)}
+                  className="bg-white"
+                />
+              </div>
+            ) : null}
+
             {proofStep ? (
               <div className="space-y-3">
                 <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-center text-slate-900">
                   <Camera className="mb-2 h-8 w-8 text-primary" />
-                  <span className="font-semibold">Tirar foto ou selecionar comprovante</span>
-                  <span className="mt-1 text-xs text-slate-500">JPG, PNG ou PDF até 10 MB</span>
+                  <span className="font-semibold">Foto do canhoto assinado</span>
+                  <span className="mt-1 text-xs text-slate-500">
+                    Obrigatório para finalizar. JPG, PNG ou PDF até 10 MB.
+                  </span>
                   <input
                     className="sr-only"
                     type="file"
@@ -272,11 +355,76 @@ function DriverTrackingPage() {
               ) : (
                 <CheckCircle2 className="h-5 w-5" />
               )}
-              {completed ? "Tudo certo" : (nextEvent?.label ?? "Indisponível")}
+              {completed
+                ? "Entrega concluída"
+                : proofStep
+                  ? "Finalizar entrega"
+                  : (nextEvent?.label ?? "Indisponível")}
             </Button>
           </CardContent>
         </Card>
 
+        {/* Ocorrência */}
+        {!completed && trip.linkState === "active" ? (
+          <Card className="border-amber-200 bg-white shadow-sm">
+            <CardContent className="space-y-3 pt-6">
+              {occurrenceOpen ? (
+                <div className="space-y-3">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-amber-700">
+                    <AlertTriangle className="h-4 w-4" /> Registrar ocorrência
+                  </p>
+                  <select
+                    value={occurrenceType}
+                    onChange={(event) => setOccurrenceType(event.target.value)}
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900"
+                  >
+                    {DRIVER_OCCURRENCE_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                  <Textarea
+                    placeholder="Descreva o que aconteceu"
+                    value={occurrenceNotes}
+                    onChange={(event) => setOccurrenceNotes(event.target.value)}
+                    className="bg-white"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setOccurrenceOpen(false)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      disabled={occurrenceSubmitting}
+                      onClick={submitOccurrence}
+                    >
+                      {occurrenceSubmitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Enviar"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="h-12 w-full border-amber-300 text-amber-700"
+                  onClick={() => setOccurrenceOpen(true)}
+                >
+                  <AlertTriangle className="h-5 w-5" /> Registrar ocorrência
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {/* Histórico */}
         <Card className="border-slate-200 bg-white shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg text-slate-950">Etapas</CardTitle>
@@ -288,7 +436,7 @@ function DriverTrackingPage() {
               return (
                 <div key={step.type} className="flex gap-3">
                   <div
-                    className={`mt-1 h-4 w-4 rounded-full ${
+                    className={`mt-1 h-4 w-4 shrink-0 rounded-full ${
                       event ? "bg-primary" : active ? "bg-amber-400" : "bg-slate-200"
                     }`}
                   />
@@ -296,12 +444,28 @@ function DriverTrackingPage() {
                     <p className="font-medium text-slate-950">{step.label}</p>
                     <p className="text-xs text-slate-500">
                       {event ? formatDateTime(event.occurredAt) : active ? "Agora" : "Pendente"}
-                      {event?.latitude ? " - localizacao registrada" : ""}
+                      {event?.receiverName ? ` • Recebido por ${event.receiverName}` : ""}
                     </p>
                   </div>
                 </div>
               );
             })}
+            {trip.events
+              .filter((event) => event.eventType === "occurrence")
+              .map((event) => (
+                <div key={event.id} className="flex gap-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                  <div>
+                    <p className="font-medium text-amber-700">
+                      {event.occurrenceType || "Ocorrência"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {formatDateTime(event.occurredAt)}
+                      {event.notes ? ` • ${event.notes}` : ""}
+                    </p>
+                  </div>
+                </div>
+              ))}
           </CardContent>
         </Card>
       </div>
@@ -340,24 +504,24 @@ function RoutePoint({ title, address, city }: { title: string; address: string; 
 }
 
 function statusLabel(status: string, linkState: DriverTrip["linkState"]) {
-  if (linkState === "completed") return "Concluida";
+  if (linkState === "completed") return "Concluída";
   if (linkState === "locked") return "Bloqueada";
   if (linkState === "expired") return "Expirada";
   if (linkState === "revoked") return "Revogada";
   return (
     (
       {
-        quoted: "Cotacao",
+        quoted: "Cotação",
         hired: "Contratado",
         loading: "Carregando",
         in_route: "Em rota",
         arrived_loading: "Carregando",
-        in_transit: "Em transito",
+        in_transit: "Em trânsito",
         arrived_delivery_location: "No destino",
         unloaded: "Descarregado",
         proof_uploaded: "Comprovante",
         delivered: "Entregue",
-        completed: "Concluida",
+        completed: "Concluída",
         cancelled: "Cancelada",
       } as Record<string, string>
     )[status] ?? status
@@ -368,8 +532,8 @@ function getAuthErrorMessage(reason?: string) {
   if (reason === "expired") return "Este link expirou. Solicite um novo acesso.";
   if (reason === "revoked") return "Este link foi revogado. Solicite um novo acesso.";
   if (reason === "locked") return "Muitas tentativas erradas. Tente novamente mais tarde.";
-  if (reason === "completed") return "Esta entrega ja foi concluida.";
-  if (reason === "invalid_link") return "Link invalido. Confira o endereço recebido.";
+  if (reason === "completed") return "Esta entrega já foi concluída.";
+  if (reason === "invalid_link") return "Link inválido. Confira o endereço recebido.";
   return "Senha incorreta. Confira o PIN recebido e tente novamente.";
 }
 

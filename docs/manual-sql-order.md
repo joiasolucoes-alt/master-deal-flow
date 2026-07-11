@@ -49,6 +49,8 @@ Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 | 024 | `role_based_rls_core_tables` | ⚠️ **APLICADO E REVERTIDO** — ver 021. |
 | 025 | `role_based_rls_followup_tables` | ⚠️ **APLICADO E REVERTIDO** — ver 021. |
 | 026 | `rollback_role_based_rls` | ✅ **Aplicado** em produção. Reverte 021/024/025 para políticas abertas (restaura a criação de registros). |
+| 027 | `fix_driver_portal_pgcrypto` | ⚠️ **RODAR** — corrige o erro do PIN do motorista (`digest()` sem schema). Sem isto, o portal do motorista não funciona. |
+| 028 | `driver_journey_expansion` | ⚠️ **RODAR após 027** — ocorrências, recebedor, `last_access_at`, notificações/auditoria nos RPCs e policy de upload do canhoto. Ver `docs/driver-flow.md`. |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 

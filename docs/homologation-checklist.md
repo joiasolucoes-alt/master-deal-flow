@@ -114,3 +114,27 @@
 18. Confirmar timeline no painel interno.
 19. Conferir notificacoes internas.
 20. Conferir dados no Supabase.
+
+# Checklist - Jornada do Motorista (link + PIN)
+
+Pré-requisito: rodar `supabase/manual-sql/027` e `028` no SQL Editor (nesta ordem).
+
+1. Como Frete, gerar link + PIN de um frete liberado.
+2. Abrir `/motorista/<token>` em aba anônima.
+3. Informar PIN incorreto → mensagem amigável ("Senha incorreta...").
+4. Informar PIN correto → entra na jornada.
+5. Ver o resumo da operação (frete, motorista, placa, coleta, entrega).
+6. Confirmar que NÃO aparecem margem/lucro/comissão/custos.
+7. Marcar "Cheguei para carregar".
+8. Marcar "Estou em trânsito".
+9. Marcar "Cheguei no destino".
+10. Registrar uma ocorrência (ex.: Cliente ausente) com descrição.
+11. Marcar "Descarreguei" informando o nome do recebedor.
+12. Tentar finalizar SEM anexar o canhoto → bloqueado.
+13. Anexar foto do canhoto (JPG/PNG/PDF) → finaliza.
+14. Como Frete, abrir o detalhe do frete → ver eventos + canhoto.
+15. Como Financeiro/Comercial, abrir o Pedido → card "Entrega e comprovante" com o canhoto.
+16. Confirmar pedido com status "Entregue" e progresso de entrega 100%.
+17. Conferir `freight_events`, `delivery_proofs`, `notifications` (source=driver_link) e
+    `audit_events` no Supabase.
+18. Testar link expirado/revogado → acesso negado com mensagem clara.

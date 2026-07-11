@@ -11,7 +11,24 @@ export type DriverEventType =
   | "arrived_delivery_location"
   | "unloaded"
   | "proof_uploaded"
-  | "completed";
+  | "completed"
+  | "occurrence"
+  | "checkpoint";
+
+export const DRIVER_OCCURRENCE_TYPES = [
+  "Atraso na coleta",
+  "Atraso na entrega",
+  "Cliente ausente",
+  "Endereço incorreto",
+  "Problema na portaria",
+  "Mercadoria divergente",
+  "Mercadoria avariada",
+  "Falta de documento",
+  "Problema com veículo",
+  "Acidente ou sinistro",
+  "Descarga recusada",
+  "Outro motivo",
+] as const;
 export type FreightTrackingStatus =
   "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled" | DriverEventType;
 
@@ -24,6 +41,17 @@ export interface DriverTrackingEvent {
   occurredAt: string;
   latitude?: number | null;
   longitude?: number | null;
+  receiverName?: string | null;
+  receiverDocument?: string | null;
+  occurrenceType?: string | null;
+  notes?: string | null;
+  estimatedArrivalAt?: string | null;
+}
+
+export interface DriverReceiverInfo {
+  receiverName?: string;
+  receiverDocument?: string;
+  notes?: string;
 }
 
 export interface DeliveryProof {
@@ -55,6 +83,7 @@ export interface DriverTrip {
   lockedUntil?: string | null;
   failedAttempts?: number;
   nextEvent?: DriverEventType | null;
+  lastAccessAt?: string | null;
   events: DriverTrackingEvent[];
   proofs: DeliveryProof[];
   requiresProof: boolean;
@@ -191,6 +220,11 @@ function toDriverEvent(event: Record<string, unknown>): DriverTrackingEvent {
     occurredAt: text(event.occurred_at),
     latitude: numberOrNull(event.latitude),
     longitude: numberOrNull(event.longitude),
+    receiverName: nullableText(event.receiver_name),
+    receiverDocument: nullableText(event.receiver_document),
+    occurrenceType: nullableText(event.occurrence_type),
+    notes: nullableText(event.notes),
+    estimatedArrivalAt: nullableText(event.estimated_arrival_at),
   };
 }
 
@@ -234,6 +268,7 @@ function toDriverTrip(payload: unknown): DriverTrip {
     lockedUntil: nullableText(row.locked_until),
     failedAttempts: toNumber(row.failed_attempts),
     nextEvent: nullableText(row.next_event) as DriverEventType | null,
+    lastAccessAt: nullableText(row.last_access_at),
     requiresProof: typeof row.requires_proof === "boolean" ? row.requires_proof : true,
     events: ((row.events as Array<Record<string, unknown>> | undefined) ?? []).map(toDriverEvent),
     proofs: ((row.proofs as Array<Record<string, unknown>> | undefined) ?? []).map(toProof),
@@ -340,16 +375,6 @@ function getAccessStatus(row: DriverAccessLinkRow): DriverAccessSummary["status"
   if (row.locked_until && new Date(row.locked_until).getTime() > now) return "locked";
   if (row.expires_at && new Date(row.expires_at).getTime() < now) return "expired";
   return "active";
-}
-
-async function invokeDriverFunction<T>(
-  functionName: string,
-  body: Record<string, unknown> | FormData,
-) {
-  const client = getClientOrThrow();
-  const { data, error } = await client.functions.invoke<T>(functionName, { body });
-  if (error) throw error;
-  return data;
 }
 
 async function rpcJson(functionName: string, args: Record<string, unknown>) {
@@ -521,48 +546,36 @@ export async function authenticateDriverLink(token: string, pin: string) {
     return { ok: false as const, reason: "invalid_pin" };
   }
 
-  try {
-    const payload = (await rpcJson("driver_link_auth", {
-      p_token: token,
-      p_pin: pin,
-      p_user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-    })) as { ok: boolean; reason?: string; trip?: unknown };
-    if (!payload.ok) return { ok: false as const, reason: payload.reason ?? "invalid_pin" };
-    return { ok: true as const, trip: toDriverTrip(payload.trip) };
-  } catch {
-    const payload = await invokeDriverFunction<{ ok: boolean; reason?: string; trip?: unknown }>(
-      "driver-link-auth",
-      { token, pin },
-    );
-    if (!payload?.ok) return { ok: false as const, reason: payload?.reason ?? "invalid_pin" };
-    return { ok: true as const, trip: toDriverTrip(payload.trip) };
-  }
+  const payload = (await rpcJson("driver_link_auth", {
+    p_token: token,
+    p_pin: pin,
+    p_user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+  })) as { ok: boolean; reason?: string; trip?: unknown };
+  if (!payload.ok) return { ok: false as const, reason: payload.reason ?? "invalid_pin" };
+  return { ok: true as const, trip: toDriverTrip(payload.trip) };
 }
 
 export async function fetchDriverTrip(token: string, pin: string) {
   if (!getSupabaseConfigStatus().configured) return token === "demo" ? mockTrip : null;
 
-  try {
-    const payload = (await rpcJson("driver_trip_status", {
-      p_token: token,
-      p_pin: pin,
-    })) as { ok: boolean; trip?: unknown };
-    return payload.ok ? toDriverTrip(payload.trip) : null;
-  } catch {
-    const payload = await invokeDriverFunction<{ ok: boolean; reason?: string; trip?: unknown }>(
-      "driver-trip-status",
-      { token, pin },
-    );
-    if (!payload?.ok) return null;
-    return toDriverTrip(payload.trip);
-  }
+  const payload = (await rpcJson("driver_trip_status", {
+    p_token: token,
+    p_pin: pin,
+  })) as { ok: boolean; trip?: unknown };
+  return payload.ok ? toDriverTrip(payload.trip) : null;
 }
+
+type DriverMilestone = Exclude<
+  DriverEventType,
+  "proof_uploaded" | "completed" | "occurrence" | "checkpoint"
+>;
 
 export async function registerDriverEvent(
   token: string,
   pin: string,
-  eventType: Exclude<DriverEventType, "proof_uploaded" | "completed">,
+  eventType: DriverMilestone,
   coords?: { latitude: number; longitude: number },
+  info?: DriverReceiverInfo,
 ) {
   if (!getSupabaseConfigStatus().configured) {
     mockTrip.events.push({
@@ -573,36 +586,64 @@ export async function registerDriverEvent(
       occurredAt: new Date().toISOString(),
       latitude: coords?.latitude,
       longitude: coords?.longitude,
+      receiverName: info?.receiverName,
+      receiverDocument: info?.receiverDocument,
+      notes: info?.notes,
     });
     mockTrip.nextEvent = getNextDriverEvent(mockTrip)?.type ?? null;
     mockTrip.status = eventType === "unloaded" ? "delivered" : eventType;
     return mockTrip;
   }
 
-  try {
-    const payload = (await rpcJson("driver_trip_event", {
-      p_token: token,
-      p_pin: pin,
-      p_event_type: eventType,
-      p_latitude: coords?.latitude ?? null,
-      p_longitude: coords?.longitude ?? null,
-    })) as { ok: boolean; trip?: unknown };
-    if (!payload.ok) throw new Error("Evento recusado.");
-    return toDriverTrip(payload.trip);
-  } catch {
-    const payload = await invokeDriverFunction<{ ok: boolean; trip?: unknown }>(
-      "driver-trip-event",
-      {
-        token,
-        pin,
-        eventType,
-        latitude: coords?.latitude ?? null,
-        longitude: coords?.longitude ?? null,
-      },
-    );
-    if (!payload?.ok) throw new Error("Evento recusado.");
-    return toDriverTrip(payload.trip);
+  const payload = (await rpcJson("driver_trip_event", {
+    p_token: token,
+    p_pin: pin,
+    p_event_type: eventType,
+    p_latitude: coords?.latitude ?? null,
+    p_longitude: coords?.longitude ?? null,
+    p_receiver_name: info?.receiverName ?? null,
+    p_receiver_document: info?.receiverDocument ?? null,
+    p_notes: info?.notes ?? null,
+  })) as { ok: boolean; trip?: unknown };
+  if (!payload.ok) throw new Error("Evento recusado.");
+  return toDriverTrip(payload.trip);
+}
+
+export async function registerDriverOccurrence(
+  token: string,
+  pin: string,
+  occurrenceType: string,
+  notes?: string,
+  estimatedArrival?: string,
+  coords?: { latitude: number; longitude: number },
+) {
+  if (!getSupabaseConfigStatus().configured) {
+    mockTrip.events.push({
+      id: crypto.randomUUID(),
+      freightId: mockTrip.freightId,
+      eventType: "occurrence",
+      eventLabel: occurrenceType,
+      occurredAt: new Date().toISOString(),
+      occurrenceType,
+      notes,
+      estimatedArrivalAt: estimatedArrival,
+      latitude: coords?.latitude,
+      longitude: coords?.longitude,
+    });
+    return mockTrip;
   }
+
+  const payload = (await rpcJson("driver_trip_occurrence", {
+    p_token: token,
+    p_pin: pin,
+    p_occurrence_type: occurrenceType,
+    p_notes: notes ?? null,
+    p_estimated_arrival: estimatedArrival ?? null,
+    p_latitude: coords?.latitude ?? null,
+    p_longitude: coords?.longitude ?? null,
+  })) as { ok: boolean; trip?: unknown };
+  if (!payload.ok) throw new Error("Ocorrência recusada.");
+  return toDriverTrip(payload.trip);
 }
 
 export async function uploadDeliveryProof(
@@ -610,6 +651,7 @@ export async function uploadDeliveryProof(
   pin: string,
   file: File,
   coords?: { latitude: number; longitude: number },
+  info?: DriverReceiverInfo,
 ) {
   if (!getSupabaseConfigStatus().configured) {
     mockTrip.events.push({
@@ -618,6 +660,8 @@ export async function uploadDeliveryProof(
       eventType: "proof_uploaded",
       eventLabel: labels.proof_uploaded,
       occurredAt: new Date().toISOString(),
+      receiverName: info?.receiverName,
+      receiverDocument: info?.receiverDocument,
       latitude: coords?.latitude,
       longitude: coords?.longitude,
     });
@@ -628,23 +672,47 @@ export async function uploadDeliveryProof(
       eventLabel: "Entrega concluida",
       occurredAt: new Date().toISOString(),
     });
+    mockTrip.proofs.push({
+      id: crypto.randomUUID(),
+      freightId: mockTrip.freightId,
+      fileName: file.name,
+      filePath: `mock/${file.name}`,
+      mimeType: file.type,
+      fileSize: file.size,
+      uploadedAt: new Date().toISOString(),
+    });
     mockTrip.status = "delivered";
     mockTrip.linkState = "completed";
     mockTrip.nextEvent = null;
     return mockTrip;
   }
 
-  const formData = new FormData();
-  formData.set("token", token);
-  formData.set("pin", pin);
-  formData.set("file", file);
-  if (coords?.latitude != null) formData.set("latitude", String(coords.latitude));
-  if (coords?.longitude != null) formData.set("longitude", String(coords.longitude));
+  // Sem edge function publicada: o cliente envia o arquivo direto ao bucket privado
+  // (policy de INSERT para anon) e o RPC driver_proof_record valida token+PIN e grava
+  // o metadado + finaliza a entrega.
+  const client = getClientOrThrow();
+  const safeName = (file.name || "canhoto").replace(/[^\w.-]+/g, "_").slice(-80);
+  const path = `driver/${token.slice(0, 16)}/${Date.now()}-${safeName}`;
+  const { error: uploadError } = await client.storage.from("delivery-proofs").upload(path, file, {
+    contentType: file.type || "application/octet-stream",
+    upsert: false,
+  });
+  if (uploadError) {
+    throw new Error(`Falha ao enviar o comprovante: ${uploadError.message}`);
+  }
 
-  const payload = await invokeDriverFunction<{ ok: boolean; trip?: unknown }>(
-    "driver-proof-upload",
-    formData,
-  );
-  if (!payload?.ok) throw new Error("Comprovante recusado.");
+  const payload = (await rpcJson("driver_proof_record", {
+    p_token: token,
+    p_pin: pin,
+    p_file_path: path,
+    p_file_name: file.name,
+    p_mime_type: file.type || "application/octet-stream",
+    p_file_size: file.size,
+    p_latitude: coords?.latitude ?? null,
+    p_longitude: coords?.longitude ?? null,
+    p_receiver_name: info?.receiverName ?? null,
+    p_receiver_document: info?.receiverDocument ?? null,
+  })) as { ok: boolean; trip?: unknown };
+  if (!payload.ok) throw new Error("Comprovante recusado.");
   return toDriverTrip(payload.trip);
 }
