@@ -31,7 +31,7 @@ where table_schema = 'public'
 select
   f.external_id,
   f.code,
-  f.client,
+  f.client_name,
   f.route,
   f.status,
   f.order_id,
