@@ -38,9 +38,18 @@ Antes de testar esta onda em producao, confirme que os SQLs anteriores ja foram 
 
 Crie uma simulacao, aprove no Financeiro e no Gestor, confirme se o pedido gerou contas no Financeiro e se o frete aparece bloqueado ate a baixa das contas a pagar.
 
+## fix: move freight operation tracking to driver checklist — SEM mudança de schema
+
+**Nenhum SQL.** Tudo é regra/UI no frontend, reutilizando as tabelas existentes (`freights`, `driver_access_links`, `driver_tracking_events`/`freight_events`, `delivery_proofs`, `notifications`, `audit_events`):
+
+- Frete só contrata; avanço operacional passa para o checklist do motorista (dados já existentes).
+- Comercial ganhou `freights:view` (permissão só no frontend).
+- Remoção da captura de geolocalização (só cliente; colunas de lat/long, se existirem, ficam apenas nulas).
+
 ## fix: separate freight release from financial invoicing — SEM mudança de schema
 
 Esta entrega **não requer nenhum SQL**. Toda a mudança é de regra de negócio/UI no frontend:
+
 - liberação do frete desacoplada do faturamento (derivada do status do pedido);
 - status separados por área (derivados de `orders.status`/`billingProgress`);
 - permissão `freights:operate` (apenas no frontend);

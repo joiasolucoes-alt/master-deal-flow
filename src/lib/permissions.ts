@@ -56,6 +56,9 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "adjustments:view",
     "approvals:view",
     "orders:view",
+    // Acompanhamento (somente leitura) da aba Fretes: sem freights:operate, o
+    // Comercial vê lista/timeline/canhoto mas não contrata nem avança operação.
+    "freights:view",
     "deliveries:view",
   ],
   Negociações: [

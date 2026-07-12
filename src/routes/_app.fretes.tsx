@@ -731,8 +731,10 @@ function FreightDetailPanel({
     !financiallyReleased ||
     freight.status === "delivered" ||
     freight.status === "cancelled";
-  const advanceLabel = getAdvanceLabel(freight.status);
   const preparation = isPreparationFreight(freight);
+  // Após a contratação (hired em diante), quem avança a operação é o motorista.
+  const contractedInProgress =
+    freight.status === "hired" || freight.status === "loading" || freight.status === "in_route";
 
   return (
     <>
@@ -766,10 +768,15 @@ function FreightDetailPanel({
                 Faturamento: {getOrderBillingLabel(order)}
               </Badge>
             ) : null}
-            <Button size="sm" onClick={() => onAdvance(freight)} disabled={advanceDisabled}>
-              <ArrowRight />
-              {advanceLabel}
-            </Button>
+            {/* O Frete só CONTRATA (quoted → hired). Depois de contratado, o avanço
+                operacional (carregamento/rota/entrega) é feito pelo MOTORISTA via
+                link/PIN — o Frete apenas acompanha. */}
+            {freight.status === "quoted" ? (
+              <Button size="sm" onClick={() => onAdvance(freight)} disabled={advanceDisabled}>
+                <ArrowRight />
+                Contratar frete
+              </Button>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
@@ -792,280 +799,23 @@ function FreightDetailPanel({
             ready={checklist?.operationReady ?? false}
           />
         </CardContent>
+        {contractedInProgress ? (
+          <div className="mx-4 mb-4 rounded-xl border border-primary/30 bg-primary-soft p-3 text-sm">
+            <p className="font-medium">Frete contratado — operação com o motorista</p>
+            <p className="mt-1 text-muted-foreground">
+              A partir daqui, o andamento (carregamento, viagem, entrega) é atualizado pelo
+              motorista no link/PIN. O Frete acompanha pela aba <strong>Rastreamento</strong>.
+            </p>
+          </div>
+        ) : null}
       </Card>
 
-      <Tabs defaultValue="summary">
-        <TabsList className="w-full flex-wrap justify-start gap-1">
-          <TabsTrigger value="summary">Resumo</TabsTrigger>
-          <TabsTrigger value="driver">Motorista</TabsTrigger>
-          <TabsTrigger value="vehicle">Veículo</TabsTrigger>
-          <TabsTrigger value="operation">Operação</TabsTrigger>
-          <TabsTrigger value="payment">Pagamento</TabsTrigger>
-          <TabsTrigger value="tracking">Rastreamento</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="summary" className="mt-4 space-y-4">
+      {!canOperate ? (
+        // Comercial/Financeiro: aba Fretes é SOMENTE ACOMPANHAMENTO — resumo da
+        // carga + timeline/checklist do motorista + canhoto. Sem formulários,
+        // sem contratar, sem gerar link, sem avançar operação.
+        <div className="space-y-4">
           <CargoSummaryCard freight={freight} supplier={cargoSupplier} products={cargoProducts} />
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="text-base">Dados do frete</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <Field label="Transportadora">
-                  <Input
-                    value={form.carrierName}
-                    onChange={(event) => onChangeForm("carrierName", event.target.value)}
-                    placeholder="Nome da transportadora"
-                  />
-                </Field>
-                <Field label="CNPJ/CPF da transportadora">
-                  <Input
-                    value={form.carrierDocument}
-                    onChange={(event) => onChangeForm("carrierDocument", event.target.value)}
-                    placeholder="00.000.000/0000-00"
-                  />
-                </Field>
-                <Field label="Tipo de carga">
-                  <Select
-                    value={form.cargoType}
-                    onValueChange={(value) => onChangeForm("cargoType", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(FREIGHT_CARGO_TYPE_LABEL).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Trajeto">
-                  <Input
-                    value={form.route}
-                    onChange={(event) => onChangeForm("route", event.target.value)}
-                  />
-                </Field>
-                <Field label="Carregamento">
-                  <Input
-                    type="datetime-local"
-                    value={form.pickupDate}
-                    onChange={(event) => onChangeForm("pickupDate", event.target.value)}
-                  />
-                </Field>
-                <Field label="Previsão de entrega">
-                  <Input
-                    type="datetime-local"
-                    value={form.expectedDeliveryDate}
-                    onChange={(event) => onChangeForm("expectedDeliveryDate", event.target.value)}
-                  />
-                </Field>
-              </div>
-              <Field label="Observações">
-                <Textarea
-                  value={form.notes}
-                  onChange={(event) => onChangeForm("notes", event.target.value)}
-                  placeholder="Instruções para coleta, contatos, restrições operacionais."
-                />
-              </Field>
-              <div className="flex justify-end">
-                <Button onClick={onSaveForm}>
-                  <Save />
-                  Salvar dados
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="driver" className="mt-4 space-y-4">
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="text-base">Dados do motorista</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="Nome">
-                <Input
-                  value={form.driverName}
-                  onChange={(event) => onChangeForm("driverName", event.target.value)}
-                />
-              </Field>
-              <Field label="CPF">
-                <Input
-                  value={form.driverCpf}
-                  onChange={(event) => onChangeForm("driverCpf", event.target.value)}
-                  placeholder="000.000.000-00"
-                />
-              </Field>
-              <Field label="Telefone / WhatsApp">
-                <Input
-                  value={form.driverPhone}
-                  onChange={(event) => onChangeForm("driverPhone", event.target.value)}
-                  placeholder="(00) 00000-0000"
-                />
-              </Field>
-              <Field label="Vínculo">
-                <Select
-                  value={form.driverEmploymentType || ""}
-                  onValueChange={(value) => onChangeForm("driverEmploymentType", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="autonomo">Autônomo (TAC)</SelectItem>
-                    <SelectItem value="transportadora">Transportadora</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <div className="flex items-end md:col-span-3">
-                <Button onClick={onSaveForm} variant="outline">
-                  <Save />
-                  Salvar dados do motorista
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          <ChecklistBlock
-            title="Documentos do motorista"
-            block="driver"
-            freight={freight}
-            documents={documents}
-            documentsLoading={documentsLoading}
-            documentsError={documentsError}
-            onUploadDocument={onUploadDocument}
-            onOpenDocument={onOpenDocument}
-          />
-        </TabsContent>
-
-        <TabsContent value="vehicle" className="mt-4 space-y-4">
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="text-base">Dados do veículo</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="Descrição">
-                <Input
-                  value={form.vehicleDescription}
-                  onChange={(event) => onChangeForm("vehicleDescription", event.target.value)}
-                  placeholder="Truck, carreta, baú..."
-                />
-              </Field>
-              <Field label="Placa do cavalo/caminhão">
-                <Input
-                  value={form.vehiclePlate}
-                  onChange={(event) => onChangeForm("vehiclePlate", event.target.value)}
-                  placeholder="ABC-1D23"
-                />
-              </Field>
-              <Field label="Placa da carreta">
-                <Input
-                  value={form.trailerPlate}
-                  onChange={(event) => onChangeForm("trailerPlate", event.target.value)}
-                  placeholder="Se houver"
-                />
-              </Field>
-              <Field label="RNTRC / ANTT">
-                <Input
-                  value={form.anttRegistration}
-                  onChange={(event) => onChangeForm("anttRegistration", event.target.value)}
-                  placeholder="Registro na ANTT"
-                />
-              </Field>
-              <div className="flex items-end md:col-span-3">
-                <Button onClick={onSaveForm} variant="outline">
-                  <Save />
-                  Salvar dados do veículo
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          <ChecklistBlock
-            title="Documentos do veículo"
-            block="vehicle"
-            freight={freight}
-            documents={documents}
-            documentsLoading={documentsLoading}
-            documentsError={documentsError}
-            onUploadDocument={onUploadDocument}
-            onOpenDocument={onOpenDocument}
-          />
-        </TabsContent>
-
-        <TabsContent value="operation" className="mt-4">
-          <ChecklistBlock
-            title="Documentos da operação"
-            block="operation"
-            freight={freight}
-            documents={documents}
-            documentsLoading={documentsLoading}
-            documentsError={documentsError}
-            onUploadDocument={onUploadDocument}
-            onOpenDocument={onOpenDocument}
-          />
-          {/* "Entrega final/Canhoto" removido da Operação: o comprovante de entrega
-              é responsabilidade do motorista, na seção de Rastreamento. */}
-        </TabsContent>
-
-        <TabsContent value="payment" className="mt-4">
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="text-base">Pagamento ao transportador</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <Field label="Valor do frete (R$)">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.freightValue}
-                    onChange={(event) => onChangeForm("freightValue", event.target.value)}
-                  />
-                </Field>
-                <Field label="Data prevista de pagamento">
-                  <Input
-                    type="date"
-                    value={form.freightPaymentDueDate}
-                    onChange={(event) => onChangeForm("freightPaymentDueDate", event.target.value)}
-                  />
-                </Field>
-                <div className="flex items-end">
-                  <Button onClick={onSaveForm}>
-                    <Save />
-                    Gerar / atualizar conta a pagar
-                  </Button>
-                </div>
-              </div>
-              <div className="rounded-xl border bg-muted/30 p-3 text-sm">
-                {paymentTitle ? (
-                  <>
-                    <p className="font-semibold">
-                      Título {paymentTitle.titleNumber} — {formatCurrency(paymentTitle.amount)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Vencimento {formatDate(paymentTitle.dueDate)} • status {paymentTitle.status}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      A conta a pagar é atualizada automaticamente quando o valor ou a data mudam.
-                      Financeiro faz a baixa na tela dele.
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-muted-foreground">
-                    Ainda não gerado. Informe valor e data e salve para criar a conta a pagar do
-                    frete.
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="tracking" className="mt-4">
           <DriverAccessCard
             freight={freight}
             order={order}
@@ -1079,8 +829,302 @@ function FreightDetailPanel({
             onRevoke={onRevokeDriverAccess}
             onOpenProof={onOpenDriverProof}
           />
-        </TabsContent>
-      </Tabs>
+        </div>
+      ) : (
+        <Tabs defaultValue="summary">
+          <TabsList className="w-full flex-wrap justify-start gap-1">
+            <TabsTrigger value="summary">Resumo</TabsTrigger>
+            <TabsTrigger value="driver">Motorista</TabsTrigger>
+            <TabsTrigger value="vehicle">Veículo</TabsTrigger>
+            <TabsTrigger value="operation">Operação</TabsTrigger>
+            <TabsTrigger value="payment">Pagamento</TabsTrigger>
+            <TabsTrigger value="tracking">Rastreamento</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="summary" className="mt-4 space-y-4">
+            <CargoSummaryCard freight={freight} supplier={cargoSupplier} products={cargoProducts} />
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="text-base">Dados do frete</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <Field label="Transportadora">
+                    <Input
+                      value={form.carrierName}
+                      onChange={(event) => onChangeForm("carrierName", event.target.value)}
+                      placeholder="Nome da transportadora"
+                    />
+                  </Field>
+                  <Field label="CNPJ/CPF da transportadora">
+                    <Input
+                      value={form.carrierDocument}
+                      onChange={(event) => onChangeForm("carrierDocument", event.target.value)}
+                      placeholder="00.000.000/0000-00"
+                    />
+                  </Field>
+                  <Field label="Tipo de carga">
+                    <Select
+                      value={form.cargoType}
+                      onValueChange={(value) => onChangeForm("cargoType", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(FREIGHT_CARGO_TYPE_LABEL).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Trajeto">
+                    <Input
+                      value={form.route}
+                      onChange={(event) => onChangeForm("route", event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Carregamento">
+                    <Input
+                      type="datetime-local"
+                      value={form.pickupDate}
+                      onChange={(event) => onChangeForm("pickupDate", event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Previsão de entrega">
+                    <Input
+                      type="datetime-local"
+                      value={form.expectedDeliveryDate}
+                      onChange={(event) => onChangeForm("expectedDeliveryDate", event.target.value)}
+                    />
+                  </Field>
+                </div>
+                <Field label="Observações">
+                  <Textarea
+                    value={form.notes}
+                    onChange={(event) => onChangeForm("notes", event.target.value)}
+                    placeholder="Instruções para coleta, contatos, restrições operacionais."
+                  />
+                </Field>
+                <div className="flex justify-end">
+                  <Button onClick={onSaveForm}>
+                    <Save />
+                    Salvar dados
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="driver" className="mt-4 space-y-4">
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="text-base">Dados do motorista</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <Field label="Nome">
+                    <Input
+                      value={form.driverName}
+                      onChange={(event) => onChangeForm("driverName", event.target.value)}
+                    />
+                  </Field>
+                  <Field label="CPF">
+                    <Input
+                      value={form.driverCpf}
+                      onChange={(event) => onChangeForm("driverCpf", event.target.value)}
+                      placeholder="000.000.000-00"
+                    />
+                  </Field>
+                  <Field label="Telefone / WhatsApp">
+                    <Input
+                      value={form.driverPhone}
+                      onChange={(event) => onChangeForm("driverPhone", event.target.value)}
+                      placeholder="(00) 00000-0000"
+                    />
+                  </Field>
+                  <Field label="Vínculo">
+                    <Select
+                      value={form.driverEmploymentType || ""}
+                      onValueChange={(value) => onChangeForm("driverEmploymentType", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="autonomo">Autônomo (TAC)</SelectItem>
+                        <SelectItem value="transportadora">Transportadora</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={onSaveForm}>
+                    <Save />
+                    Salvar dados do motorista
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+            <ChecklistBlock
+              title="Documentos do motorista"
+              block="driver"
+              freight={freight}
+              documents={documents}
+              documentsLoading={documentsLoading}
+              documentsError={documentsError}
+              onUploadDocument={onUploadDocument}
+              onOpenDocument={onOpenDocument}
+            />
+          </TabsContent>
+
+          <TabsContent value="vehicle" className="mt-4 space-y-4">
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="text-base">Dados do veículo</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <Field label="Descrição">
+                    <Input
+                      value={form.vehicleDescription}
+                      onChange={(event) => onChangeForm("vehicleDescription", event.target.value)}
+                      placeholder="Truck, carreta, baú..."
+                    />
+                  </Field>
+                  <Field label="Placa do cavalo/caminhão">
+                    <Input
+                      value={form.vehiclePlate}
+                      onChange={(event) => onChangeForm("vehiclePlate", event.target.value)}
+                      placeholder="ABC-1D23"
+                    />
+                  </Field>
+                  <Field label="Placa da carreta">
+                    <Input
+                      value={form.trailerPlate}
+                      onChange={(event) => onChangeForm("trailerPlate", event.target.value)}
+                      placeholder="Se houver"
+                    />
+                  </Field>
+                  <Field label="RNTRC / ANTT">
+                    <Input
+                      value={form.anttRegistration}
+                      onChange={(event) => onChangeForm("anttRegistration", event.target.value)}
+                      placeholder="Registro na ANTT"
+                    />
+                  </Field>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={onSaveForm}>
+                    <Save />
+                    Salvar dados do veículo
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+            <ChecklistBlock
+              title="Documentos do veículo"
+              block="vehicle"
+              freight={freight}
+              documents={documents}
+              documentsLoading={documentsLoading}
+              documentsError={documentsError}
+              onUploadDocument={onUploadDocument}
+              onOpenDocument={onOpenDocument}
+            />
+          </TabsContent>
+
+          <TabsContent value="operation" className="mt-4">
+            <ChecklistBlock
+              title="Documentos da operação"
+              block="operation"
+              freight={freight}
+              documents={documents}
+              documentsLoading={documentsLoading}
+              documentsError={documentsError}
+              onUploadDocument={onUploadDocument}
+              onOpenDocument={onOpenDocument}
+            />
+            {/* "Entrega final/Canhoto" removido da Operação: o comprovante de entrega
+              é responsabilidade do motorista, na seção de Rastreamento. */}
+          </TabsContent>
+
+          <TabsContent value="payment" className="mt-4">
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="text-base">Pagamento ao transportador</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <Field label="Valor do frete (R$)">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.freightValue}
+                      onChange={(event) => onChangeForm("freightValue", event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Data prevista de pagamento">
+                    <Input
+                      type="date"
+                      value={form.freightPaymentDueDate}
+                      onChange={(event) =>
+                        onChangeForm("freightPaymentDueDate", event.target.value)
+                      }
+                    />
+                  </Field>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={onSaveForm}>
+                    <Save />
+                    Gerar / atualizar conta a pagar
+                  </Button>
+                </div>
+                <div className="rounded-xl border bg-muted/30 p-3 text-sm">
+                  {paymentTitle ? (
+                    <>
+                      <p className="font-semibold">
+                        Título {paymentTitle.titleNumber} — {formatCurrency(paymentTitle.amount)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Vencimento {formatDate(paymentTitle.dueDate)} • status {paymentTitle.status}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        A conta a pagar é atualizada automaticamente quando o valor ou a data mudam.
+                        Financeiro faz a baixa na tela dele.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      Ainda não gerado. Informe valor e data e salve para criar a conta a pagar do
+                      frete.
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="tracking" className="mt-4">
+            <DriverAccessCard
+              freight={freight}
+              order={order}
+              financialTitles={financialTitles}
+              canOperate={canOperate}
+              checklist={checklist}
+              access={driverAccess}
+              generatedAccess={generatedDriverAccess}
+              loading={driverAccessLoading}
+              onGenerate={onGenerateDriverAccess}
+              onRevoke={onRevokeDriverAccess}
+              onOpenProof={onOpenDriverProof}
+            />
+          </TabsContent>
+        </Tabs>
+      )}
     </>
   );
 }
@@ -1403,94 +1447,98 @@ function DriverAccessCard({
         <CardTitle className="text-base">Acesso temporário do motorista</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-        <div className="space-y-3 rounded-2xl border p-4">
-          {!freight ? null : (
-            <>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold">{freight.code}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Motorista: {freight.driverName || "não informado"}
+        {canOperate ? (
+          <div className="space-y-3 rounded-2xl border p-4">
+            {!freight ? null : (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{freight.code}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Motorista: {freight.driverName || "não informado"}
+                    </p>
+                  </div>
+                  <Badge variant="outline">
+                    {loading ? "Carregando" : accessStatusLabel(access)}
+                  </Badge>
+                </div>
+
+                {generatedAccess ? (
+                  <div className="space-y-3 rounded-xl border border-primary/30 bg-primary-soft p-3">
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground">Link</p>
+                      <p className="break-all text-sm">{generatedAccess.url}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground">PIN</p>
+                      <p className="text-2xl font-bold tracking-widest">{generatedAccess.pin}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={copying === "Link"}
+                        onClick={() => copyText("Link", generatedAccess.url)}
+                      >
+                        <Copy />
+                        Copiar link
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={copying === "PIN"}
+                        onClick={() => copyText("PIN", generatedAccess.pin)}
+                      >
+                        <Copy />
+                        Copiar PIN
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">
+                    Gere um novo acesso para copiar link e senha.
                   </p>
+                )}
+
+                {!canRelease ? (
+                  <p className="rounded-xl border border-warning/30 bg-warning-soft p-3 text-xs text-warning">
+                    {!canOperate
+                      ? "Seu perfil pode acompanhar, mas não pode gerar o link/PIN do motorista."
+                      : isPreparationFreight(freight)
+                        ? "Operação em preparação: o link/PIN do motorista só pode ser gerado após a proposta virar pedido."
+                        : financiallyReleased
+                          ? "Complete os documentos obrigatórios (motorista, veículo e operação) antes de gerar o link."
+                          : "Aguardando confirmação do pedido."}
+                  </p>
+                ) : null}
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button variant="soft" disabled={!canRelease} onClick={onGenerate}>
+                    <RotateCw />
+                    Gerar novo acesso
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={!access || access.status !== "active"}
+                    onClick={onRevoke}
+                  >
+                    <XCircle />
+                    Revogar
+                  </Button>
                 </div>
-                <Badge variant="outline">
-                  {loading ? "Carregando" : accessStatusLabel(access)}
-                </Badge>
-              </div>
 
-              {generatedAccess ? (
-                <div className="space-y-3 rounded-xl border border-primary/30 bg-primary-soft p-3">
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground">Link</p>
-                    <p className="break-all text-sm">{generatedAccess.url}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground">PIN</p>
-                    <p className="text-2xl font-bold tracking-widest">{generatedAccess.pin}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={copying === "Link"}
-                      onClick={() => copyText("Link", generatedAccess.url)}
-                    >
-                      <Copy />
-                      Copiar link
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={copying === "PIN"}
-                      onClick={() => copyText("PIN", generatedAccess.pin)}
-                    >
-                      <Copy />
-                      Copiar PIN
-                    </Button>
-                  </div>
+                <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                  <p>Expira: {access?.expiresAt ? formatDateTime(access.expiresAt) : "-"}</p>
+                  <p>Tentativas inválidas: {access?.failedAttempts ?? 0}</p>
+                  <p>
+                    Desbloqueio: {access?.lockedUntil ? formatDateTime(access.lockedUntil) : "-"}
+                  </p>
+                  <p>Concluído: {access?.completedAt ? formatDateTime(access.completedAt) : "-"}</p>
                 </div>
-              ) : (
-                <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">
-                  Gere um novo acesso para copiar link e senha.
-                </p>
-              )}
-
-              {!canRelease ? (
-                <p className="rounded-xl border border-warning/30 bg-warning-soft p-3 text-xs text-warning">
-                  {!canOperate
-                    ? "Seu perfil pode acompanhar, mas não pode gerar o link/PIN do motorista."
-                    : isPreparationFreight(freight)
-                      ? "Operação em preparação: o link/PIN do motorista só pode ser gerado após a proposta virar pedido."
-                      : financiallyReleased
-                        ? "Complete os documentos obrigatórios (motorista, veículo e operação) antes de gerar o link."
-                        : "Aguardando confirmação do pedido."}
-                </p>
-              ) : null}
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button variant="soft" disabled={!canRelease} onClick={onGenerate}>
-                  <RotateCw />
-                  Gerar novo acesso
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={!access || access.status !== "active"}
-                  onClick={onRevoke}
-                >
-                  <XCircle />
-                  Revogar
-                </Button>
-              </div>
-
-              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                <p>Expira: {access?.expiresAt ? formatDateTime(access.expiresAt) : "-"}</p>
-                <p>Tentativas inválidas: {access?.failedAttempts ?? 0}</p>
-                <p>Desbloqueio: {access?.lockedUntil ? formatDateTime(access.lockedUntil) : "-"}</p>
-                <p>Concluído: {access?.completedAt ? formatDateTime(access.completedAt) : "-"}</p>
-              </div>
-            </>
-          )}
-        </div>
+              </>
+            )}
+          </div>
+        ) : null}
 
         <div className="space-y-3 rounded-2xl border p-4">
           <h3 className="font-semibold">Timeline do motorista</h3>
@@ -1502,7 +1550,6 @@ function DriverAccessCard({
                     <p className="font-medium">{event.eventLabel}</p>
                     <p className="text-xs text-muted-foreground">
                       {formatDateTime(event.occurredAt)}
-                      {event.latitude ? " • localização registrada" : ""}
                     </p>
                   </div>
                 </div>
@@ -1570,23 +1617,6 @@ function accessStatusLabel(access: DriverAccessSummary | null) {
       completed: "Concluído",
     } satisfies Record<DriverAccessSummary["status"], string>
   )[access.status];
-}
-
-function getAdvanceLabel(status: FreightRecord["status"]) {
-  switch (status) {
-    case "quoted":
-      return "Contratar";
-    case "hired":
-      return "Iniciar carregamento";
-    case "loading":
-      return "Iniciar rota";
-    case "in_route":
-      return "Finalizar entrega";
-    case "delivered":
-      return "Concluído";
-    default:
-      return "Avançar";
-  }
 }
 
 function createFreightFormState(freight?: FreightRecord): FreightFormState {

@@ -1,3 +1,9 @@
+# Atualização — operação do frete pelo motorista (fix: move freight operation tracking to driver checklist)
+
+Depois de contratar, o **Frete apenas acompanha**: o avanço operacional (carregamento → viagem → descarga → entrega) é feito **pelo motorista** no link/PIN. **Comercial e Financeiro** só acompanham a aba Fretes (timeline + canhoto). O motorista **não** informa localização e **só finaliza com o canhoto** anexado. Ver `docs/freight-flow.md` e `docs/driver-flow.md`.
+
+---
+
 # Atualização — frete e faturamento em frentes paralelas (fix: separate freight release from financial invoicing)
 
 **Regra vigente:** após o Comercial validar o comprovante, a SIM vira **Pedido** e abre **duas frentes paralelas**:
@@ -7,18 +13,19 @@
 
 Status separados por área no mesmo pedido:
 
-| Área | Status |
-| --- | --- |
-| Geral do pedido | **Pedido confirmado** |
-| Pagamento | Pagamento validado |
-| Frete | **Frete liberado** → contratado → (checklist do motorista) |
-| Faturamento | **Aguardando faturamento** → Faturado |
+| Área            | Status                                                     |
+| --------------- | ---------------------------------------------------------- |
+| Geral do pedido | **Pedido confirmado**                                      |
+| Pagamento       | Pagamento validado                                         |
+| Frete           | **Frete liberado** → contratado → (checklist do motorista) |
+| Faturamento     | **Aguardando faturamento** → Faturado                      |
 
 > O faturamento **não bloqueia** o carregamento nesta entrega. A possibilidade de exigir NF/documento fiscal antes do carregamento será validada com o cliente numa próxima reunião.
 
 Sequência: Gestor aprova → Financeiro recebe p/ pagamento **e** Frete recebe p/ preparação → Financeiro paga → Comercial valida → **SIM vira Pedido** → Frete **liberado** + Financeiro **aguardando faturamento** (seguem em paralelo).
 
 ### Como validar no preview
+
 1. Aprove uma SIM (Gestor) → pague/valide (Financeiro/Comercial) → confirme o Pedido.
 2. Em **Pedidos**, veja os 3 badges: Pedido confirmado / Frete: Liberado para contratação / Faturamento: Aguardando faturamento.
 3. Em **Fretes** (perfil Frete), a operação está em **Liberados**: contrate e gere o link/PIN — **sem** faturar antes.

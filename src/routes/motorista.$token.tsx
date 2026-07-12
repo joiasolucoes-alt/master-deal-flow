@@ -37,18 +37,8 @@ export const Route = createFileRoute("/motorista/$token")({
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 
-function getLocation() {
-  return new Promise<{ latitude: number; longitude: number } | undefined>((resolve) => {
-    if (!navigator.geolocation) return resolve(undefined);
-    navigator.geolocation.getCurrentPosition(
-      (position) =>
-        resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
-      () => resolve(undefined),
-      { enableHighAccuracy: true, timeout: 8000 },
-    );
-  });
-}
-
+// Regra desta entrega (fix: move freight operation tracking to driver checklist):
+// SEM geolocalização. O checklist do motorista não captura latitude/longitude.
 function DriverTrackingPage() {
   const { token } = Route.useParams();
   const [pin, setPin] = useState("");
@@ -128,13 +118,12 @@ function DriverTrackingPage() {
 
     setSubmitting(true);
     try {
-      const coords = await getLocation();
       const info = needsReceiver
         ? { receiverName: receiverName.trim(), receiverDocument: receiverDocument.trim() }
         : undefined;
       const updated =
         proofStep && selectedFile
-          ? await uploadDeliveryProof(token, pin.trim(), selectedFile, coords, info)
+          ? await uploadDeliveryProof(token, pin.trim(), selectedFile, undefined, info)
           : await registerDriverEvent(
               token,
               pin.trim(),
@@ -142,7 +131,7 @@ function DriverTrackingPage() {
                 DriverEventType,
                 "proof_uploaded" | "completed" | "occurrence" | "checkpoint"
               >,
-              coords,
+              undefined,
               info,
             );
       setTrip(updated);
@@ -170,14 +159,13 @@ function DriverTrackingPage() {
     }
     setOccurrenceSubmitting(true);
     try {
-      const coords = await getLocation();
       const updated = await registerDriverOccurrence(
         token,
         pin.trim(),
         occurrenceType,
         occurrenceNotes.trim(),
         undefined,
-        coords,
+        undefined,
       );
       setTrip(updated);
       setOccurrenceOpen(false);
