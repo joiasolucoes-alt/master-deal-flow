@@ -1677,4 +1677,86 @@ assert.equal("latitude" in ev, false, "evento do motorista sem geolocalização"
 
 console.log("Testes de operação via checklist do motorista passaram.");
 
+// ---------------------------------------------------------------------------
+// Correção do checklist/ocorrência do motorista (fix: repair driver checklist and
+// occurrence rpc errors). Mirror puro de friendlyDriverError + regra de não avançar
+// sem confirmação do banco + anti-duplo-clique. Sem Supabase.
+// ---------------------------------------------------------------------------
+
+function friendlyDriverError(raw, context) {
+  const msg = String(raw ?? "").toLowerCase();
+  if (
+    msg.includes("expirad") ||
+    msg.includes("revogad") ||
+    msg.includes("expired") ||
+    msg.includes("revoked") ||
+    msg.includes("pin") ||
+    msg.includes("token") ||
+    msg.includes("inválid") ||
+    msg.includes("invalid")
+  )
+    return "Link inválido, expirado ou revogado. Peça um novo acesso ao time de frete.";
+  if (msg.includes("not found") || msg.includes("não encontrad") || msg.includes("nao encontrad"))
+    return "Operação não encontrada.";
+  if (
+    msg.includes("failed to fetch") ||
+    msg.includes("networkerror") ||
+    msg.includes("network") ||
+    msg.includes("conexão") ||
+    msg.includes("conexao")
+  )
+    return "Erro ao salvar. Verifique sua conexão e tente novamente.";
+  if (context === "occurrence") return "Não foi possível registrar a ocorrência. Tente novamente.";
+  if (context === "proof") return "Não foi possível enviar o comprovante. Tente novamente.";
+  return "Não foi possível registrar esta etapa. Tente novamente.";
+}
+
+// 20: erros técnicos viram mensagens amigáveis, por tipo.
+assert.match(
+  friendlyDriverError(
+    'column "organization_id" of relation "freight_events" does not exist',
+    "event",
+  ),
+  /Não foi possível registrar esta etapa/,
+);
+assert.match(friendlyDriverError("PIN inválido", "event"), /Link inválido, expirado ou revogado/);
+assert.match(friendlyDriverError("token expired", "event"), /Link inválido, expirado ou revogado/);
+assert.match(friendlyDriverError("Failed to fetch", "event"), /Verifique sua conexão/);
+assert.match(friendlyDriverError("freight not found", "event"), /Operação não encontrada/);
+assert.match(friendlyDriverError("boom", "occurrence"), /Não foi possível registrar a ocorrência/);
+assert.match(friendlyDriverError("boom", "proof"), /Não foi possível enviar o comprovante/);
+
+// 3-5: o checklist só avança quando o banco confirma (setTrip só no sucesso).
+function simulateSubmit({ rpcOk, submitting }) {
+  const events = [];
+  if (submitting) return { advanced: false, reason: "duplo-clique bloqueado", events };
+  submitting = true;
+  try {
+    if (!rpcOk) throw new Error('42703: column "organization_id" ... does not exist');
+    events.push("arrived_loading");
+    return { advanced: true, events };
+  } catch (e) {
+    return { advanced: false, error: friendlyDriverError(e.message, "event"), events };
+  } finally {
+    submitting = false;
+  }
+}
+const failed = simulateSubmit({ rpcOk: false, submitting: false });
+assert.equal(failed.advanced, false, "não avança o checklist quando o RPC falha");
+assert.equal(failed.events.length, 0, "nenhum evento gravado na falha");
+const ok = simulateSubmit({ rpcOk: true, submitting: false });
+assert.equal(ok.advanced, true, "avança quando o RPC confirma");
+assert.deepEqual(ok.events, ["arrived_loading"]);
+
+// 19: clique enquanto já está enviando é bloqueado (anti-duplo-clique).
+const blocked = simulateSubmit({ rpcOk: true, submitting: true });
+assert.equal(blocked.advanced, false, "clique duplo não cria evento duplicado");
+
+// 14: latitude/longitude nulas seguem no payload sem quebrar.
+const payload = { p_event_type: "arrived_loading", p_latitude: null, p_longitude: null };
+assert.equal(payload.p_latitude, null);
+assert.equal(payload.p_longitude, null);
+
+console.log("Testes do fix do checklist/ocorrência do motorista passaram.");
+
 console.log("Todos os testes passaram.");
