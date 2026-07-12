@@ -39,6 +39,41 @@ const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 
 // Regra desta entrega (fix: move freight operation tracking to driver checklist):
 // SEM geolocalização. O checklist do motorista não captura latitude/longitude.
+
+// Mensagens amigáveis para o motorista (fix: repair driver checklist and occurrence rpc errors).
+// Traduz erros técnicos (RPC/400/rede) em algo acionável, sem expor detalhes internos.
+function friendlyDriverError(err: unknown, context: "event" | "occurrence" | "proof"): string {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  const msg = raw.toLowerCase();
+  if (
+    msg.includes("expirad") ||
+    msg.includes("revogad") ||
+    msg.includes("expired") ||
+    msg.includes("revoked") ||
+    msg.includes("pin") ||
+    msg.includes("token") ||
+    msg.includes("inválid") ||
+    msg.includes("invalid")
+  ) {
+    return "Link inválido, expirado ou revogado. Peça um novo acesso ao time de frete.";
+  }
+  if (msg.includes("not found") || msg.includes("não encontrad") || msg.includes("nao encontrad")) {
+    return "Operação não encontrada.";
+  }
+  if (
+    msg.includes("failed to fetch") ||
+    msg.includes("networkerror") ||
+    msg.includes("network") ||
+    msg.includes("conexão") ||
+    msg.includes("conexao")
+  ) {
+    return "Erro ao salvar. Verifique sua conexão e tente novamente.";
+  }
+  if (context === "occurrence") return "Não foi possível registrar a ocorrência. Tente novamente.";
+  if (context === "proof") return "Não foi possível enviar o comprovante. Tente novamente.";
+  return "Não foi possível registrar esta etapa. Tente novamente.";
+}
+
 function DriverTrackingPage() {
   const { token } = Route.useParams();
   const [pin, setPin] = useState("");
@@ -107,6 +142,7 @@ function DriverTrackingPage() {
 
   async function submitNextEvent() {
     if (!trip || !nextEvent) return;
+    if (submitting) return; // evita envio duplicado em clique rápido/duplo
     if (proofStep && !selectedFile) {
       toast.error("Anexe a foto do canhoto assinado antes de finalizar.");
       return;
@@ -134,18 +170,13 @@ function DriverTrackingPage() {
               undefined,
               info,
             );
+      // Só avança o checklist quando o banco confirma a gravação (updated vem do RPC).
       setTrip(updated);
       setSelectedFile(null);
       setPreviewUrl(null);
       toast.success(nextEvent.success);
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : proofStep
-            ? "Falha ao enviar comprovante."
-            : "Falha ao registrar etapa.",
-      );
+      toast.error(friendlyDriverError(err, proofStep ? "proof" : "event"));
     } finally {
       setSubmitting(false);
     }
@@ -153,6 +184,7 @@ function DriverTrackingPage() {
 
   async function submitOccurrence() {
     if (!trip) return;
+    if (occurrenceSubmitting) return; // evita ocorrência duplicada em clique rápido/duplo
     if (!occurrenceNotes.trim()) {
       toast.error("Descreva a ocorrência.");
       return;
@@ -172,7 +204,7 @@ function DriverTrackingPage() {
       setOccurrenceNotes("");
       toast.success("Ocorrência registrada. A equipe foi avisada.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao registrar ocorrência.");
+      toast.error(friendlyDriverError(err, "occurrence"));
     } finally {
       setOccurrenceSubmitting(false);
     }

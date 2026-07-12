@@ -9,6 +9,15 @@ assinado**. O comprovante volta para os painéis internos (Frete, Financeiro, Pe
 > assim que o pedido é confirmado, **sem** depender do faturamento. A partir do momento em que
 > o motorista assume, os status operacionais passam a vir do **checklist externo**, não do painel interno.
 
+> **Correção do checklist e da ocorrência (fix: repair driver checklist and occurrence rpc errors):**
+> as ações "Cheguei para carregar" e "Registrar ocorrência" falhavam com HTTP 400 (`42703`)
+> porque as RPCs `driver_trip_event`, `driver_trip_occurrence` e `driver_proof_record` gravam
+> `organization_id`/`order_id` em `freight_events` e `delivery_proofs`, mas essas tabelas (do
+> desenho antigo) não tinham essas colunas — o `create table if not exists` das versões novas foi
+> um no-op. **Correção:** `supabase/manual-sql/030_fix_driver_event_columns.sql` adiciona as colunas
+> (nullable, sem backfill — 0 linhas). As RPCs não mudam. No frontend, os erros agora viram
+> mensagens amigáveis e o checklist só avança quando o banco confirma (com trava anti-duplo-clique).
+
 > **Sem geolocalização (fix: move freight operation tracking to driver checklist):**
 > nesta entrega o checklist do motorista **não captura latitude/longitude**. O link mostra apenas
 > identificação da operação, origem, destino, dados básicos da carga, o checklist, campo de

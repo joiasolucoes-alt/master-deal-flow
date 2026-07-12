@@ -38,6 +38,14 @@ Antes de testar esta onda em producao, confirme que os SQLs anteriores ja foram 
 
 Crie uma simulacao, aprove no Financeiro e no Gestor, confirme se o pedido gerou contas no Financeiro e se o frete aparece bloqueado ate a baixa das contas a pagar.
 
+## fix: repair driver checklist and occurrence rpc errors — REQUER SQL 030
+
+O checklist ("Cheguei para carregar") e a ocorrência do motorista falhavam com HTTP 400 / `42703: column "organization_id" of relation "freight_events" does not exist`.
+
+**Causa:** `public.freight_events` e `public.delivery_proofs` (tabelas do desenho antigo do portal) não têm as colunas `organization_id`/`order_id` que as RPCs (`driver_trip_event`, `driver_trip_occurrence`, `driver_proof_record`) inserem. As defs novas usam `create table if not exists`, que foi no-op nessas tabelas pré-existentes. `driver_access_links` (criada nova) já tem as colunas — por isso só a geração do link funcionava.
+
+**Correção — rodar `supabase/manual-sql/030_fix_driver_event_columns.sql`:** adiciona `organization_id`/`order_id` (uuid, nullable) nas duas tabelas. Aditivo, 0 linhas em produção, sem backfill, sem mudar as RPCs. Baixo risco, pode rodar em produção.
+
 ## fix: move freight operation tracking to driver checklist — SEM mudança de schema
 
 **Nenhum SQL.** Tudo é regra/UI no frontend, reutilizando as tabelas existentes (`freights`, `driver_access_links`, `driver_tracking_events`/`freight_events`, `delivery_proofs`, `notifications`, `audit_events`):

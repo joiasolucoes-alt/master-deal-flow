@@ -10,56 +10,57 @@ Editor, na ordem abaixo, e confirme cada passo.
 Estas são as migrations "oficiais" (presumivelmente já aplicadas). Se estiver montando um
 ambiente do zero, aplique-as primeiro:
 
-| Ordem | Arquivo | O que faz |
-| --- | --- | --- |
-| 1 | `202606290001_initial_master_flow_schema.sql` | Schema inicial (organizations, units, profiles, clients, suppliers, products, negotiations, simulations + filhas, approvals, orders, audit_events, notifications). |
-| 2 | `202607070001_negotiation_wallets.sql` | Carteiras de negociação + pools de oportunidade (com RLS por papel). Ver `docs/negotiation-wallets-flow.md`. |
-| 3 | `202607070002_persist_negotiation_wallets.sql` | Persistência/ajustes das carteiras. |
-| 4 | `202607070003_driver_portal.sql` | Portal do motorista (token + PIN). **Idêntico** a `manual-sql/018` — aplique só um dos dois. |
+| Ordem | Arquivo                                        | O que faz                                                                                                                                                          |
+| ----- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1     | `202606290001_initial_master_flow_schema.sql`  | Schema inicial (organizations, units, profiles, clients, suppliers, products, negotiations, simulations + filhas, approvals, orders, audit_events, notifications). |
+| 2     | `202607070001_negotiation_wallets.sql`         | Carteiras de negociação + pools de oportunidade (com RLS por papel). Ver `docs/negotiation-wallets-flow.md`.                                                       |
+| 3     | `202607070002_persist_negotiation_wallets.sql` | Persistência/ajustes das carteiras.                                                                                                                                |
+| 4     | `202607070003_driver_portal.sql`               | Portal do motorista (token + PIN). **Idêntico** a `manual-sql/018` — aplique só um dos dois.                                                                       |
 
 ## 2. Scripts manuais (pasta `supabase/manual-sql/`)
 
 Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 
-| Nº | Arquivo | O que faz |
-| --- | --- | --- |
-| 001 | `approval_workflow_hardening` | Reforço do fluxo de aprovação. |
-| 002 | `catalog_crud_support` | Suporte a CRUD de clientes/fornecedores/produtos. |
-| 003 | `basic_rls_for_homologation` | RLS **básica** (`true` p/ qualquer autenticado). ⚠️ Provisória — ver `docs/rls-refinement.md`. |
-| 004 | `wave_2_financial_titles` | Tabela `financial_titles` (contas a pagar/receber). |
-| 005 | `wave_2_freights` | Tabela `freights`. |
-| 006 | `wave_2_deliveries` | Tabela `deliveries`. |
-| 007 | `fix_freight_status_constraint` | Corrige a constraint de `status` de `freights` que uma migration anterior quebrou. ⚠️ Ver `docs/schema-consolidation.md` (Conflito 3). |
-| 008 | `wave_1_two_step_approvals` | Aprovação em duas etapas (`stage` financeiro/principal). |
-| 009 | `wave_2_delivery_proofs` | Canhoto/comprovante de entrega. |
-| 010 | `wave_2_delivery_occurrences` | Histórico de ocorrências de entrega. |
-| 011 | `wave_2_delivery_proof_uploads` | Upload real de comprovante (Storage). |
-| 012 | `wave_1_3_realized_results` | Resultado realizado por pedido. |
-| 013 | `wave_1_3_commission_approval` | Aprovação formal de comissão. |
-| 014 | `self_signup_commercial_access` | Auto-cadastro como Comercial. |
-| 015 | `wave_3_freight_documents` | Documentos anexos do frete (`freight_documents`). |
-| 016 | `adjustment_fields_for_simulations` | Campos de ajuste em simulações. |
-| 017 | `complete_billing_fields` | Campos completos de faturamento em `orders`. |
-| 018 | `temporary_driver_portal` | Portal do motorista (token + PIN). **Idêntico** à migration `202607070003` — aplique só um. |
-| 019 | `pre_order_payment_release` | Pagamento antecipado antes do pedido + comprovante em `financial_titles`. |
-| 020 | `wave_4_freight_checklist` | Checklist documental do frete por tipo de carga. |
-| 021 | `role_based_rls` | ⚠️ **APLICADO E REVERTIDO** (quebrou a criação de registros). Não reaplicar sem o app gravar `organization_id`. Ver `docs/rls-refinement.md`. |
-| 022 | `fix_freights_status_constraint` | ✅ **Aplicado** em produção. Remove a constraint dupla de `freights.status`, deixando só a canônica (6 valores). |
-| 023 | `add_organization_id_to_core_tables` | ✅ Colunas **aplicadas** (aditivas, mantidas). Adiciona `organization_id` em `simulations`/`orders`/`order_items`/`approvals`. |
-| 024 | `role_based_rls_core_tables` | ⚠️ **APLICADO E REVERTIDO** — ver 021. |
-| 025 | `role_based_rls_followup_tables` | ⚠️ **APLICADO E REVERTIDO** — ver 021. |
-| 026 | `rollback_role_based_rls` | ✅ **Aplicado** em produção. Reverte 021/024/025 para políticas abertas (restaura a criação de registros). |
-| 027 | `fix_driver_portal_pgcrypto` | ⚠️ **RODAR** — corrige o erro do PIN do motorista (`digest()` sem schema). Sem isto, o portal do motorista não funciona. |
-| 028 | `driver_journey_expansion` | ⚠️ **RODAR após 027** — ocorrências, recebedor, `last_access_at`, notificações/auditoria nos RPCs e policy de upload do canhoto. Ver `docs/driver-flow.md`. |
-| 029 | `verify_freight_preparation` | ✅ **Somente leitura** — verificação da feature "SIM aprovada visível para o Frete como preparação". **Não altera schema** (reutiliza `freights.order_id NULL`). Rode os SELECTs para conferir. Ver `docs/operational-flow.md` e `docs/freight-flow.md`. |
+| Nº  | Arquivo                              | O que faz                                                                                                                                                                                                                                                                      |
+| --- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 001 | `approval_workflow_hardening`        | Reforço do fluxo de aprovação.                                                                                                                                                                                                                                                 |
+| 002 | `catalog_crud_support`               | Suporte a CRUD de clientes/fornecedores/produtos.                                                                                                                                                                                                                              |
+| 003 | `basic_rls_for_homologation`         | RLS **básica** (`true` p/ qualquer autenticado). ⚠️ Provisória — ver `docs/rls-refinement.md`.                                                                                                                                                                                 |
+| 004 | `wave_2_financial_titles`            | Tabela `financial_titles` (contas a pagar/receber).                                                                                                                                                                                                                            |
+| 005 | `wave_2_freights`                    | Tabela `freights`.                                                                                                                                                                                                                                                             |
+| 006 | `wave_2_deliveries`                  | Tabela `deliveries`.                                                                                                                                                                                                                                                           |
+| 007 | `fix_freight_status_constraint`      | Corrige a constraint de `status` de `freights` que uma migration anterior quebrou. ⚠️ Ver `docs/schema-consolidation.md` (Conflito 3).                                                                                                                                         |
+| 008 | `wave_1_two_step_approvals`          | Aprovação em duas etapas (`stage` financeiro/principal).                                                                                                                                                                                                                       |
+| 009 | `wave_2_delivery_proofs`             | Canhoto/comprovante de entrega.                                                                                                                                                                                                                                                |
+| 010 | `wave_2_delivery_occurrences`        | Histórico de ocorrências de entrega.                                                                                                                                                                                                                                           |
+| 011 | `wave_2_delivery_proof_uploads`      | Upload real de comprovante (Storage).                                                                                                                                                                                                                                          |
+| 012 | `wave_1_3_realized_results`          | Resultado realizado por pedido.                                                                                                                                                                                                                                                |
+| 013 | `wave_1_3_commission_approval`       | Aprovação formal de comissão.                                                                                                                                                                                                                                                  |
+| 014 | `self_signup_commercial_access`      | Auto-cadastro como Comercial.                                                                                                                                                                                                                                                  |
+| 015 | `wave_3_freight_documents`           | Documentos anexos do frete (`freight_documents`).                                                                                                                                                                                                                              |
+| 016 | `adjustment_fields_for_simulations`  | Campos de ajuste em simulações.                                                                                                                                                                                                                                                |
+| 017 | `complete_billing_fields`            | Campos completos de faturamento em `orders`.                                                                                                                                                                                                                                   |
+| 018 | `temporary_driver_portal`            | Portal do motorista (token + PIN). **Idêntico** à migration `202607070003` — aplique só um.                                                                                                                                                                                    |
+| 019 | `pre_order_payment_release`          | Pagamento antecipado antes do pedido + comprovante em `financial_titles`.                                                                                                                                                                                                      |
+| 020 | `wave_4_freight_checklist`           | Checklist documental do frete por tipo de carga.                                                                                                                                                                                                                               |
+| 021 | `role_based_rls`                     | ⚠️ **APLICADO E REVERTIDO** (quebrou a criação de registros). Não reaplicar sem o app gravar `organization_id`. Ver `docs/rls-refinement.md`.                                                                                                                                  |
+| 022 | `fix_freights_status_constraint`     | ✅ **Aplicado** em produção. Remove a constraint dupla de `freights.status`, deixando só a canônica (6 valores).                                                                                                                                                               |
+| 023 | `add_organization_id_to_core_tables` | ✅ Colunas **aplicadas** (aditivas, mantidas). Adiciona `organization_id` em `simulations`/`orders`/`order_items`/`approvals`.                                                                                                                                                 |
+| 024 | `role_based_rls_core_tables`         | ⚠️ **APLICADO E REVERTIDO** — ver 021.                                                                                                                                                                                                                                         |
+| 025 | `role_based_rls_followup_tables`     | ⚠️ **APLICADO E REVERTIDO** — ver 021.                                                                                                                                                                                                                                         |
+| 026 | `rollback_role_based_rls`            | ✅ **Aplicado** em produção. Reverte 021/024/025 para políticas abertas (restaura a criação de registros).                                                                                                                                                                     |
+| 027 | `fix_driver_portal_pgcrypto`         | ⚠️ **RODAR** — corrige o erro do PIN do motorista (`digest()` sem schema). Sem isto, o portal do motorista não funciona.                                                                                                                                                       |
+| 028 | `driver_journey_expansion`           | ⚠️ **RODAR após 027** — ocorrências, recebedor, `last_access_at`, notificações/auditoria nos RPCs e policy de upload do canhoto. Ver `docs/driver-flow.md`.                                                                                                                    |
+| 029 | `verify_freight_preparation`         | ✅ **Somente leitura** — verificação da feature "SIM aprovada visível para o Frete como preparação". **Não altera schema** (reutiliza `freights.order_id NULL`). Rode os SELECTs para conferir. Ver `docs/operational-flow.md` e `docs/freight-flow.md`.                       |
+| 030 | `fix_driver_event_columns`           | ⚠️ **RODAR** — corrige o erro 400/`42703` no checklist e na ocorrência do motorista. Adiciona `organization_id`/`order_id` (nullable) em `freight_events` e `delivery_proofs` (tabelas antigas sem essas colunas). Aditivo, 0 linhas, sem backfill. Ver `docs/driver-flow.md`. |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 
-| Arquivo | Motivo |
-| --- | --- |
-| `supabase/sql/001_master_flow_multitenant.sql` | Trilha de schema alternativa não adotada pelo frontend. Conflita com as waves. Ver `docs/schema-consolidation.md` (Conflito 1). |
-| `supabase/sql/002_master_flow_multitenant_seed.sql` | Seed da trilha alternativa. |
-| `supabase/sql/driver_public_tracking.sql` | Desenho antigo do portal do motorista (só token), substituído por 018. Ver `docs/schema-consolidation.md` (Conflito 2). |
+| Arquivo                                             | Motivo                                                                                                                          |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `supabase/sql/001_master_flow_multitenant.sql`      | Trilha de schema alternativa não adotada pelo frontend. Conflita com as waves. Ver `docs/schema-consolidation.md` (Conflito 1). |
+| `supabase/sql/002_master_flow_multitenant_seed.sql` | Seed da trilha alternativa.                                                                                                     |
+| `supabase/sql/driver_public_tracking.sql`           | Desenho antigo do portal do motorista (só token), substituído por 018. Ver `docs/schema-consolidation.md` (Conflito 2).         |
 
 > Observação: os arquivos da seção 3 têm `create table if not exists` para as mesmas tabelas
 > das waves. Aplicá-los **antes** das waves faz a wave correspondente ser ignorada
