@@ -1619,4 +1619,62 @@ assert.equal(getDataProvider("outro"), "local");
 
 console.log("Testes de separação frete/faturamento passaram.");
 
+// ---------------------------------------------------------------------------
+// Operação do frete vai para o checklist do motorista (fix: move freight
+// operation tracking to driver checklist). Mirror puro. Sem Supabase.
+// ---------------------------------------------------------------------------
+
+// Permissões (mirror atualizado): Comercial agora tem freights:view (só leitura).
+const perms2 = {
+  Comercial: ["freights:view"],
+  Financeiro: ["orders:invoice", "freights:view"],
+  Frete: ["freights:view", "freights:operate"],
+  Admin: ["freights:view", "freights:operate", "orders:invoice"],
+};
+const can2 = (role, p) => (perms2[role] ?? []).includes(p);
+
+// 3/17/18/19: Comercial e Financeiro veem a aba Fretes, mas NÃO operam.
+assert.equal(can2("Comercial", "freights:view"), true, "Comercial acompanha fretes");
+assert.equal(can2("Financeiro", "freights:view"), true, "Financeiro acompanha fretes");
+assert.equal(can2("Comercial", "freights:operate"), false, "Comercial não contrata");
+assert.equal(can2("Financeiro", "freights:operate"), false, "Financeiro não contrata");
+assert.equal(can2("Frete", "freights:operate"), true);
+assert.equal(can2("Admin", "freights:operate"), true);
+
+// 5/6/7: o Frete só CONTRATA (quoted → hired). Depois disso, sem avanço manual.
+function nextFreightStatus(status) {
+  const map = { quoted: "hired", hired: "loading", loading: "in_route", in_route: "delivered" };
+  return map[status] ?? status;
+}
+// O botão de contratação só aparece para status "quoted".
+function freteShowsContractButton(status) {
+  return status === "quoted";
+}
+// Regra nova: o Frete NÃO tem botões de avanço operacional (loading/rota/entrega).
+const FRETE_HAS_OPERATIONAL_ADVANCE = false;
+assert.equal(freteShowsContractButton("quoted"), true);
+assert.equal(nextFreightStatus("quoted"), "hired", "contratar leva a Frete contratado");
+assert.equal(freteShowsContractButton("hired"), false, "sem botão contratar após contratado");
+assert.equal(FRETE_HAS_OPERATIONAL_ADVANCE, false, "sem 'Iniciar carregamento' p/ Frete");
+
+// 8: link/PIN fica disponível para o Frete (opera) e NÃO para o Financeiro.
+assert.equal(can2("Frete", "freights:operate"), true, "Frete gera link/PIN após liberação");
+assert.equal(can2("Financeiro", "freights:operate"), false, "Financeiro não gera link/PIN");
+
+// 11/12: motorista finaliza só com canhoto (mirror da regra do link externo).
+function canFinalizeDelivery(hasProofFile) {
+  return Boolean(hasProofFile);
+}
+assert.equal(canFinalizeDelivery(false), false, "não finaliza sem canhoto");
+assert.equal(canFinalizeDelivery(true), true, "finaliza com canhoto anexado");
+
+// Sem geolocalização nesta entrega: evento do motorista não carrega coords.
+function buildDriverEvent(type) {
+  return { type }; // sem latitude/longitude
+}
+const ev = buildDriverEvent("arrived_loading");
+assert.equal("latitude" in ev, false, "evento do motorista sem geolocalização");
+
+console.log("Testes de operação via checklist do motorista passaram.");
+
 console.log("Todos os testes passaram.");

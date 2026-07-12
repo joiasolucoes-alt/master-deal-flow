@@ -9,6 +9,13 @@ assinado**. O comprovante volta para os painéis internos (Frete, Financeiro, Pe
 > assim que o pedido é confirmado, **sem** depender do faturamento. A partir do momento em que
 > o motorista assume, os status operacionais passam a vir do **checklist externo**, não do painel interno.
 
+> **Sem geolocalização (fix: move freight operation tracking to driver checklist):**
+> nesta entrega o checklist do motorista **não captura latitude/longitude**. O link mostra apenas
+> identificação da operação, origem, destino, dados básicos da carga, o checklist, campo de
+> observação e o upload do canhoto. **Finalizar exige o canhoto** anexado (JPG/PNG/PDF) — a
+> operação não pode ser concluída sem o comprovante. Após anexar e finalizar, a entrega vira
+> **Entregue/Finalizado** e Frete, Financeiro e Comercial são notificados e veem o canhoto e a timeline.
+
 ## Onde entra no fluxo geral
 
 ```
@@ -41,14 +48,14 @@ pedidos. A página é pública e limitada — não dá acesso ao sistema interno
 
 O banco persiste os **marcos** que definem o status do frete/pedido:
 
-| Marco (event_type) | Ação do motorista | Status do frete |
-| --- | --- | --- |
-| `arrived_loading` | Cheguei para carregar | `loading` |
-| `in_transit` | Estou em trânsito | `in_route` |
-| `arrived_delivery_location` | Cheguei no destino | `in_route` |
-| `unloaded` | Descarreguei (informa **recebedor**) | `delivered` |
-| `proof_uploaded` | Anexa o **canhoto** (obrigatório) | `delivered` |
-| `completed` | (automático após o canhoto) | `delivered` + pedido `Entregue` |
+| Marco (event_type)          | Ação do motorista                    | Status do frete                 |
+| --------------------------- | ------------------------------------ | ------------------------------- |
+| `arrived_loading`           | Cheguei para carregar                | `loading`                       |
+| `in_transit`                | Estou em trânsito                    | `in_route`                      |
+| `arrived_delivery_location` | Cheguei no destino                   | `in_route`                      |
+| `unloaded`                  | Descarreguei (informa **recebedor**) | `delivered`                     |
+| `proof_uploaded`            | Anexa o **canhoto** (obrigatório)    | `delivered`                     |
+| `completed`                 | (automático após o canhoto)          | `delivered` + pedido `Entregue` |
 
 > Decisão de design: o checklist granular (confirmações de coleta/viagem/descarga) é
 > apresentado na tela; o que é **persistido** são os 6 marcos acima + ocorrências. Isso mantém

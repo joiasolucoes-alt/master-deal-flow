@@ -1,3 +1,18 @@
+# Checklist — Operação do frete via checklist do motorista (fix: move freight operation tracking to driver checklist)
+
+1. Como **Frete**, abrir um frete **Liberado**: o único botão de avanço é **"Contratar frete"**.
+2. Contratar → status vira **"Frete contratado"** e aparece o aviso "operação com o motorista".
+3. Confirmar que **não** há mais botões "Iniciar carregamento / Em rota / Finalizar entrega" no perfil Frete.
+4. Confirmar que o **link/PIN** do motorista fica disponível para gerar após contratar.
+5. Abrir o **link do motorista** + PIN: ver identificação, origem, destino, carga, checklist, observação e upload do canhoto — **sem** pedir localização.
+6. Preencher o checklist; tentar **finalizar sem canhoto** → deve ser **bloqueado**.
+7. Anexar foto do canhoto (JPG/PNG) e finalizar → entrega vira **Entregue/Finalizado**.
+8. Como **Frete**: acompanhar a **timeline** do motorista e ver o **canhoto** (aba Rastreamento).
+9. Como **Financeiro** e como **Comercial**: abrir a aba **Fretes** → é **somente acompanhamento** (timeline + canhoto), **sem** botões de contratar/gerar link/avançar.
+10. Confirmar que Financeiro e Comercial **não** conseguem contratar frete.
+11. Conferir que os botões **"Salvar dados"** ficam no **final** de cada bloco (Motorista, Veículo, Pagamento).
+12. Deixar duas telas abertas e confirmar **atualização sem F5** (~12s) na timeline/fretes.
+
 # Checklist — Frete e faturamento em paralelo (fix: separate freight release from financial invoicing)
 
 1. Criar SIM (Comercial) → enviar para o Gestor.
@@ -130,6 +145,7 @@
 
 - Alterar `VITE_DATA_PROVIDER=local`.
 - Confirmar que login local e fluxo principal continuam funcionando.
+
 # Checklist - Onda Automacao Financeira e Frete
 
 1. Criar uma simulacao com produtos, NF/custos, despesas e pagamento.
