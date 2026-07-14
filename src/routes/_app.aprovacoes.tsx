@@ -22,6 +22,10 @@ import type { ApprovalStage, Simulation, User } from "@/data/types";
 import { useAppStore } from "@/store/useAppStore";
 import { canReviewApprovals } from "@/lib/permissions";
 import { createFreightFromSimulation } from "@/features/freights/freightHelpers";
+import {
+  buildGestorApprovalAudit,
+  buildGestorApprovalNotifications,
+} from "@/features/approvals/approvalNotifications";
 import { createPreOrderPayableTitlesFromSimulation } from "@/features/finance/financialTitleHelpers";
 import {
   APPROVAL_STAGE_LABELS,
@@ -86,8 +90,9 @@ function ApprovalsPage() {
     selectedApprovalId,
     setSelectedApprovalId,
     users,
+    addNotification,
   } = useAppContext();
-  const addNotification = useAppStore((store) => store.addNotification);
+  const addAuditEvents = useAppStore((store) => store.addAuditEvents);
   const currentUser = auth.user;
   const canReview = canReviewApprovals(currentUser);
   const setSimulationsRef = useRef(setSimulations);
@@ -223,39 +228,13 @@ function ApprovalsPage() {
       upsertSimulation(nextSimulation);
       payables.forEach(upsertFinancialTitle);
       upsertFreight(freight);
-      addNotification({
-        id: `not-${Date.now()}`,
-        title: "Proposta aprovada pelo Gestor",
-        description: `${selected.number} foi aprovada e agora aguarda pagamento do Financeiro.`,
-        type: "success",
-        createdAt: new Date().toISOString(),
-        unread: true,
-        entityType: "simulation",
-        entityId: selected.id,
-        targetUserName: selected.owner,
-      });
-      addNotification({
-        id: `not-${Date.now()}-finance`,
-        title: "Proposta aguardando pagamento",
-        description: `${selected.number} precisa de pagamento e comprovante antes de virar pedido.`,
-        type: "warning",
-        createdAt: new Date().toISOString(),
-        unread: true,
-        entityType: "simulation",
-        entityId: selected.id,
-        targetRole: "Financeiro",
-      });
-      addNotification({
-        id: `not-${Date.now()}-freight`,
-        title: "Operação futura visível para frete",
-        description: `${selected.number} já aparece em Fretes, mas fica bloqueada até a validação comercial.`,
-        type: "info",
-        createdAt: new Date().toISOString(),
-        unread: true,
-        entityType: "simulation",
-        entityId: selected.id,
-        targetRole: "Financeiro",
-      });
+      // Notifica Financeiro, Frete e Comercial (§9) e registra a auditoria (§10).
+      buildGestorApprovalNotifications(nextSimulation, { owner: ownerUser }).forEach(
+        addNotification,
+      );
+      addAuditEvents(
+        buildGestorApprovalAudit(nextSimulation, currentUser, { previousStatus: selected.status }),
+      );
       toast.success("Gestor aprovou. A proposta agora aguarda pagamento do Financeiro.");
     } else {
       upsertSimulation(nextSimulation);
@@ -279,6 +258,7 @@ function ApprovalsPage() {
         targetUserId: ownerUser?.id,
         targetUserEmail: ownerUser?.email,
         targetUserName: ownerUser?.name ?? selected.owner,
+        targetRole: "Comercial",
       });
       toast.success(
         decision === "approve"

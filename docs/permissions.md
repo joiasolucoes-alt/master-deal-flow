@@ -6,7 +6,21 @@
 - `Negociações`: acompanha e gerencia negociações/simulações comerciais.
 - `Aprovador`: acessa aprovações, aprova, devolve ou reprova simulações de outros usuários.
 - `Financeiro`: acessa visão financeira e relatórios liberados.
+- `Frete`: perfil de logística/frota. Acessa Dashboard, Pedidos, Fretes e Entregas — sem acesso ao fluxo comercial (simulações/aprovações) nem ao financeiro. Mapeado a partir do papel `frota` no Supabase (`organization_members.role`).
 - `Admin`: acesso total ao frontend, cadastros e configurações.
+
+### Mapeamento papel do banco → perfil do frontend
+
+| `organization_members.role` (Supabase) | Perfil no frontend |
+| --- | --- |
+| `admin` | `Admin` |
+| `gestor` | `Negociações` |
+| `aprovador` | `Aprovador` |
+| `financeiro` | `Financeiro` |
+| `frota` | `Frete` |
+| `comercial` (padrão) | `Comercial` |
+
+> Papéis de banco `motorista` e `viewer` ainda não têm perfil dedicado no frontend e recaem em `Comercial`. O portal do motorista é público (link + PIN) e não usa esse mapeamento.
 
 ## Regras no frontend
 

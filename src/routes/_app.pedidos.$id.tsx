@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { ArrowLeft, Download, FileText, Printer } from "lucide-react";
+import { ArrowLeft, Download, FileText, PackageCheck, Printer } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Timeline } from "@/components/app/timeline";
@@ -32,7 +32,19 @@ import {
   calculateBillingProgress,
   getFinancialTitleStatus,
 } from "@/features/finance/financialTitleHelpers";
+import { createFreightFromOrder } from "@/features/freights/freightHelpers";
+import {
+  getOrderBillingLabel,
+  getOrderFreightLabel,
+  getOrderGeneralLabel,
+} from "@/features/orders/orderStatus";
+import {
+  fetchDriverAccessSummary,
+  getDeliveryProofSignedUrl,
+  type DriverAccessSummary,
+} from "@/lib/driverTracking";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
+import { hasPermission } from "@/lib/permissions";
 import { filterOrdersForUser } from "@/lib/visibility";
 import { toast } from "sonner";
 import { createWalletEntry, upsertWalletEntry } from "@/features/negotiation-wallets";
@@ -47,14 +59,38 @@ function OrderDetailPage() {
   const {
     auth,
     orders,
+    freights,
     financialTitles,
     negotiationWallets,
     upsertFinancialTitle,
     upsertOrder,
+    upsertFreight,
     upsertNegotiationWallet,
+    addNotification,
   } = useAppContext();
   const [billingOpen, setBillingOpen] = useState(false);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
+  const [driverSummary, setDriverSummary] = useState<DriverAccessSummary | null>(null);
+  const orderFreight = freights.find((freight) => freight.orderId === id);
+  const orderFreightId = orderFreight?.id;
+  useEffect(() => {
+    if (!orderFreight) {
+      setDriverSummary(null);
+      return;
+    }
+    let active = true;
+    fetchDriverAccessSummary(orderFreight)
+      .then((summary) => {
+        if (active) setDriverSummary(summary);
+      })
+      .catch(() => {
+        if (active) setDriverSummary(null);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderFreightId]);
   const order = filterOrdersForUser(orders, auth.user).find((o) => o.id === id);
   if (!order) {
     return (
@@ -75,12 +111,16 @@ function OrderDetailPage() {
     .filter((title) => title.status !== "cancelled")
     .reduce((sum, title) => sum + title.amount, 0);
   const receivedAmount = orderReceivables.reduce((sum, title) => sum + title.paidAmount, 0);
-  const canBillOrder =
+  // O registro de faturamento é responsabilidade do Financeiro/Faturamento/Admin.
+  // O Comercial e o Frete apenas visualizam o status; não executam o faturamento.
+  const canRegisterBilling = hasPermission(auth.user, "orders:invoice");
+  const orderIsInBillingStage =
     order.status === "Pedido confirmado" ||
     order.status === "Frete liberado" ||
     order.status === "Aguardando frete" ||
     order.status === "Aguardando faturamento" ||
     order.status === "Em faturamento";
+  const canBillOrder = canRegisterBilling && orderIsInBillingStage;
   const wallet = negotiationWallets.find((item) => item.orderId === order.id);
 
   const handleOpenBilling = () => {
@@ -92,6 +132,15 @@ function OrderDetailPage() {
     setBillingForm(createBillingForm(order, financialTitles));
     setBillingOpen(true);
   };
+
+  async function openDriverProof(path: string) {
+    try {
+      const url = await getDeliveryProofSignedUrl(path);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível abrir o comprovante.");
+    }
+  }
 
   const handleRegisterBilling = () => {
     const invoiceNumber = billingForm.invoiceNumber.trim();
@@ -106,6 +155,19 @@ function OrderDetailPage() {
     }
     if (!billingForm.invoiceIssuedAt || !billingForm.billingDueDate) {
       toast.error("Informe a emissão e o vencimento da NF.");
+      return;
+    }
+    if (!canRegisterBilling) {
+      toast.error("Seu perfil não pode registrar faturamento.");
+      return;
+    }
+    const remaining = getRemainingBillingAmount(order, financialTitles);
+    if (remaining <= 0) {
+      toast.info("Pedido já está totalmente faturado.");
+      return;
+    }
+    if (invoiceAmount > remaining + 0.01) {
+      toast.error(`Valor acima do restante a faturar (${formatCurrency(remaining)}).`);
       return;
     }
 
@@ -164,6 +226,27 @@ function OrderDetailPage() {
 
     upsertFinancialTitle(title);
     upsertOrder(updatedOrder);
+    // Notifica o Comercial (dono do pedido) que o faturamento foi registrado.
+    addNotification({
+      title: `Faturamento registrado — ${order.number}`,
+      description: `${invoiceNumber} no valor de ${formatCurrency(invoiceAmount)} registrado por ${
+        auth.user?.name ?? "Financeiro"
+      }.`,
+      type: "success",
+      entityType: "order",
+      entityId: order.id,
+      targetUserName: order.owner,
+      targetRole: "Comercial",
+      href: `/pedidos/${order.id}`,
+    });
+    // Assim que o faturamento libera o pedido, o frete é gerado automaticamente
+    // (sem botão manual) e fica disponível para o perfil Frete acompanhar/executar.
+    if (
+      updatedOrder.status === "Frete liberado" &&
+      !freights.some((freight) => freight.orderId === updatedOrder.id)
+    ) {
+      upsertFreight(createFreightFromOrder(updatedOrder));
+    }
     const discount = roundCurrency(
       getRemainingBillingAmount(order, financialTitles) - invoiceAmount,
     );
@@ -217,9 +300,11 @@ function OrderDetailPage() {
             <Button variant="outline">
               <Download /> Exportar PDF
             </Button>
-            <Button onClick={handleOpenBilling}>
-              <FileText /> Faturar pedido
-            </Button>
+            {canBillOrder && order.billingProgress < 100 ? (
+              <Button onClick={handleOpenBilling}>
+                <FileText /> Registrar faturamento/NF
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -227,9 +312,10 @@ function OrderDetailPage() {
       <Dialog open={billingOpen} onOpenChange={setBillingOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Faturar pedido</DialogTitle>
+            <DialogTitle>Registrar faturamento/NF</DialogTitle>
             <DialogDescription>
-              Registre os dados da NF para liberar o pedido para a próxima etapa.
+              Registro interno dos dados de faturamento/NF (o sistema não emite nota fiscal
+              oficial). Gera as contas a receber e libera o pedido para a próxima etapa.
             </DialogDescription>
           </DialogHeader>
 
@@ -322,7 +408,15 @@ function OrderDetailPage() {
       </Dialog>
 
       <div className="flex flex-wrap items-center gap-3">
-        <StatusBadge status={order.status} />
+        {/* Status separados por área (fix: separate freight release from financial invoicing):
+            geral (operacional), frete (liberação) e faturamento seguem em paralelo. */}
+        <StatusBadge status={getOrderGeneralLabel(order)} />
+        <Badge variant="outline" className="rounded-full">
+          Frete: {getOrderFreightLabel(order, financialTitles)}
+        </Badge>
+        <Badge variant="outline" className="rounded-full text-muted-foreground">
+          Faturamento: {getOrderBillingLabel(order)}
+        </Badge>
         <Badge variant="outline" className="rounded-full">
           Prioridade: {order.priority}
         </Badge>
@@ -410,6 +504,81 @@ function OrderDetailPage() {
                   {order.billingNotes || "Sem observação registrada."}
                 </p>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PackageCheck className="h-4 w-4 text-primary" /> Entrega e comprovante
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(() => {
+                const proof = driverSummary?.proofs?.[0];
+                const completedEvent = driverSummary?.events?.find(
+                  (event) => event.eventType === "completed",
+                );
+                const receiverEvent = driverSummary?.events?.find((event) => event.receiverName);
+                const delivered = order.status === "Entregue" || Boolean(proof);
+                if (!orderFreight) {
+                  return (
+                    <p className="text-sm text-muted-foreground">
+                      Frete ainda não gerado para este pedido.
+                    </p>
+                  );
+                }
+                return (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Info
+                      label="Situação"
+                      value={delivered ? "Entrega comprovada" : "Em andamento"}
+                      highlight={delivered}
+                    />
+                    <Info
+                      label="Data da entrega"
+                      value={
+                        completedEvent
+                          ? formatDateTime(completedEvent.occurredAt)
+                          : driverSummary?.completedAt
+                            ? formatDateTime(driverSummary.completedAt)
+                            : "-"
+                      }
+                    />
+                    <Info label="Recebedor" value={receiverEvent?.receiverName ?? "-"} />
+                    <div className="flex items-end">
+                      {proof ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void openDriverProof(proof.filePath)}
+                        >
+                          <FileText className="h-4 w-4" /> Ver canhoto ({proof.fileName})
+                        </Button>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          Canhoto ainda não anexado.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+              {driverSummary?.events?.some((event) => event.eventType === "occurrence") ? (
+                <div className="rounded-lg border border-warning/40 bg-warning-soft/30 p-3">
+                  <p className="text-xs font-semibold text-warning">Ocorrências registradas</p>
+                  <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                    {driverSummary.events
+                      .filter((event) => event.eventType === "occurrence")
+                      .map((event) => (
+                        <li key={event.id}>
+                          {event.occurrenceType || "Ocorrência"}
+                          {event.notes ? ` — ${event.notes}` : ""} ({formatDate(event.occurredAt)})
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -522,21 +691,13 @@ function createEmptyBillingForm(): BillingForm {
 }
 
 function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
+  // Regra (fix: separate freight release from financial invoicing): faturamento é
+  // frente paralela e não altera o status operacional do pedido. O rótulo de
+  // faturamento é derivado (ver getOrderBillingLabel em orderStatus.ts).
   const billingProgress = calculateBillingProgress(titles, order.totalValue);
-  const status =
-    billingProgress >= 100 &&
-    (order.status === "Aguardando faturamento" ||
-      order.status === "Em faturamento" ||
-      order.status === "Pedido confirmado")
-      ? "Frete liberado"
-      : billingProgress > 0 && order.status === "Aguardando faturamento"
-        ? "Em faturamento"
-        : order.status;
-
   return {
     ...order,
     billingProgress,
-    status,
   };
 }
 

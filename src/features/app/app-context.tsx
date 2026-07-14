@@ -28,6 +28,7 @@ import type {
   Product,
   RealizedResultRecord,
   NegotiationWallet,
+  NotificationItem,
   OpportunityPool,
   Simulation,
   Supplier,
@@ -128,6 +129,13 @@ interface AppContextValue {
   setSimulations: (value: Simulation[]) => void;
   upsertSimulation: (simulation: Simulation) => void;
   upsertOrder: (order: Order) => void;
+  addNotification: (
+    input: Omit<NotificationItem, "id" | "createdAt" | "unread"> & {
+      id?: string;
+      createdAt?: string;
+      unread?: boolean;
+    },
+  ) => void;
   upsertFinancialTitle: (title: FinancialTitle) => void;
   upsertRealizedResult: (result: RealizedResultRecord) => void;
   upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
@@ -155,6 +163,7 @@ const DATABASE_ROLE_BY_APP_ROLE: Record<UserRole, string> = {
   Negociações: "gestor",
   Aprovador: "aprovador",
   Financeiro: "financeiro",
+  Frete: "frota",
   Admin: "admin",
 };
 const DEFAULT_SIGNUP_ROLE = "comercial";
@@ -176,7 +185,7 @@ function getAvatarHue(seed: string) {
 }
 
 function chooseHighestRole(roles: Array<string | null | undefined>) {
-  const priority = ["admin", "gestor", "aprovador", "financeiro", "comercial"];
+  const priority = ["admin", "gestor", "aprovador", "financeiro", "frota", "comercial"];
   const normalizedRoles = roles.map(normalizeDatabaseRole).filter(Boolean);
 
   return priority.find((role) => normalizedRoles.includes(role)) ?? normalizedRoles[0] ?? null;
@@ -365,6 +374,8 @@ function normalizeDatabaseRole(role?: string | null): string | null {
   if (normalized.includes("gest") || normalized.includes("negocia")) return "gestor";
   if (normalized.includes("aprov")) return "aprovador";
   if (normalized.includes("financ")) return "financeiro";
+  if (normalized.includes("frota") || normalized.includes("frete") || normalized.includes("logist"))
+    return "frota";
   if (normalized.includes("comerc")) return "comercial";
   return normalized;
 }
@@ -420,7 +431,7 @@ async function resolveMembershipRole(
   organizationId: string,
   profileRole?: string | null,
 ) {
-  const roles = ["admin", "gestor", "aprovador", "financeiro", "comercial"];
+  const roles = ["admin", "gestor", "aprovador", "financeiro", "frota", "comercial"];
 
   for (const role of roles) {
     const { data, error } = await client.rpc("has_role", {
@@ -582,6 +593,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setProductsStore = useAppStore((store) => store.setProducts);
   const upsertSimulationStore = useAppStore((store) => store.upsertSimulation);
   const upsertOrderStore = useAppStore((store) => store.upsertOrder);
+  const addNotificationStore = useAppStore((store) => store.addNotification);
   const negotiationWallets = useAppStore((store) => store.negotiationWallets);
   const opportunityPools = useAppStore((store) => store.opportunityPools);
   const upsertNegotiationWalletStore = useAppStore((store) => store.upsertNegotiationWallet);
@@ -641,6 +653,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (normalized === "gestor") return "Negociações";
     if (normalized === "aprovador") return "Aprovador";
     if (normalized === "financeiro") return "Financeiro";
+    if (normalized === "frota") return "Frete";
     return "Comercial";
   };
 
@@ -941,7 +954,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remoteClients,
           remoteSuppliers,
           remoteProducts,
-        ] = await Promise.all([
+        ] = await Promise.allSettled([
           simulationRepository.list(),
           orderRepository.list(),
           negotiationRepository.list(),
@@ -954,13 +967,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
           catalogRepository.listClients(),
           catalogRepository.listSuppliers(),
           catalogRepository.listProducts(),
-        ]);
+        ] as const);
 
         if (cancelled) return;
-        setSimulationsStore(
-          mergeRemoteSimulationsWithLocalPending(
-            remoteSimulations,
-            getAppStoreSnapshot().simulations,
+        const failures: string[] = [];
+        const applyResult = <T,>(
+          result: PromiseSettledResult<T>,
+          label: string,
+          apply: (value: T) => void,
+        ) => {
+          if (result.status === "fulfilled") {
+            apply(result.value);
+            return;
+          }
+          console.error(`Falha ao carregar ${label} do Supabase.`, result.reason);
+          failures.push(label);
+        };
+
+        applyResult(remoteSimulations, "simulações", (value) =>
+          setSimulationsStore(
+            mergeRemoteSimulationsWithLocalPending(value, getAppStoreSnapshot().simulations),
           ),
         );
         // Fallback: sem negociações no Supabase, mantém a semente local.
@@ -985,8 +1011,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     void loadRemoteData();
 
+    // Auto-refresh sem F5 (§14): polling leve. Como o Realtime exigiria configurar
+    // publicações/políticas por tabela no Supabase (fora do escopo desta rodada), usamos
+    // polling a cada 12s. Todas as telas leem do store, então recarregar o store atualiza
+    // Simulações, Aprovações, Financeiro, Pagamento de Negociação, Pedidos, Fretes,
+    // Notificações e os detalhes abertos. Pausa quando a aba está em segundo plano.
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadRemoteData();
+    }, 12000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void loadRemoteData();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [
     auth.hasAccess,
@@ -1331,6 +1372,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const addNotification = useCallback(
+    (
+      input: Omit<NotificationItem, "id" | "createdAt" | "unread"> & {
+        id?: string;
+        createdAt?: string;
+        unread?: boolean;
+      },
+    ) => {
+      const notification: NotificationItem = {
+        ...input,
+        id: input.id ?? `ntf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        createdAt: input.createdAt ?? new Date().toISOString(),
+        unread: input.unread ?? true,
+      };
+
+      addNotificationStore(notification);
+
+      if (isSupabaseProvider() && getSupabaseConfigStatus().configured) {
+        void persistNotification(notification).catch((error) => {
+          console.warn("Notificação mantida localmente, mas não persistida no Supabase.", error);
+        });
+      }
+    },
+    [addNotificationStore],
+  );
+
   const upsertOrder = (order: Order) => {
     upsertOrderStore(order);
     if (!isSupabaseProvider()) return;
@@ -1548,6 +1615,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSimulations,
       upsertSimulation,
       upsertOrder,
+      addNotification,
       upsertFinancialTitle,
       upsertRealizedResult,
       upsertNegotiationWallet,
@@ -1582,6 +1650,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSimulations,
       upsertSimulation,
       upsertOrder,
+      addNotification,
       upsertFinancialTitle,
       upsertRealizedResult,
       upsertNegotiationWallet,

@@ -1,5 +1,11 @@
 # Master Flow — Onda 1 multiempresa/multiunidade
 
+> Fluxo operacional atual: os scripts manuais `027`, `028`, `030` e `031`, nesta ordem,
+> completam o portal do motorista. A SQL 031 separa o orçamento previsto do valor
+> contratado, registra `No destino` e `Mercadoria descarregada` e só marca o pedido como
+> `Entregue` depois do envio válido do canhoto. Consulte `docs/manual-sql-order.md` antes
+> de executar qualquer script no banco.
+
 Este diretório contém os scripts SQL preparados nesta rodada. A ferramenta
 oficial de migration **não foi exposta** nesta sessão do agente, por isso
 os arquivos foram colocados em `supabase/sql/` em vez de
@@ -19,6 +25,7 @@ values ('00000000-0000-0000-0000-00000000m4st'::uuid,
 ```
 
 A migration é **aditiva** (não usa `DROP TABLE`). Ela:
+
 - adiciona `organization_id` nas tabelas existentes;
 - substitui as policies abertas (`true`) por policies por papel/unidade;
 - mantém as tabelas antigas (`approvals`, `simulation_costs`, `simulation_purchase_costs`)

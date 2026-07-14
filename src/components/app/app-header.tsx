@@ -18,11 +18,16 @@ import { UserAvatar } from "@/components/app/user-avatar";
 import { useAppStore } from "@/store/useAppStore";
 import type { NotificationItem, UserRole } from "@/data/types";
 import { isSupabaseProvider } from "@/lib/dataProvider";
+import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import {
-  ensureSupabaseSession,
-  getSupabaseClient,
-  getSupabaseConfigStatus,
-} from "@/lib/supabaseClient";
+  listNotificationsForUser,
+  markNotificationReadRemote,
+  type NotificationRow,
+} from "@/features/notifications/notificationRepository";
+import {
+  normalizeNotificationTargetRole,
+  notificationTargetsUser,
+} from "@/features/notifications/notificationAudience";
 import {
   filterNegotiationsForUser,
   filterOrdersForUser,
@@ -70,26 +75,15 @@ export function AppHeader() {
 
     async function loadRemoteNotifications() {
       try {
-        const client = getSupabaseClient();
-        if (!client) return;
-        await ensureSupabaseSession();
-
-        const { data, error } = await client
-          .from("notifications")
-          .select(
-            "id, external_id, title, message, type, read, entity_type, entity_id, entity_external_id, created_at",
-          )
-          .order("created_at", { ascending: false })
-          .limit(80);
-
-        if (error) throw error;
+        if (!user) return;
+        const data = await listNotificationsForUser(user);
         if (cancelled) return;
 
         const remoteNotifications = (data ?? []).map(rowToNotification);
         const remoteIds = new Set(remoteNotifications.map((item) => item.id));
         const localOnly = notificationsRef.current.filter((item) => !remoteIds.has(item.id));
         const nextNotifications = [...remoteNotifications, ...localOnly];
-        if (!sameNotificationIds(nextNotifications, notificationsRef.current)) {
+        if (!sameNotifications(nextNotifications, notificationsRef.current)) {
           setNotifications(nextNotifications);
         }
       } catch (error) {
@@ -106,25 +100,12 @@ export function AppHeader() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", loadRemoteNotifications);
     };
-  }, [auth.hasAccess, setNotifications]);
+  }, [auth.hasAccess, setNotifications, user]);
 
-  const visibleNotifications = useMemo(() => {
-    if (user?.role === "Admin") return notifications;
-    const userEmail = user?.email?.trim().toLowerCase();
-    const userName = user?.name?.trim().toLowerCase();
-
-    return notifications.filter((item) => {
-      if (item.targetUserId && item.targetUserId === user?.id) return true;
-      if (item.targetUserEmail && item.targetUserEmail.trim().toLowerCase() === userEmail) {
-        return true;
-      }
-      if (item.targetUserName && item.targetUserName.trim().toLowerCase() === userName) {
-        return true;
-      }
-      if (item.targetRole && item.targetRole === user?.role) return true;
-      return false;
-    });
-  }, [notifications, user?.email, user?.id, user?.name, user?.role]);
+  const visibleNotifications = useMemo(
+    () => notifications.filter((item) => notificationTargetsUser(item, user)),
+    [notifications, user],
+  );
   const unread = visibleNotifications.filter((item) => item.unread).length;
   const trimmedQuery = query.trim().toLowerCase();
   const searchResults = useMemo<SearchResult[]>(() => {
@@ -185,6 +166,11 @@ export function AppHeader() {
 
   function openNotification(item: (typeof notifications)[number]) {
     markNotificationRead(item.id);
+    if (isSupabaseProvider() && getSupabaseConfigStatus().configured) {
+      void markNotificationReadRemote(item).catch((error) => {
+        console.warn("Não foi possível marcar a notificação como lida no Supabase.", error);
+      });
+    }
     window.setTimeout(() => {
       if (item.entityType === "approval" && item.entityId) {
         if (user?.role === "Admin" || user?.role === "Aprovador" || user?.role === "Financeiro") {
@@ -206,8 +192,12 @@ export function AppHeader() {
         navigate({ to: "/negociacoes/$id", params: { id: item.entityId } });
         return;
       }
+      if (item.entityType === "freight") {
+        navigate({ to: "/fretes" });
+        return;
+      }
       if (item.href === "/aprovacoes") navigate({ to: "/aprovacoes" });
-      if (item.href === "/entregas") navigate({ to: "/entregas" });
+      if (item.href === "/entregas" || item.href === "/fretes") navigate({ to: "/fretes" });
       if (item.href === "/simulacoes") navigate({ to: "/simulacoes" });
       if (item.href === "/pedidos") navigate({ to: "/pedidos" });
       if (item.href === "/negociacoes") navigate({ to: "/negociacoes" });
@@ -359,25 +349,13 @@ export function AppHeader() {
   );
 }
 
-type NotificationRow = {
-  id: string;
-  external_id?: string | null;
-  title: string;
-  message: string;
-  type: string;
-  read: boolean;
-  entity_type?: string | null;
-  entity_id?: string | null;
-  entity_external_id?: string | null;
-  created_at: string;
-};
-
 function rowToNotification(row: NotificationRow): NotificationItem {
-  const targetRole = inferTargetRole(row);
+  const targetRole = normalizeNotificationTargetRole(row.target_role) ?? inferTargetRole(row);
   const entityType = normalizeEntityType(row.entity_type, targetRole);
 
   return {
     id: row.external_id ?? `remote-${row.id}`,
+    remoteId: row.id,
     title: row.title,
     description: row.message,
     type: normalizeNotificationType(row.type),
@@ -385,7 +363,11 @@ function rowToNotification(row: NotificationRow): NotificationItem {
     unread: !row.read,
     entityType,
     entityId: row.entity_external_id ?? row.entity_id ?? undefined,
+    targetUserId: row.user_id ?? undefined,
+    targetUserEmail: row.target_user_email ?? undefined,
+    targetUserName: row.target_user_name ?? undefined,
     targetRole,
+    source: row.source ?? undefined,
   };
 }
 
@@ -402,6 +384,7 @@ function normalizeEntityType(
   if (
     entityType === "approval" ||
     entityType === "delivery" ||
+    entityType === "freight" ||
     entityType === "simulation" ||
     entityType === "order" ||
     entityType === "negotiation"
@@ -413,25 +396,39 @@ function normalizeEntityType(
 
 function inferTargetRole(row: NotificationRow): UserRole | undefined {
   const text = `${row.title} ${row.message}`.toLowerCase();
-  if (
-    text.includes("pendente de aprovação") ||
-    text.includes("enviada para aprovação") ||
-    text.includes("aguardando aprovação financeira") ||
-    text.includes("aguardando financeiro")
-  ) {
+  if (text.includes("aguardando aprovação financeira") || text.includes("aguardando financeiro")) {
     return "Financeiro";
   }
   if (
+    text.includes("pendente de aprovação") ||
+    text.includes("enviada para aprovação") ||
     text.includes("aprovação final") ||
     text.includes("aguarda decisão final") ||
     text.includes("aguardando aprovação do gestor")
   ) {
-    return "Aprovador";
+    return "Admin";
   }
   return undefined;
 }
 
-function sameNotificationIds(left: NotificationItem[], right: NotificationItem[]) {
+function sameNotifications(left: NotificationItem[], right: NotificationItem[]) {
   if (left.length !== right.length) return false;
-  return left.every((item, index) => item.id === right[index]?.id);
+  return left.every((item, index) => {
+    const other = right[index];
+    return (
+      item.id === other?.id &&
+      item.remoteId === other.remoteId &&
+      item.title === other.title &&
+      item.description === other.description &&
+      item.type === other.type &&
+      item.createdAt === other.createdAt &&
+      item.unread === other.unread &&
+      item.entityType === other.entityType &&
+      item.entityId === other.entityId &&
+      item.targetUserId === other.targetUserId &&
+      item.targetUserEmail === other.targetUserEmail &&
+      item.targetUserName === other.targetUserName &&
+      item.targetRole === other.targetRole
+    );
+  });
 }

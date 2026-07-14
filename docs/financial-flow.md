@@ -4,6 +4,17 @@ O Financeiro passa a atuar depois da aprovacao do Gestor e antes da criacao do p
 
 Contas a receber continuam nascendo quando o pedido for confirmado.
 
+## Faturamento é frente PARALELA (fix: separate freight release from financial invoicing)
+
+Após a validação comercial, o pedido nasce **Pedido confirmado** e o **frete já fica liberado**. O faturamento passa a ser uma pendência **paralela** do Financeiro/Faturamento (status derivado **"Aguardando faturamento"**), que **não bloqueia** o frete:
+
+- O Financeiro registra NF (número, valor, emissão, vencimento, observação) e contas a receber a qualquer momento.
+- Registrar o faturamento **não altera** o status operacional do pedido nem trava a contratação do frete.
+- O Financeiro **não contrata frete** e **não gera link/PIN** do motorista (só Frete/Admin — permissão `freights:operate`).
+- Aba **Pagamento de Negociação**: o botão passou a ser **"Fazer pagamento"** e abre um modal com **todos os lançamentos a pagar** da simulação (tipo, descrição, documento, previsto, pago, saldo, vencimento, status, comprovante), pagando cada item individualmente — não abre mais um lançamento aleatório.
+
+**Preparação de frete em paralelo:** a partir da aprovação do Gestor, além das contas a pagar da proposta, a operação também fica visível para o Frete como **preparação** (sem virar pedido). O Financeiro é notificado para pagar; o Frete é notificado para preparar. A liberação do frete para execução continua condicionada ao pagamento, à validação comercial e ao faturamento/NF. Ver `docs/operational-flow.md`.
+
 # Fluxo Financeiro
 
 ## O que foi automatizado

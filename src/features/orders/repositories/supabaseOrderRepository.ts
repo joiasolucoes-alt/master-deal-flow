@@ -103,8 +103,6 @@ export function createSupabaseOrderRepository(): OrderRepository {
         number: order.number,
         status: order.status,
       });
-      await insertNotification(client, order.id, order.number, order.status);
-
       const saved = await fetchOrderInternal(client, order.id);
       return saved ? rowToOrder(saved) : order;
     },
@@ -125,23 +123,6 @@ async function insertAuditEvent(
     action,
     description: `Evento ${action} registrado para pedido.`,
     metadata,
-  });
-
-  if (error) throw error;
-}
-
-async function insertNotification(
-  client: SupabaseClient,
-  orderExternalId: string,
-  number: string,
-  status: Order["status"],
-) {
-  const { error } = await client.from("notifications").insert({
-    title: `Pedido ${number}`,
-    message: `Pedido salvo com status ${status}.`,
-    type: "success",
-    entity_type: "order",
-    entity_external_id: orderExternalId,
   });
 
   if (error) throw error;

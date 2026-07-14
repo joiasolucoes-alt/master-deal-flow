@@ -64,7 +64,6 @@ import {
 } from "@/lib/visibility";
 import { toast } from "sonner";
 import { createWalletEntry, upsertWalletEntry } from "@/features/negotiation-wallets";
-import { useAppStore } from "@/store/useAppStore";
 
 export const Route = createFileRoute("/_app/financeiro")({
   component: FinancialPage,
@@ -83,11 +82,12 @@ function FinancialPage() {
     upsertOrder,
     upsertFreight,
     upsertNegotiationWallet,
+    addNotification,
   } = useAppContext();
-  const addNotification = useAppStore((store) => store.addNotification);
   const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
   const [selectedPaymentTitle, setSelectedPaymentTitle] = useState<FinancialTitle | null>(null);
+  const [paymentListSimulationId, setPaymentListSimulationId] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState<PaymentForm>(() => createEmptyPaymentForm());
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
@@ -356,19 +356,12 @@ function FinancialPage() {
     return titles;
   };
 
+  // §12 — "Fazer pagamento": em vez de abrir um lançamento aleatório, abre um modal
+  // com TODOS os lançamentos a pagar da simulação, para o Financeiro escolher qual pagar.
   const handlePayNegotiation = (row: NegotiationPaymentRow) => {
     const payables = row.payables.length ? row.payables : handleGenerateNegotiationPayment(row);
     if (!payables.length) return;
-
-    const nextTitle = payables.find(
-      (title) => title.status !== "paid" && title.status !== "cancelled",
-    );
-    if (!nextTitle) {
-      toast.info("Todos os pagamentos desta negociação já foram baixados.");
-      return;
-    }
-
-    openPaymentDialog(nextTitle);
+    setPaymentListSimulationId(row.simulation.id);
   };
 
   const openPaymentDialog = (title: FinancialTitle) => {
@@ -474,6 +467,7 @@ function FinancialPage() {
           entityType: "simulation",
           entityId: simulation.id,
           targetUserName: simulation.owner,
+          targetRole: "Comercial",
         });
       }
     } else {
@@ -496,17 +490,18 @@ function FinancialPage() {
             entityType: "order",
             entityId: order.id,
             targetUserName: order.owner,
+            targetRole: "Comercial",
           });
           addNotification({
             id: `not-${Date.now()}-freight-release`,
-            title: "Frete liberado para contratação",
-            description: `${order.number} já pode avançar no módulo de Fretes.`,
+            title: "Frete liberado para execução",
+            description: `${order.number} foi liberado e já pode avançar no módulo de Fretes.`,
             type: "success",
             createdAt: new Date().toISOString(),
             unread: true,
             entityType: "order",
             entityId: order.id,
-            targetRole: "Financeiro",
+            targetRole: "Frete",
           });
         }
       }
@@ -595,6 +590,7 @@ function FinancialPage() {
             entityType: "simulation",
             entityId: simulation.id,
             targetUserName: simulation.owner,
+            targetRole: "Comercial",
           });
         }
       }
@@ -904,6 +900,120 @@ function FinancialPage() {
       </Card>
 
       <Dialog
+        open={Boolean(paymentListSimulationId)}
+        onOpenChange={(open) => {
+          if (open) return;
+          setPaymentListSimulationId(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Fazer pagamento — lançamentos a pagar</DialogTitle>
+            <DialogDescription>
+              Escolha qual conta a pagar da negociação deseja quitar. Cada item é pago
+              individualmente, com o seu comprovante.
+            </DialogDescription>
+          </DialogHeader>
+          {(() => {
+            const row = negotiationPaymentRows.find(
+              (item) => item.simulation.id === paymentListSimulationId,
+            );
+            if (!row) {
+              return (
+                <p className="text-sm text-muted-foreground">
+                  Nenhum lançamento a pagar encontrado para esta negociação.
+                </p>
+              );
+            }
+            return (
+              <div className="space-y-3">
+                <div className="rounded-md border border-border bg-card/60 p-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Negociação</span>
+                    <strong>{row.simulation.number}</strong>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Cliente</span>
+                    <strong>{row.simulation.client}</strong>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Saldo total</span>
+                    <strong>{formatCurrency(row.remainingAmount)}</strong>
+                  </div>
+                </div>
+                <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
+                  {row.payables.map((title) => {
+                    const remaining = getRemainingAmount(title);
+                    const settled = title.status === "paid" || title.status === "cancelled";
+                    return (
+                      <div key={title.id} className="rounded-lg border border-border p-3 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold">{getPayableTypeLabel(title)}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {title.notes || title.titleNumber}
+                            </p>
+                          </div>
+                          <StatusBadge status={getStatusLabel(title.status)} />
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+                          <span className="text-muted-foreground">
+                            Documento: <span className="text-foreground">{title.titleNumber}</span>
+                          </span>
+                          <span className="text-muted-foreground">
+                            Vencimento:{" "}
+                            <span className="text-foreground">{formatDate(title.dueDate)}</span>
+                          </span>
+                          <span className="text-muted-foreground">
+                            Comprovante:{" "}
+                            <span className="text-foreground">
+                              {hasPaymentProof(title) ? "Anexado" : "—"}
+                            </span>
+                          </span>
+                          <span className="text-muted-foreground">
+                            Previsto:{" "}
+                            <span className="text-foreground">{formatCurrency(title.amount)}</span>
+                          </span>
+                          <span className="text-muted-foreground">
+                            Pago:{" "}
+                            <span className="text-foreground">
+                              {formatCurrency(title.paidAmount)}
+                            </span>
+                          </span>
+                          <span className="text-muted-foreground">
+                            Saldo:{" "}
+                            <span className="font-medium text-foreground">
+                              {formatCurrency(remaining)}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="mt-3 flex justify-end">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={settled || remaining <= 0}
+                            onClick={() => openPaymentDialog(title)}
+                          >
+                            <CheckCircle2 />
+                            {settled ? "Pago" : "Pagar este item"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentListSimulationId(null)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={Boolean(selectedPaymentTitle)}
         onOpenChange={(open) => {
           if (open || paymentSubmitting) return;
@@ -1139,11 +1249,31 @@ function buildNegotiationPaymentColumns(
           }}
         >
           {row.payables.length ? <CheckCircle2 /> : <Plus />}
-          {row.payables.length ? "Dar baixa" : "Gerar pagamentos"}
+          {row.payables.length ? "Fazer pagamento" : "Gerar pagamentos"}
         </Button>
       ),
     },
   ];
+}
+
+// Deriva um rótulo de "tipo" do lançamento a partir do número do título (sufixo
+// após "PAG-") para exibir no modal "Fazer pagamento".
+function getPayableTypeLabel(title: FinancialTitle): string {
+  const suffix = title.titleNumber.split("PAG-")[1]?.toUpperCase() ?? "";
+  const map: Record<string, string> = {
+    MERC: "Mercadoria",
+    FRETE: "Frete",
+    COMISSAO: "Comissão",
+    "CUSTO-NF": "Custo NF",
+    "CUSTO-FISCAL": "Custo fiscal",
+    FINANCEIRO: "Financeiro",
+    SEGURO: "Seguro",
+    PALLETS: "Pallets",
+    TRIBUTOS: "Tributos",
+  };
+  if (map[suffix]) return map[suffix];
+  if (suffix.startsWith("MERC")) return "Mercadoria";
+  return "Conta a pagar";
 }
 
 function buildNegotiationPaymentRow(
@@ -1330,18 +1460,14 @@ function FinancialTitleCard({
 }
 
 function updateOrderBilling(order: Order, titles: FinancialTitle[]): Order {
+  // Regra (fix: separate freight release from financial invoicing): o faturamento
+  // é uma frente paralela e NÃO altera o status operacional do pedido (que segue
+  // sendo controlado pela conversão e pelo avanço do frete). Aqui só atualizamos o
+  // progresso de faturamento; o rótulo "Aguardando faturamento/Faturado" é derivado.
   const billingProgress = calculateBillingProgress(titles, order.totalValue);
-  const status =
-    billingProgress > 0 && order.status === "Pedido confirmado"
-      ? "Frete liberado"
-      : billingProgress > 0 && order.status === "Aguardando faturamento"
-        ? "Em faturamento"
-        : order.status;
-
   return {
     ...order,
     billingProgress,
-    status,
   };
 }
 

@@ -13,6 +13,14 @@ function requireClient(): SupabaseClient {
   return client;
 }
 
+function isMissingPlannedFreightValueColumn(error: { code?: string; message?: string }) {
+  const details = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
+  return (
+    details.includes("planned_freight_value") &&
+    (details.includes("column") || error.code === "PGRST204" || error.code === "42703")
+  );
+}
+
 export function createSupabaseFreightRepository(): FreightRepository {
   return {
     async list() {
@@ -30,11 +38,24 @@ export function createSupabaseFreightRepository(): FreightRepository {
     async save(freight) {
       await ensureSupabaseSession();
       const client = requireClient();
-      const { data, error } = await client
+      const row = freightToRow(freight);
+      let { data, error } = await client
         .from("freights")
-        .upsert(freightToRow(freight), { onConflict: "external_id" })
+        .upsert(row, { onConflict: "external_id" })
         .select("*")
         .single();
+
+      if (error && isMissingPlannedFreightValueColumn(error)) {
+        const compatibleRow = { ...row };
+        delete compatibleRow.planned_freight_value;
+        const retry = await client
+          .from("freights")
+          .upsert(compatibleRow, { onConflict: "external_id" })
+          .select("*")
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) throw error;
       return rowToFreight(data as FreightRow);

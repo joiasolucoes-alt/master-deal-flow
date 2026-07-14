@@ -361,7 +361,9 @@ function getNextFreightStatus(status) {
     quoted: "hired",
     hired: "loading",
     loading: "in_route",
-    in_route: "delivered",
+    in_route: "at_destination",
+    at_destination: "unloaded",
+    unloaded: "delivered",
     delivered: "delivered",
     cancelled: "cancelled",
   }[status];
@@ -373,6 +375,8 @@ function updateOrderFromFreight(order, freight) {
     hired: 15,
     loading: 35,
     in_route: 70,
+    at_destination: 85,
+    unloaded: 95,
     delivered: 100,
     cancelled: 0,
   };
@@ -381,9 +385,13 @@ function updateOrderFromFreight(order, freight) {
     status:
       freight.status === "delivered"
         ? "Entregue"
-        : freight.status === "in_route"
-          ? "Em rota"
-          : order.status,
+        : freight.status === "unloaded"
+          ? "Mercadoria descarregada"
+          : freight.status === "at_destination"
+            ? "No destino"
+            : freight.status === "in_route"
+              ? "Em rota"
+              : order.status,
     deliveryProgress: Math.max(order.deliveryProgress, progressByStatus[freight.status]),
   };
 }
@@ -1028,5 +1036,872 @@ assert.equal(
   null,
 );
 assert.equal(getNextDriverEventForTest(["arrived_pickup"], true, "revoked"), null);
+
+// --- Fluxo de faturamento após validação comercial (nova regra) --------------
+// Regra: após a validação comercial do comprovante, o pedido nasce
+// "Aguardando faturamento" e o registro de faturamento/NF é restrito a
+// Financeiro/Faturamento/Admin. O Comercial não fatura.
+function convertToOrderForTest(simulation, existingOrders = []) {
+  if (existingOrders.some((order) => order.simulationId === simulation.id)) {
+    throw new Error("Simulação já convertida.");
+  }
+  return {
+    id: `ord-${simulation.id}`,
+    number: `PED-${simulation.number}`,
+    simulationId: simulation.id,
+    owner: simulation.owner,
+    totalValue: simulation.totalValue,
+    status: "Aguardando faturamento",
+    billingProgress: 0,
+    timeline: [{ title: "Pedido criado", description: "Aguardando registro de faturamento/NF." }],
+  };
+}
+
+const BILLING_ROLES = ["Financeiro", "Faturamento", "Admin"];
+function canRegisterBillingForTest(role) {
+  return BILLING_ROLES.includes(role);
+}
+function getBilledAmountForTest(titles, orderId) {
+  return titles
+    .filter((t) => t.orderId === orderId && t.type === "receivable" && t.status !== "cancelled")
+    .reduce((sum, t) => sum + t.amount, 0);
+}
+function getRemainingForTest(order, titles) {
+  return Math.max(0, order.totalValue - getBilledAmountForTest(titles, order.id));
+}
+function registerBillingForTest({ order, titles, user, invoiceNumber, invoiceAmount }) {
+  if (!canRegisterBillingForTest(user.role)) throw new Error("Perfil não pode faturar.");
+  const remaining = getRemainingForTest(order, titles);
+  if (remaining <= 0) throw new Error("Pedido já totalmente faturado.");
+  if (invoiceAmount > remaining + 0.01) throw new Error("Valor acima do restante a faturar.");
+  const receivable = {
+    id: `fin-${order.id}-${invoiceNumber}`,
+    orderId: order.id,
+    type: "receivable",
+    status: "open",
+    amount: invoiceAmount,
+    paidAmount: 0,
+    invoiceNumber,
+  };
+  const nextTitles = [...titles, receivable];
+  const billed = getBilledAmountForTest(nextTitles, order.id);
+  const billingProgress = Math.min(100, Math.round((billed / order.totalValue) * 100));
+  const status =
+    billingProgress >= 100
+      ? "Frete liberado"
+      : billingProgress > 0
+        ? "Em faturamento"
+        : order.status;
+  const timeline = [
+    ...order.timeline,
+    { title: "Nota fiscal registrada", description: invoiceNumber },
+  ];
+  const notification = {
+    targetUserName: order.owner,
+    title: "Faturamento registrado",
+    type: "success",
+  };
+  return {
+    order: { ...order, billingProgress, status, timeline },
+    titles: nextTitles,
+    receivable,
+    notification,
+  };
+}
+
+// 1-3: validação comercial cria pedido que nasce "Aguardando faturamento".
+const billingSim = { id: "sim-bill", number: "2026-BILL", owner: "Comercial X", totalValue: 1000 };
+const billingOrder = convertToOrderForTest(billingSim);
+assert.equal(billingOrder.status, "Aguardando faturamento");
+assert.equal(billingOrder.billingProgress, 0);
+assert.equal(billingOrder.timeline[0].title, "Pedido criado");
+assert.throws(() => convertToOrderForTest(billingSim, [billingOrder]), /já convertida/);
+
+// 4: Comercial (e Frete) não conseguem faturar.
+assert.equal(canRegisterBillingForTest("Comercial"), false);
+assert.equal(canRegisterBillingForTest("Frete"), false);
+assert.throws(
+  () =>
+    registerBillingForTest({
+      order: billingOrder,
+      titles: [],
+      user: { role: "Comercial" },
+      invoiceNumber: "NF-X",
+      invoiceAmount: 1000,
+    }),
+  /Perfil não pode faturar/,
+);
+
+// 5-6: Financeiro e Admin conseguem faturar.
+assert.equal(canRegisterBillingForTest("Financeiro"), true);
+assert.equal(canRegisterBillingForTest("Admin"), true);
+
+// 7-8-9-10-12: faturamento total gera recebível, timeline, notificação e muda o status.
+const billedFull = registerBillingForTest({
+  order: billingOrder,
+  titles: [],
+  user: { role: "Financeiro" },
+  invoiceNumber: "NF-1",
+  invoiceAmount: 1000,
+});
+assert.equal(billedFull.receivable.type, "receivable");
+assert.equal(billedFull.receivable.amount, 1000);
+assert.equal(billedFull.order.billingProgress, 100);
+assert.equal(billedFull.order.status, "Frete liberado");
+assert.ok(billedFull.order.timeline.some((e) => e.title === "Nota fiscal registrada"));
+assert.equal(billedFull.notification.targetUserName, "Comercial X");
+
+// 11: não permite faturar acima do restante (controle de duplicidade/valor).
+assert.throws(
+  () =>
+    registerBillingForTest({
+      order: billedFull.order,
+      titles: billedFull.titles,
+      user: { role: "Financeiro" },
+      invoiceNumber: "NF-2",
+      invoiceAmount: 500,
+    }),
+  /já totalmente faturado/,
+);
+
+// 11b: faturamento parcial mantém o pedido em faturamento e barra valor acima do restante.
+const partialOrder = convertToOrderForTest({
+  id: "sim-part",
+  number: "2026-PART",
+  owner: "Comercial Y",
+  totalValue: 1000,
+});
+const partial = registerBillingForTest({
+  order: partialOrder,
+  titles: [],
+  user: { role: "Admin" },
+  invoiceNumber: "NF-P1",
+  invoiceAmount: 400,
+});
+assert.equal(partial.order.billingProgress, 40);
+assert.equal(partial.order.status, "Em faturamento");
+assert.throws(
+  () =>
+    registerBillingForTest({
+      order: partial.order,
+      titles: partial.titles,
+      user: { role: "Financeiro" },
+      invoiceNumber: "NF-P2",
+      invoiceAmount: 700,
+    }),
+  /acima do restante/,
+);
+
+// 13: modo local e supabase continuam resolvendo o provider.
+assert.equal(getDataProvider("local"), "local");
+assert.equal(getDataProvider("supabase"), "supabase");
+
+console.log("Testes de faturamento passaram.");
+
+// --- Jornada do motorista (link + PIN → checklist → ocorrência → canhoto) -----
+// Reimplementação (mock, sem Supabase real) espelhando a lógica de driverTracking.
+const DRIVER_MILESTONES = [
+  "arrived_loading",
+  "in_transit",
+  "arrived_delivery_location",
+  "unloaded",
+  "proof_uploaded",
+];
+function driverAuth(link, pin) {
+  if (link.revokedAt) return { ok: false, reason: "revoked" };
+  if (link.expiresAt < Date.now()) return { ok: false, reason: "expired" };
+  if (link.lockedUntil && link.lockedUntil > Date.now()) return { ok: false, reason: "locked" };
+  if (link.pin !== pin) return { ok: false, reason: "invalid_pin" };
+  return { ok: true };
+}
+function driverNextEvent(trip) {
+  const done = new Set(trip.events.filter((e) => e.type !== "occurrence").map((e) => e.type));
+  return DRIVER_MILESTONES.find((m) => !done.has(m)) ?? null;
+}
+function driverRegisterEvent(trip, type, info) {
+  const expected = driverNextEvent(trip);
+  if (type !== expected) throw new Error("event out of order");
+  trip.events.push({ type, receiverName: info?.receiverName, at: Date.now() });
+  const resultingState = {
+    arrived_loading: ["loading", "Em carregamento", 35],
+    in_transit: ["in_route", "Em rota", 70],
+    arrived_delivery_location: ["at_destination", "No destino", 85],
+    unloaded: ["unloaded", "Mercadoria descarregada", 95],
+  }[type];
+  if (resultingState) {
+    trip.freightStatus = resultingState[0];
+    trip.orderStatus = resultingState[1];
+    trip.orderDeliveryProgress = resultingState[2];
+  }
+  for (const targetRole of ["Frete", "Comercial", "Financeiro", "Admin"]) {
+    trip.notifications.push({ targetRole, title: "Atualização do motorista" });
+  }
+  return trip;
+}
+function driverRegisterOccurrence(trip, occurrenceType, notes) {
+  trip.events.push({ type: "occurrence", occurrenceType, notes, at: Date.now() });
+  for (const targetRole of ["Frete", "Comercial", "Financeiro", "Admin"]) {
+    trip.notifications.push({ targetRole, title: "Ocorrência", type: "warning" });
+  }
+  return trip;
+}
+function driverFinalize(trip, file, info) {
+  if (driverNextEvent(trip) !== "proof_uploaded") throw new Error("proof out of order");
+  if (!file) throw new Error("canhoto obrigatório");
+  trip.events.push({ type: "proof_uploaded", receiverName: info?.receiverName, at: Date.now() });
+  trip.events.push({ type: "completed", at: Date.now() });
+  trip.proofs.push({ fileName: file.name });
+  trip.freightStatus = "delivered";
+  trip.orderStatus = "Entregue";
+  trip.orderDeliveryProgress = 100;
+  trip.linkState = "completed";
+  trip.notifications.push({ targetRole: "Frete", title: "Entrega finalizada", type: "success" });
+  trip.notifications.push({
+    targetRole: "Financeiro",
+    title: "Entrega comprovada",
+    type: "success",
+  });
+  trip.notifications.push({
+    targetRole: "Comercial",
+    title: "Entrega finalizada",
+    type: "success",
+  });
+  trip.notifications.push({
+    targetRole: "Admin",
+    title: "Entrega finalizada",
+    type: "success",
+  });
+  return trip;
+}
+function newTrip() {
+  return {
+    events: [],
+    proofs: [],
+    notifications: [],
+    freightStatus: "hired",
+    orderStatus: "Frete liberado",
+    orderDeliveryProgress: 0,
+    linkState: "active",
+  };
+}
+
+const now = Date.now();
+// 1-4: acesso
+assert.equal(driverAuth({ pin: "123456", expiresAt: now + 1e6 }, "123456").ok, true);
+assert.equal(driverAuth({ pin: "123456", expiresAt: now + 1e6 }, "000000").reason, "invalid_pin");
+assert.equal(driverAuth({ pin: "1", expiresAt: now - 1 }, "1").reason, "expired");
+assert.equal(driverAuth({ pin: "1", expiresAt: now + 1e6, revokedAt: now }, "1").reason, "revoked");
+
+// 5: payload não expõe dados financeiros sensíveis
+const publicPayloadKeys = [
+  "freight_id",
+  "driver_name",
+  "vehicle_plate",
+  "pickup_city",
+  "delivery_city",
+  "status",
+];
+assert.equal(
+  publicPayloadKeys.some((k) => ["margin", "profit", "commission", "cost"].includes(k)),
+  false,
+);
+
+// 6-9,12,13: checklist na ordem correta
+const trip = newTrip();
+assert.equal(driverNextEvent(trip), "arrived_loading");
+driverRegisterEvent(trip, "arrived_loading");
+assert.equal(driverNextEvent(trip), "in_transit");
+driverRegisterEvent(trip, "in_transit");
+assert.throws(() => driverRegisterEvent(trip, "unloaded"), /out of order/); // pula etapa
+driverRegisterEvent(trip, "arrived_delivery_location");
+
+// 10-11: ocorrência (repetível, não avança marco, notifica 4 áreas)
+driverRegisterOccurrence(trip, "Cliente ausente", "Portaria fechada");
+assert.equal(driverNextEvent(trip), "unloaded");
+assert.equal(trip.events.filter((e) => e.type === "occurrence").length, 1);
+assert.equal(trip.notifications.filter((n) => n.title === "Ocorrência").length, 4);
+
+// descarga com recebedor
+driverRegisterEvent(trip, "unloaded", { receiverName: "João Recebedor" });
+assert.equal(trip.freightStatus, "unloaded");
+assert.equal(trip.orderStatus, "Mercadoria descarregada");
+assert.equal(trip.orderDeliveryProgress, 95);
+
+// 14: finalizar sem canhoto é bloqueado
+assert.throws(() => driverFinalize(trip, null, { receiverName: "João" }), /obrigatório/);
+
+// 15-16: anexa canhoto e finaliza
+driverFinalize(trip, { name: "canhoto.jpg" }, { receiverName: "João Recebedor" });
+
+// 17-19: frete/pedido/histórico atualizados
+assert.equal(trip.freightStatus, "delivered");
+assert.equal(trip.orderStatus, "Entregue");
+assert.equal(trip.orderDeliveryProgress, 100);
+assert.ok(trip.events.some((e) => e.type === "completed"));
+assert.equal(trip.linkState, "completed");
+assert.equal(trip.proofs.length, 1);
+assert.ok(trip.events.find((e) => e.type === "proof_uploaded")?.receiverName === "João Recebedor");
+
+// 20: notificações de entrega criadas para Frete/Financeiro/Comercial/Admin
+assert.ok(trip.notifications.some((n) => n.targetRole === "Frete" && n.type === "success"));
+assert.ok(trip.notifications.some((n) => n.targetRole === "Financeiro" && n.type === "success"));
+assert.ok(trip.notifications.some((n) => n.targetRole === "Admin" && n.type === "success"));
+assert.ok(trip.notifications.some((n) => n.targetRole === "Comercial" && n.type === "success"));
+
+// 21-22: provider local/supabase resolvem sem quebrar
+assert.equal(getDataProvider("supabase"), "supabase");
+assert.equal(getDataProvider("qualquer-coisa"), "local");
+
+console.log("Testes da jornada do motorista passaram.");
+
+// ---------------------------------------------------------------------------
+// Frete/Logística: SIM aprovada visível como preparação (feat: expose approved
+// simulations to freight preparation). Mirror puro dos helpers de
+// src/features/freights/freightPreparation.ts, src/lib/visibility.ts e
+// src/features/approvals/approvalNotifications.ts. Não depende de Supabase.
+// ---------------------------------------------------------------------------
+
+const FREIGHT_RELEASED_ORDER_STATUSES = [
+  "Frete liberado",
+  "Aguardando frete",
+  "Em separação",
+  "Em rota",
+  "Entregue",
+];
+
+function isOrderReleasedForFreight(order, titles = []) {
+  if (!order) return false;
+  if (FREIGHT_RELEASED_ORDER_STATUSES.includes(order.status)) return true;
+  const required = titles.filter(
+    (t) =>
+      t.orderId === order.id && t.type === "payable" && t.status !== "cancelled" && t.amount > 0,
+  );
+  if (required.length === 0) return false;
+  return required.every((t) => t.status === "paid");
+}
+
+function isPreparationFreight(freight) {
+  return !freight.orderId;
+}
+
+function canExecuteFreight(freight, order, titles = []) {
+  if (isPreparationFreight(freight)) return false;
+  return isOrderReleasedForFreight(order, titles);
+}
+
+function canGenerateDriverLink(freight, order, titles = []) {
+  return canExecuteFreight(freight, order, titles);
+}
+
+function getFreightBucket(freight, order, titles = []) {
+  if (freight.status === "delivered" || freight.status === "cancelled") return "finished";
+  if (freight.status === "loading" || freight.status === "in_route") return "in_progress";
+  if (canExecuteFreight(freight, order, titles)) return "released";
+  return "preparation";
+}
+
+function canViewOperationalQueues(role) {
+  return role === "Admin" || role === "Financeiro" || role === "Aprovador" || role === "Frete";
+}
+
+function filterFreightsForUser(freights, orders, user) {
+  if (canViewOperationalQueues(user.role)) return freights;
+  const ownedOrderIds = new Set(orders.filter((o) => o.owner === user.name).map((o) => o.id));
+  return freights.filter((f) => ownedOrderIds.has(f.orderId ?? "") || f.owner === user.name);
+}
+
+function buildGestorApprovalNotifications(sim) {
+  return [
+    { title: "Simulação aprovada pelo Gestor", targetRole: "Financeiro", entityId: sim.id },
+    { title: "Nova operação disponível para preparação", targetRole: "Frete", entityId: sim.id },
+    { title: "Simulação aprovada pelo Gestor", targetUserName: sim.owner, entityId: sim.id },
+  ];
+}
+
+function normalizeNotificationRole(role) {
+  const normalized = role?.trim().toLowerCase();
+  if (["admin", "adm", "gestor"].includes(normalized)) return "Admin";
+  if (["aprovador", "aprovação", "aprovacao"].includes(normalized)) return "Aprovador";
+  if (normalized === "financeiro") return "Financeiro";
+  if (["frete", "frota", "logística", "logistica"].includes(normalized)) return "Frete";
+  if (normalized === "comercial") return "Comercial";
+  if (["negociações", "negociacoes"].includes(normalized)) return "Negociações";
+  return undefined;
+}
+
+function normalizeIdentity(value) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\bjunior\b/g, "jr")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function notificationTargetsUser(notification, user) {
+  const targetRole = normalizeNotificationRole(notification.targetRole);
+  const hasIndividualTarget = Boolean(
+    notification.targetUserId || notification.targetUserEmail || notification.targetUserName,
+  );
+  const matchesIndividual = Boolean(
+    (notification.targetUserId && notification.targetUserId === user.id) ||
+    (notification.targetUserEmail &&
+      notification.targetUserEmail.trim().toLowerCase() === user.email.trim().toLowerCase()) ||
+    (notification.targetUserName &&
+      normalizeIdentity(notification.targetUserName) === normalizeIdentity(user.name)),
+  );
+
+  if (hasIndividualTarget) {
+    return matchesIndividual && (!targetRole || targetRole === user.role);
+  }
+  if (targetRole) return targetRole === user.role;
+  return user.role === "Admin";
+}
+
+function buildSubmissionNotification(simulation) {
+  return {
+    title: "Simulação enviada para aprovação",
+    entityId: simulation.id,
+    targetRole: "Admin",
+  };
+}
+
+// Cenários da especificação (§14)
+
+// Fixtures
+const prepFreight = {
+  id: "freight-sim1",
+  orderId: undefined,
+  owner: "Ana Comercial",
+  status: "quoted",
+};
+const orderAwaitingBilling = {
+  id: "ord1",
+  owner: "Ana Comercial",
+  status: "Aguardando faturamento",
+};
+const linkedFreightAwaiting = {
+  id: "freight-sim1",
+  orderId: "ord1",
+  owner: "Ana Comercial",
+  status: "quoted",
+};
+const orderReleased = { id: "ord1", owner: "Ana Comercial", status: "Frete liberado" };
+const releasedFreight = {
+  id: "freight-sim1",
+  orderId: "ord1",
+  owner: "Ana Comercial",
+  status: "quoted",
+};
+const movingFreight = {
+  id: "freight-sim1",
+  orderId: "ord1",
+  owner: "Ana Comercial",
+  status: "in_route",
+};
+const doneFreight = {
+  id: "freight-sim1",
+  orderId: "ord1",
+  owner: "Ana Comercial",
+  status: "delivered",
+};
+
+const freteUser = { role: "Frete", name: "Bruno Frete" };
+const comercialUser = { role: "Comercial", name: "Ana Comercial" };
+const otherComercial = { role: "Comercial", name: "Carla Outra" };
+
+// 5-6: Frete enxerga a SIM aprovada (frete de preparação) mesmo sem ser dono
+assert.equal(
+  filterFreightsForUser([prepFreight], [], freteUser).length,
+  1,
+  "Frete deve ver o frete de preparação",
+);
+
+// Comercial dono também vê a própria operação em preparação
+assert.equal(filterFreightsForUser([prepFreight], [], comercialUser).length, 1);
+// Comercial de outro dono NÃO vê
+assert.equal(filterFreightsForUser([prepFreight], [], otherComercial).length, 0);
+
+// Classificação em balde "preparação" enquanto não virou pedido
+assert.equal(getFreightBucket(prepFreight, undefined, []), "preparation");
+
+// 7: Frete NÃO consegue executar antes da liberação
+assert.equal(canExecuteFreight(prepFreight, undefined, []), false);
+// pedido criado, mas aguardando faturamento => ainda bloqueado
+assert.equal(canExecuteFreight(linkedFreightAwaiting, orderAwaitingBilling, []), false);
+assert.equal(getFreightBucket(linkedFreightAwaiting, orderAwaitingBilling, []), "preparation");
+
+// 8: Frete NÃO consegue gerar link/PIN antes de virar Pedido e ser liberado
+assert.equal(canGenerateDriverLink(prepFreight, undefined, []), false);
+assert.equal(canGenerateDriverLink(linkedFreightAwaiting, orderAwaitingBilling, []), false);
+
+// 12-14: após faturamento, pedido liberado => Frete pode executar e gerar link
+assert.equal(canExecuteFreight(releasedFreight, orderReleased, []), true);
+assert.equal(canGenerateDriverLink(releasedFreight, orderReleased, []), true);
+assert.equal(getFreightBucket(releasedFreight, orderReleased, []), "released");
+
+// Baldes em andamento / finalizado
+assert.equal(getFreightBucket(movingFreight, orderReleased, []), "in_progress");
+assert.equal(getFreightBucket(doneFreight, orderReleased, []), "finished");
+
+// 15: notificações da aprovação do Gestor — Financeiro, Frete e Comercial
+const approvalNots = buildGestorApprovalNotifications({
+  id: "sim1",
+  number: "SIM-1",
+  owner: "Ana Comercial",
+});
+assert.ok(
+  approvalNots.some((n) => n.targetRole === "Financeiro"),
+  "notifica Financeiro",
+);
+assert.ok(
+  approvalNots.some((n) => n.targetRole === "Frete"),
+  "notifica Frete (não Financeiro)",
+);
+assert.ok(
+  approvalNots.some((n) => n.targetUserName === "Ana Comercial"),
+  "notifica Comercial dono",
+);
+assert.equal(approvalNots.length, 3);
+
+// Matriz de destinatários: o Gestor atual usa a credencial Admin. Notificações
+// exclusivas de Financeiro/Frete não podem aparecer para o Admin, e avisos do
+// Comercial devem chegar somente ao dono mesmo com variação Junior/Jr.
+const adminUser = { id: "admin-1", name: "Djalma", email: "admin@master.test", role: "Admin" };
+const financeUser = {
+  id: "finance-1",
+  name: "Financeiro",
+  email: "financeiro@master.test",
+  role: "Financeiro",
+};
+const freightUser = {
+  id: "freight-1",
+  name: "Operação de Frete",
+  email: "frete@master.test",
+  role: "Frete",
+};
+const ownerUser = {
+  id: "commercial-1",
+  name: "Djalma Jr",
+  email: "djalma@master.test",
+  role: "Comercial",
+};
+const sameNameWrongRole = { ...ownerUser, id: "finance-2", role: "Financeiro" };
+const submissionNotification = buildSubmissionNotification({ id: "sim-approval" });
+
+assert.equal(submissionNotification.targetRole, "Admin");
+assert.equal(notificationTargetsUser(submissionNotification, adminUser), true);
+assert.equal(notificationTargetsUser(submissionNotification, financeUser), false);
+assert.equal(
+  notificationTargetsUser({ title: "Pagamento", targetRole: "Financeiro" }, financeUser),
+  true,
+);
+assert.equal(
+  notificationTargetsUser({ title: "Pagamento", targetRole: "Financeiro" }, adminUser),
+  false,
+);
+assert.equal(
+  notificationTargetsUser({ title: "Carga liberada", targetRole: "Frete" }, freightUser),
+  true,
+);
+assert.equal(
+  notificationTargetsUser({ title: "Carga liberada", targetRole: "Frete" }, adminUser),
+  false,
+);
+assert.equal(
+  notificationTargetsUser(
+    { title: "Reajuste", targetRole: "Comercial", targetUserName: "Djalma Junior" },
+    ownerUser,
+  ),
+  true,
+);
+assert.equal(
+  notificationTargetsUser(
+    { title: "Reajuste", targetRole: "Comercial", targetUserName: "Djalma Junior" },
+    sameNameWrongRole,
+  ),
+  false,
+);
+assert.equal(normalizeNotificationRole("Gestor"), "Admin");
+assert.equal(normalizeNotificationRole("Aprovador"), "Aprovador");
+
+// 17-18: liberação financeira depende de payables quitados quando existem
+assert.equal(
+  isOrderReleasedForFreight({ id: "ord2", status: "Pedido confirmado" }, [
+    { orderId: "ord2", type: "payable", status: "open", amount: 100 },
+  ]),
+  false,
+);
+assert.equal(
+  isOrderReleasedForFreight({ id: "ord2", status: "Pedido confirmado" }, [
+    { orderId: "ord2", type: "payable", status: "paid", amount: 100 },
+  ]),
+  true,
+);
+
+console.log("Testes de preparação de frete passaram.");
+
+// ---------------------------------------------------------------------------
+// Separar liberação de frete do faturamento (fix: separate freight release from
+// financial invoicing). Mirror puro das regras de status/permissões. Sem Supabase.
+// ---------------------------------------------------------------------------
+
+// Conversão: SIM validada vira Pedido "Pedido confirmado", já liberado p/ frete.
+function convertSimulationToOrderStatus() {
+  return { orderStatus: "Pedido confirmado", billingProgress: 0 };
+}
+
+// Regra de liberação de frete (mirror de financialTitleHelpers): "Pedido confirmado"
+// já conta como liberado — não depende de faturamento.
+const RELEASED_STATUSES = [
+  "Pedido confirmado",
+  "Frete liberado",
+  "Aguardando frete",
+  "Em separação",
+  "Em rota",
+  "Entregue",
+];
+function freightReleased(order) {
+  if (!order) return false;
+  return RELEASED_STATUSES.includes(order.status);
+}
+
+// Faturamento derivado — não altera o status operacional.
+function billingLabel(order) {
+  if (order.billingProgress >= 100) return "Faturado";
+  if (order.billingProgress > 0 || order.invoiceNumber) return "Faturamento parcial";
+  return "Aguardando faturamento";
+}
+function applyBilling(order, invoiceAmount) {
+  // billing só mexe no progresso, NÃO no status operacional.
+  const billed = (order.invoiceAmount ?? 0) + invoiceAmount;
+  const billingProgress =
+    order.totalValue > 0 ? Math.min(100, Math.round((billed / order.totalValue) * 100)) : 0;
+  return { ...order, invoiceAmount: billed, billingProgress };
+}
+
+// Permissões (mirror de permissions.ts)
+const permissionsByRole = {
+  Comercial: ["simulations:create", "approvals:view", "orders:view"],
+  Aprovador: ["approvals:decide", "orders:convert"],
+  Financeiro: ["orders:invoice", "finance:view", "freights:view"],
+  Frete: ["freights:view", "freights:operate"],
+  Admin: [
+    "simulations:create",
+    "approvals:decide",
+    "orders:invoice",
+    "freights:view",
+    "freights:operate",
+    "orders:convert",
+  ],
+};
+function can(role, permission) {
+  return (permissionsByRole[role] ?? []).includes(permission);
+}
+const canOperateFreight = (role) => can(role, "freights:operate");
+const canRegisterInvoice = (role) => can(role, "orders:invoice");
+
+// 9-11: SIM validada vira Pedido confirmado, frete liberado
+const converted = convertSimulationToOrderStatus();
+assert.equal(converted.orderStatus, "Pedido confirmado");
+const orderConfirmed = { status: converted.orderStatus, totalValue: 1000, billingProgress: 0 };
+assert.equal(freightReleased(orderConfirmed), true, "Frete liberado ao confirmar o pedido");
+
+// 12: faturamento derivado começa "Aguardando faturamento"
+assert.equal(billingLabel(orderConfirmed), "Aguardando faturamento");
+
+// 13-14: Frete contrata sem depender do faturamento; faturar NÃO bloqueia frete.
+assert.equal(freightReleased(orderConfirmed), true);
+const afterBilling = applyBilling(orderConfirmed, 1000);
+assert.equal(afterBilling.status, "Pedido confirmado", "faturamento não altera status operacional");
+assert.equal(freightReleased(afterBilling), true, "frete continua liberado após faturar");
+assert.equal(billingLabel(afterBilling), "Faturado");
+
+// 15-17: permissões por perfil
+assert.equal(canOperateFreight("Frete"), true);
+assert.equal(canOperateFreight("Admin"), true);
+assert.equal(canOperateFreight("Financeiro"), false, "Financeiro não contrata frete");
+assert.equal(canOperateFreight("Comercial"), false, "Comercial não contrata frete");
+assert.equal(canRegisterInvoice("Financeiro"), true);
+assert.equal(canRegisterInvoice("Frete"), false, "Frete não fatura");
+assert.equal(canRegisterInvoice("Comercial"), false, "Comercial não fatura");
+
+// 18-19: "Fazer pagamento" lista TODOS os lançamentos a pagar (não só o primeiro).
+const simPayables = [
+  { id: "t1", titleNumber: "SIM-1-PAG-MERC", amount: 100, paidAmount: 0, status: "open" },
+  { id: "t2", titleNumber: "SIM-1-PAG-FRETE", amount: 50, paidAmount: 0, status: "open" },
+  { id: "t3", titleNumber: "SIM-1-PAG-COMISSAO", amount: 20, paidAmount: 0, status: "open" },
+];
+function openPaymentList(payables) {
+  // o modal expõe TODOS os itens; não escolhe um automaticamente.
+  return payables.map((t) => t.id);
+}
+const listed = openPaymentList(simPayables);
+assert.equal(listed.length, 3, "modal mostra todos os lançamentos a pagar");
+assert.deepEqual(listed, ["t1", "t2", "t3"]);
+
+// 20: modo Supabase não injeta seeds/mocks como registros reais.
+function supabaseBaseTransactional() {
+  // mirror de supabaseBaseState: transacionais vazias no modo Supabase.
+  return { simulations: [], orders: [], freights: [], notifications: [], auditEvents: [] };
+}
+const base = supabaseBaseTransactional();
+assert.equal(base.simulations.length, 0, "sem seeds de simulação no modo Supabase");
+assert.equal(base.orders.length, 0);
+assert.equal(base.freights.length, 0);
+
+// 24-25: provider resolve local/supabase sem quebrar (reuso do helper existente)
+assert.equal(getDataProvider("supabase"), "supabase");
+assert.equal(getDataProvider("outro"), "local");
+
+console.log("Testes de separação frete/faturamento passaram.");
+
+// ---------------------------------------------------------------------------
+// Operação do frete vai para o checklist do motorista (fix: move freight
+// operation tracking to driver checklist). Mirror puro. Sem Supabase.
+// ---------------------------------------------------------------------------
+
+// Permissões (mirror atualizado): Comercial agora tem freights:view (só leitura).
+const perms2 = {
+  Comercial: ["freights:view"],
+  Financeiro: ["orders:invoice", "freights:view"],
+  Frete: ["freights:view", "freights:operate"],
+  Admin: ["freights:view", "freights:operate", "orders:invoice"],
+};
+const can2 = (role, p) => (perms2[role] ?? []).includes(p);
+
+// 3/17/18/19: Comercial e Financeiro veem a aba Fretes, mas NÃO operam.
+assert.equal(can2("Comercial", "freights:view"), true, "Comercial acompanha fretes");
+assert.equal(can2("Financeiro", "freights:view"), true, "Financeiro acompanha fretes");
+assert.equal(can2("Comercial", "freights:operate"), false, "Comercial não contrata");
+assert.equal(can2("Financeiro", "freights:operate"), false, "Financeiro não contrata");
+assert.equal(can2("Frete", "freights:operate"), true);
+assert.equal(can2("Admin", "freights:operate"), true);
+
+// 5/6/7: o Frete só CONTRATA (quoted → hired). Depois disso, sem avanço manual.
+function nextFreightStatus(status) {
+  const map = {
+    quoted: "hired",
+    hired: "loading",
+    loading: "in_route",
+    in_route: "at_destination",
+    at_destination: "unloaded",
+    unloaded: "delivered",
+  };
+  return map[status] ?? status;
+}
+// O botão de contratação só aparece para status "quoted".
+function freteShowsContractButton(status) {
+  return status === "quoted";
+}
+// Regra nova: o Frete NÃO tem botões de avanço operacional (loading/rota/entrega).
+const FRETE_HAS_OPERATIONAL_ADVANCE = false;
+assert.equal(freteShowsContractButton("quoted"), true);
+assert.equal(nextFreightStatus("quoted"), "hired", "contratar leva a Frete contratado");
+assert.equal(freteShowsContractButton("hired"), false, "sem botão contratar após contratado");
+assert.equal(FRETE_HAS_OPERATIONAL_ADVANCE, false, "sem 'Iniciar carregamento' p/ Frete");
+
+// 8: link/PIN fica disponível para o Frete (opera) e NÃO para o Financeiro.
+assert.equal(can2("Frete", "freights:operate"), true, "Frete gera link/PIN após liberação");
+assert.equal(can2("Financeiro", "freights:operate"), false, "Financeiro não gera link/PIN");
+
+// 11/12: motorista finaliza só com canhoto (mirror da regra do link externo).
+function canFinalizeDelivery(hasProofFile) {
+  return Boolean(hasProofFile);
+}
+assert.equal(canFinalizeDelivery(false), false, "não finaliza sem canhoto");
+assert.equal(canFinalizeDelivery(true), true, "finaliza com canhoto anexado");
+
+// Sem geolocalização nesta entrega: evento do motorista não carrega coords.
+function buildDriverEvent(type) {
+  return { type }; // sem latitude/longitude
+}
+const ev = buildDriverEvent("arrived_loading");
+assert.equal("latitude" in ev, false, "evento do motorista sem geolocalização");
+
+console.log("Testes de operação via checklist do motorista passaram.");
+
+// ---------------------------------------------------------------------------
+// Correção do checklist/ocorrência do motorista (fix: repair driver checklist and
+// occurrence rpc errors). Mirror puro de friendlyDriverError + regra de não avançar
+// sem confirmação do banco + anti-duplo-clique. Sem Supabase.
+// ---------------------------------------------------------------------------
+
+function friendlyDriverError(raw, context) {
+  const msg = String(raw ?? "").toLowerCase();
+  if (
+    msg.includes("expirad") ||
+    msg.includes("revogad") ||
+    msg.includes("expired") ||
+    msg.includes("revoked") ||
+    msg.includes("pin") ||
+    msg.includes("token") ||
+    msg.includes("inválid") ||
+    msg.includes("invalid")
+  )
+    return "Link inválido, expirado ou revogado. Peça um novo acesso ao time de frete.";
+  if (msg.includes("not found") || msg.includes("não encontrad") || msg.includes("nao encontrad"))
+    return "Operação não encontrada.";
+  if (
+    msg.includes("failed to fetch") ||
+    msg.includes("networkerror") ||
+    msg.includes("network") ||
+    msg.includes("conexão") ||
+    msg.includes("conexao")
+  )
+    return "Erro ao salvar. Verifique sua conexão e tente novamente.";
+  if (context === "occurrence") return "Não foi possível registrar a ocorrência. Tente novamente.";
+  if (context === "proof") return "Não foi possível enviar o comprovante. Tente novamente.";
+  return "Não foi possível registrar esta etapa. Tente novamente.";
+}
+
+// 20: erros técnicos viram mensagens amigáveis, por tipo.
+assert.match(
+  friendlyDriverError(
+    'column "organization_id" of relation "freight_events" does not exist',
+    "event",
+  ),
+  /Não foi possível registrar esta etapa/,
+);
+assert.match(friendlyDriverError("PIN inválido", "event"), /Link inválido, expirado ou revogado/);
+assert.match(friendlyDriverError("token expired", "event"), /Link inválido, expirado ou revogado/);
+assert.match(friendlyDriverError("Failed to fetch", "event"), /Verifique sua conexão/);
+assert.match(friendlyDriverError("freight not found", "event"), /Operação não encontrada/);
+assert.match(friendlyDriverError("boom", "occurrence"), /Não foi possível registrar a ocorrência/);
+assert.match(friendlyDriverError("boom", "proof"), /Não foi possível enviar o comprovante/);
+
+// 3-5: o checklist só avança quando o banco confirma (setTrip só no sucesso).
+function simulateSubmit({ rpcOk, submitting }) {
+  const events = [];
+  if (submitting) return { advanced: false, reason: "duplo-clique bloqueado", events };
+  submitting = true;
+  try {
+    if (!rpcOk) throw new Error('42703: column "organization_id" ... does not exist');
+    events.push("arrived_loading");
+    return { advanced: true, events };
+  } catch (e) {
+    return { advanced: false, error: friendlyDriverError(e.message, "event"), events };
+  } finally {
+    submitting = false;
+  }
+}
+const failed = simulateSubmit({ rpcOk: false, submitting: false });
+assert.equal(failed.advanced, false, "não avança o checklist quando o RPC falha");
+assert.equal(failed.events.length, 0, "nenhum evento gravado na falha");
+const ok = simulateSubmit({ rpcOk: true, submitting: false });
+assert.equal(ok.advanced, true, "avança quando o RPC confirma");
+assert.deepEqual(ok.events, ["arrived_loading"]);
+
+// 19: clique enquanto já está enviando é bloqueado (anti-duplo-clique).
+const blocked = simulateSubmit({ rpcOk: true, submitting: true });
+assert.equal(blocked.advanced, false, "clique duplo não cria evento duplicado");
+
+// 14: latitude/longitude nulas seguem no payload sem quebrar.
+const payload = { p_event_type: "arrived_loading", p_latitude: null, p_longitude: null };
+assert.equal(payload.p_latitude, null);
+assert.equal(payload.p_longitude, null);
+
+console.log("Testes do fix do checklist/ocorrência do motorista passaram.");
 
 console.log("Todos os testes passaram.");

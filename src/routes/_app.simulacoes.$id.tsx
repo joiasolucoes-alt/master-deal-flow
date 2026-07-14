@@ -78,7 +78,6 @@ import { formatCurrency, formatDate, formatPercent, formatPrecisePercent } from 
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
-import { useAppStore } from "@/store/useAppStore";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import {
@@ -93,6 +92,7 @@ import {
   isPendingApprovalStatus,
   normalizeRole,
 } from "@/lib/permissions";
+import { matchesUserIdentity } from "@/lib/userIdentity";
 import { filterSimulationsForUser } from "@/lib/visibility";
 import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import { isSupabaseProvider } from "@/lib/dataProvider";
@@ -431,8 +431,8 @@ function SimulationDetailPage() {
     upsertFinancialTitle,
     upsertFreight,
     upsertNegotiationWallet,
+    addNotification,
   } = useAppContext();
-  const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, currentUser),
@@ -655,33 +655,41 @@ function SimulationDetailPage() {
       currentUser?.id ?? "system",
     );
     const linkedTitles = linkSimulationTitlesToOrder(draft, conversion.order, financialTitles);
-    const receivables = createFinancialTitlesFromOrder(conversion.order);
-    const finalOrder = releaseOrderForFreightIfReady(conversion.order, [
-      ...linkedTitles,
-      ...receivables,
-    ]);
-    const existingFreight = freights.find((freight) => freight.id === `freight-${draft.id}`);
-    const freight = existingFreight
-      ? linkFreightToConfirmedOrder(existingFreight, finalOrder)
-      : createFreightFromOrder(finalOrder);
+    // Nova regra: o pedido NÃO é liberado direto após a validação comercial. Ele nasce
+    // "Aguardando faturamento". A liberação para frete e a geração de contas a receber
+    // passam a acontecer quando o Financeiro/Faturamento registrar o faturamento/NF.
+    const finalOrder = conversion.order;
 
     upsertSimulation(conversion.simulation);
     linkedTitles.filter((title) => title.simulationId === draft.id).forEach(upsertFinancialTitle);
-    receivables.forEach(upsertFinancialTitle);
     upsertOrder(finalOrder);
-    upsertFreight(freight);
+    // Reaproveita o frete de preparação (gerado na aprovação do Gestor, sem orderId),
+    // vinculando-o ao pedido em vez de criar um novo registro duplicado. Como o pedido
+    // nasce liberado (Pedido confirmado), o frete já fica liberado para contratação —
+    // sem depender do faturamento.
+    const preparationFreight = freights.find(
+      (freight) =>
+        freight.id === `freight-${draft.id}` ||
+        (!freight.orderId && freight.orderNumber === draft.number),
+    );
+    if (preparationFreight && !preparationFreight.orderId) {
+      upsertFreight(linkFreightToConfirmedOrder(preparationFreight, finalOrder));
+    }
     upsertNegotiationWallet(
       createWalletFromSimulationOrder({
         simulation: draft,
         order: finalOrder,
-        organizationId: draft.unit,
+        organizationId: auth.currentOrganization?.id ?? draft.unit,
       }),
     );
     clearSavedSimulationFormDraft(draftStorageKey);
+    // §15 — Comercial validou o comprovante: Pedido criado, Frete liberado e
+    // Financeiro/Faturamento com pendência separada (frentes paralelas).
+    // Comercial (dono): pedido criado com sucesso.
     addNotification({
       id: `not-${Date.now()}`,
-      title: "Pedido confirmado",
-      description: `${finalOrder.number} foi confirmado após validação do pagamento.`,
+      title: "Pedido criado com sucesso",
+      description: `${finalOrder.number} confirmado. Frete liberado; faturamento em paralelo.`,
       type: "success",
       createdAt: new Date().toISOString(),
       unread: true,
@@ -690,17 +698,31 @@ function SimulationDetailPage() {
       targetUserId: currentUser?.id,
       targetUserEmail: currentUser?.email,
       targetUserName: draft.owner,
+      targetRole: "Comercial",
     });
+    // Financeiro/Faturamento: pedido confirmado, aguardando faturamento (paralelo).
     addNotification({
-      id: `not-${Date.now()}-freight-confirmed`,
-      title: "Frete liberado",
-      description: `${finalOrder.number} foi confirmado e liberado para execução logística.`,
-      type: "success",
+      id: `not-${Date.now()}-await-billing`,
+      title: "Pedido confirmado — aguardando faturamento",
+      description: `${finalOrder.number} aguarda o registro de faturamento/NF. Não bloqueia o frete.`,
+      type: "info",
       createdAt: new Date().toISOString(),
       unread: true,
       entityType: "order",
       entityId: finalOrder.id,
       targetRole: "Financeiro",
+    });
+    // Frete/Logística: pedido confirmado, frete liberado para contratação.
+    addNotification({
+      id: `not-${Date.now()}-freight-order`,
+      title: "Frete liberado para contratação",
+      description: `${finalOrder.number}: pedido confirmado. O frete já pode ser contratado, sem esperar o faturamento.`,
+      type: "success",
+      createdAt: new Date().toISOString(),
+      unread: true,
+      entityType: "order",
+      entityId: finalOrder.id,
+      targetRole: "Frete",
     });
     setDraft(conversion.simulation);
     toast.success(`Pedido ${finalOrder.number} confirmado.`, {
@@ -769,7 +791,7 @@ function SimulationDetailPage() {
       unread: true,
       entityType: "approval",
       entityId: next.id,
-      targetRole: "Aprovador",
+      targetRole: "Admin",
     });
     setDraft(next);
     toast.success("Simulação enviada para aprovação");
@@ -2208,18 +2230,53 @@ function ResultStep({
               <TabsTrigger value="purchase">NF/Custos</TabsTrigger>
             </TabsList>
             <TabsContent value="overview" className="space-y-2 pt-4 text-sm">
-              <p>
-                <strong>Cliente:</strong> {draft.client}
-              </p>
-              <p>
-                <strong>Fornecedor:</strong> {draft.supplier}
-              </p>
-              <p>
-                <strong>Prazo:</strong> {draft.paymentCondition}
-              </p>
-              <p>
-                <strong>Margem líquida (%):</strong> {formatPercent(totals.marginPercent, 2)}
-              </p>
+              <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                <p>
+                  <strong>Cliente:</strong> {draft.client}
+                </p>
+                <p>
+                  <strong>Fornecedor:</strong> {draft.supplier}
+                </p>
+                <p>
+                  <strong>Unidade:</strong> {draft.unit}
+                </p>
+                <p>
+                  <strong>Entrega:</strong> {draft.deliveryCity} • {draft.deliveryState}
+                </p>
+                <p>
+                  <strong>Prazo de pagamento:</strong> {draft.paymentCondition}
+                </p>
+                <p>
+                  <strong>Validade:</strong> {draft.validUntil ? formatDate(draft.validUntil) : "-"}
+                </p>
+              </div>
+              <div className="my-2 h-px bg-border" />
+              <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                <p>
+                  <strong>Receita total:</strong> {formatCurrency(totals.revenue)}
+                </p>
+                <p>
+                  <strong>Custo mercadoria:</strong> {formatCurrency(totals.merchandiseCost)}
+                </p>
+                <p>
+                  <strong>Custo de compra/NF:</strong> {formatCurrency(totals.purchaseTotal)}
+                </p>
+                <p>
+                  <strong>Despesas:</strong> {formatCurrency(totals.expenses)}
+                </p>
+                <p>
+                  <strong>Lucro bruto:</strong> {formatCurrency(totals.grossProfit)}
+                </p>
+                <p>
+                  <strong>Lucro líquido:</strong> {formatCurrency(totals.netProfit)}
+                </p>
+                <p>
+                  <strong>Margem bruta (%):</strong> {formatPercent(totals.grossMarginPercent, 2)}
+                </p>
+                <p>
+                  <strong>Margem líquida (%):</strong> {formatPercent(totals.marginPercent, 2)}
+                </p>
+              </div>
             </TabsContent>
             <TabsContent value="products" className="pt-4">
               <ul className="space-y-1 text-sm">
@@ -2448,6 +2505,8 @@ function canValidatePaymentProof(user: User | null | undefined, simulation: Simu
   const role = normalizeRole(user.role);
   if (role === "Admin") return true;
   if (role !== "Comercial") return false;
-  const owner = simulation.owner.trim().toLowerCase();
-  return owner === user.name.trim().toLowerCase() || owner === user.email.trim().toLowerCase();
+  // Usa o matcher robusto (trata "Junior"->"jr", acentos, prefixo de e-mail e id),
+  // em vez de comparação exata de string, que falhava quando o nome de login diferia
+  // do texto salvo como dono (ex.: "Djalma Junior" vs "djalma_jr").
+  return matchesUserIdentity(simulation.owner, user);
 }

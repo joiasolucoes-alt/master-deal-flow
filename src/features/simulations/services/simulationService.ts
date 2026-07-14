@@ -106,20 +106,27 @@ export function convertSimulationToOrder(
     date: createdAt,
     expectedDelivery: simulation.deliveryDate,
     totalValue: totals.revenue,
+    // Regra (fix: separate freight release from financial invoicing): após a
+    // validação comercial do comprovante, o pedido nasce "Pedido confirmado" e JÁ
+    // LIBERADO para o frete contratar. O faturamento/NF é uma frente paralela do
+    // Financeiro (billing derivado por billingProgress/invoiceNumber) e NÃO bloqueia
+    // o frete. O status de faturamento "Aguardando faturamento" é derivado, não é o
+    // status operacional do pedido.
     status: "Pedido confirmado",
     priority: simulation.priority,
     products: simulation.products,
     billingProgress: 0,
     deliveryProgress: 0,
     paymentTerms: simulation.paymentCondition,
-    logisticsStatus: "Pedido confirmado após pagamento e validação comercial.",
+    logisticsStatus:
+      "Pagamento validado pelo Comercial. Frete liberado para contratação. Faturamento pendente em paralelo.",
     documents: ["Pedido interno"],
     notes: [`Origem: conversão da simulação ${simulation.number}.`],
     timeline: [
       {
         id: `tl-${Date.now()}`,
-        title: "Pedido confirmado",
-        description: "Pagamento validado pelo Comercial antes da liberação operacional.",
+        title: "Pedido criado",
+        description: "Pagamento validado pelo Comercial. Frete liberado; faturamento em paralelo.",
         date: createdAt,
         completed: true,
       },

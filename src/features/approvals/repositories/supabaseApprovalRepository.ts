@@ -95,31 +95,9 @@ export function createSupabaseApprovalRepository(): ApprovalRepository {
       await insertAuditEvent(client, record).catch((auditError) => {
         console.warn("Aprovação salva, mas auditoria não foi registrada.", auditError);
       });
-      await insertNotification(client, record).catch((notificationError) => {
-        console.warn("Aprovação salva, mas notificação não foi registrada.", notificationError);
-      });
       return rowToApproval(data as ApprovalRow);
     },
   };
-}
-
-async function insertNotification(client: SupabaseClient, record: ApprovalRecord) {
-  const statusLabel = {
-    pending: "enviada para aprovação",
-    approved: "aprovada",
-    adjustment_requested: "devolvida para ajuste",
-    rejected: "reprovada",
-  }[record.status];
-
-  const { error } = await client.from("notifications").insert({
-    title: "Atualização de aprovação",
-    message: `Simulação ${record.simulationId} ${statusLabel}.`,
-    type: record.status === "approved" ? "success" : "info",
-    entity_type: "simulation",
-    entity_external_id: record.simulationId,
-  });
-
-  if (error) throw error;
 }
 
 async function insertAuditEvent(client: SupabaseClient, record: ApprovalRecord) {

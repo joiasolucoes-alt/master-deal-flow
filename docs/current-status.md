@@ -4,6 +4,14 @@ Nova regra validada com o cliente: a proposta aprovada pelo Gestor nao vira pedi
 
 Fluxo atual da onda: Comercial cria proposta -> Gestor aprova -> Financeiro paga/anexa comprovante -> Comercial valida -> Pedido confirmado -> Frete liberado -> Motorista/entrega -> Fechamento.
 
+**Correção (fix: repair driver checklist and occurrence rpc errors):** o checklist e a ocorrência do motorista davam HTTP 400 (`42703`) porque `freight_events`/`delivery_proofs` (tabelas antigas) não tinham `organization_id`/`order_id` que as RPCs inserem. Corrigido por `supabase/manual-sql/030_fix_driver_event_columns.sql` (adiciona as colunas, nullable, sem backfill; as RPCs não mudam). No frontend: erros amigáveis, checklist só avança com confirmação do banco e trava anti-duplo-clique. **Requer rodar o SQL 030.** Ver `docs/driver-flow.md`.
+
+**Atualização (fix: move freight operation tracking to driver checklist):** o **Frete só contrata**; o avanço operacional (carregamento/viagem/entrega) é feito pelo **motorista** no link/PIN — o perfil Frete não tem mais botões de "Iniciar carregamento" etc. **Comercial e Financeiro** só **acompanham** a aba Fretes (timeline + canhoto), sem operar. Botões de salvar padronizados no **final** de cada bloco. **Sem geolocalização** no link do motorista; **canhoto obrigatório** para finalizar. Sem mudança de schema. Ver `docs/freight-flow.md` e `docs/driver-flow.md`.
+
+**Atualização (fix: separate freight release from financial invoicing):** após a validação comercial, o **frete é liberado imediatamente** (não espera o faturamento). Faturamento vira **frente paralela** do Financeiro ("Aguardando faturamento"), sem bloquear o frete. Status separados por área (geral **Pedido confirmado** / **Frete liberado** / **Aguardando faturamento**). Permissões: Financeiro não contrata frete/gera link; Frete/Comercial não faturam. Aba Pagamento de Negociação: **"Fazer pagamento"** lista todos os lançamentos. Corrigido o bug de **SIM fantasma** (seeds/mocks não entram no modo Supabase). **Auto-refresh** sem F5 (polling leve 12s). Sem mudança de schema. Ver `docs/operational-flow.md`.
+
+**Novidade (feat: expose approved simulations to freight preparation):** ao Gestor aprovar, a operação passa a ficar visível para o **Frete/Logística como preparação** (aba **Preparação** na tela de Fretes), em paralelo ao pagamento — mas a execução (contratação, link/PIN, carregamento, entrega, canhoto) continua **bloqueada** até a SIM virar Pedido e ser liberada no faturamento. Notificações vão para Financeiro, Frete e Comercial; auditoria registrada. Sem mudança de schema (reutiliza `freights.order_id NULL`). Ver `docs/operational-flow.md` e `docs/freight-flow.md`.
+
 # Status atual - Onda 3 iniciada
 
 O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou a operação financeira pós-pedido.
@@ -75,6 +83,7 @@ Nenhum SQL foi aplicado automaticamente. Scripts para execução manual:
 
 1. `docs/wave-3-finance-v2.md`
 2. `docs/wave-3-freight-documents.md`
+
 # Atualizacao - Onda Automacao Financeira e Liberacao do Frete
 
 Nesta onda, o fluxo passa a tratar o pedido como uma operacao conectada entre Comercial, Financeiro e Frete.

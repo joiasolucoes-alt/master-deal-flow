@@ -15,8 +15,10 @@ export type Permission =
   | "approvals:decide"
   | "orders:view"
   | "orders:convert"
+  | "orders:invoice"
   | "finance:view"
   | "freights:view"
+  | "freights:operate"
   | "deliveries:view"
   | "reports:view"
   | "settings:manage";
@@ -35,8 +37,10 @@ const allPermissions: Permission[] = [
   "approvals:decide",
   "orders:view",
   "orders:convert",
+  "orders:invoice",
   "finance:view",
   "freights:view",
+  "freights:operate",
   "deliveries:view",
   "reports:view",
   "settings:manage",
@@ -55,6 +59,9 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "adjustments:view",
     "approvals:view",
     "orders:view",
+    // Acompanhamento (somente leitura) da aba Fretes: sem freights:operate, o
+    // Comercial vê lista/timeline/canhoto mas não contrata nem avança operação.
+    "freights:view",
     "deliveries:view",
   ],
   Negociações: [
@@ -107,11 +114,13 @@ const routePermissions: Array<{ prefix: string; permission: Permission }> = [
 
 export function normalizeRole(role: string): UserRole {
   if (role === "Aprovação") return "Aprovador";
+  if (role === "Frota" || role === "Logística" || role === "Logistica") return "Frete";
   if (
     role === "Comercial" ||
     role === "Negociações" ||
     role === "Aprovador" ||
     role === "Financeiro" ||
+    role === "Frete" ||
     role === "Admin"
   ) {
     return role;
@@ -181,4 +190,18 @@ export function canApproveSimulation(user: User | null | undefined, simulation: 
 
 export function canConvertSimulationToOrder(user: User | null | undefined) {
   return hasPermission(user, "orders:convert");
+}
+
+// Operar frete = contratar, avançar status, gerar link/PIN do motorista, anexar
+// documentos. Apenas Frete/Logística e Admin. Financeiro tem apenas visualização
+// (freights:view) e NÃO pode contratar nem gerar link (fix: separate freight release
+// from financial invoicing).
+export function canOperateFreight(user: User | null | undefined) {
+  return hasPermission(user, "freights:operate");
+}
+
+// Registrar faturamento/NF. Apenas Financeiro/Faturamento e Admin. Comercial e Frete
+// não podem faturar.
+export function canRegisterInvoice(user: User | null | undefined) {
+  return hasPermission(user, "orders:invoice");
 }

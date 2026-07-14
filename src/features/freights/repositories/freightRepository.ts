@@ -28,6 +28,7 @@ export type FreightRow = {
   trailer_plate?: string | null;
   antt_registration?: string | null;
   route?: string | null;
+  planned_freight_value?: number | null;
   freight_value?: number | null;
   weight_label?: string | null;
   status?: string | null;
@@ -51,12 +52,15 @@ function normalizeStatus(status?: string | null): FreightStatus {
   if (status === "contracted" || status === "arrived_pickup") return "hired";
   if (status === "loaded") return "loading";
   if (status === "in_transit") return "in_route";
+  if (status === "arrived_delivery_location") return "at_destination";
   if (status === "completed") return "delivered";
   if (
     status === "quoted" ||
     status === "hired" ||
     status === "loading" ||
     status === "in_route" ||
+    status === "at_destination" ||
+    status === "unloaded" ||
     status === "delivered" ||
     status === "cancelled"
   ) {
@@ -100,6 +104,7 @@ export function freightToRow(freight: FreightRecord): Record<string, unknown> {
     trailer_plate: freight.trailerPlate ?? null,
     antt_registration: freight.anttRegistration ?? null,
     route: freight.route,
+    planned_freight_value: freight.plannedFreightValue ?? 0,
     freight_value: freight.freightValue,
     weight_label: freight.weight,
     status: freight.status,
@@ -117,6 +122,10 @@ export function freightToRow(freight: FreightRecord): Record<string, unknown> {
 }
 
 export function rowToFreight(row: FreightRow): FreightRecord {
+  const status = normalizeStatus(row.status);
+  const storedFreightValue = toNumber(row.freight_value);
+  const hasSeparatedPlannedValue = typeof row.planned_freight_value === "number";
+
   return {
     id: row.external_id || row.id || row.code || crypto.randomUUID(),
     code: row.code || "",
@@ -134,9 +143,12 @@ export function rowToFreight(row: FreightRow): FreightRecord {
     trailerPlate: row.trailer_plate ?? undefined,
     anttRegistration: row.antt_registration ?? undefined,
     route: row.route || "",
-    freightValue: toNumber(row.freight_value),
+    plannedFreightValue: hasSeparatedPlannedValue
+      ? toNumber(row.planned_freight_value)
+      : storedFreightValue,
+    freightValue: hasSeparatedPlannedValue || status !== "quoted" ? storedFreightValue : 0,
     weight: row.weight_label || "",
-    status: normalizeStatus(row.status),
+    status,
     cargoType: normalizeCargoType(row.cargo_type),
     pickupDate: row.pickup_date || new Date().toISOString(),
     expectedDeliveryDate: row.expected_delivery_date || new Date().toISOString(),
