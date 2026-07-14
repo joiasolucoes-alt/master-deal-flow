@@ -32,6 +32,11 @@ export function notificationTargetsUser(
 ) {
   if (!user) return false;
 
+  // Admin e Gestor ("Negociações") acompanham o fluxo inteiro: recebem todas as
+  // notificações, independentemente do destinatário original.
+  const userRole = normalizeRole(user.role);
+  if (userRole === "Admin" || userRole === "Negociações") return true;
+
   const targetRole = normalizeNotificationTargetRole(notification.targetRole);
   const hasIndividualTarget = Boolean(
     notification.targetUserId || notification.targetUserEmail || notification.targetUserName,

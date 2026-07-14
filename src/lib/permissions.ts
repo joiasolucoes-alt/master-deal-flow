@@ -94,6 +94,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "freights:view",
     "reports:view",
   ],
+  Frete: ["dashboard:view", "orders:view", "freights:view", "freights:operate", "deliveries:view"],
   Admin: allPermissions,
 };
 

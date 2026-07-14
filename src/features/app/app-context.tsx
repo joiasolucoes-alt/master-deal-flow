@@ -48,6 +48,7 @@ import { createSupabaseDeliveryRepository } from "@/features/deliveries/reposito
 import { createSupabaseRealizedResultRepository } from "@/features/results/repositories/supabaseRealizedResultRepository";
 import { createSupabaseNegotiationWalletRepository } from "@/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository";
 import { createSupabaseNegotiationRepository } from "@/features/negotiations/repositories/supabaseNegotiationRepository";
+import { persistNotification } from "@/features/notifications/notificationRepository";
 import { toast } from "sonner";
 
 type AuthProfile = {
@@ -929,6 +930,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
+    let partialLoadWarningShown = false;
     const simulationRepository = createSupabaseSimulationRepository();
     const orderRepository = createSupabaseOrderRepository();
     const catalogRepository = createSupabaseCatalogRepository();
@@ -989,19 +991,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
             mergeRemoteSimulationsWithLocalPending(value, getAppStoreSnapshot().simulations),
           ),
         );
-        // Fallback: sem negociações no Supabase, mantém a semente local.
-        if (remoteNegotiations.length > 0) setNegotiationsStore(remoteNegotiations);
-        setOrdersStore(remoteOrders);
-        setFinancialTitlesStore(remoteFinancialTitles);
-        setRealizedResultsStore(remoteRealizedResults);
-        setNegotiationWalletsStore(remoteNegotiationWallets);
-        setOpportunityPoolsStore(remoteOpportunityPools);
-        setFreightsStore(remoteFreights);
-        setDeliveriesStore(remoteDeliveries);
-        setClientsStore(remoteClients);
-        setSuppliersStore(remoteSuppliers);
-        setProductsStore(remoteProducts);
-        setLastDataError(null);
+        applyResult(remoteNegotiations, "negociações", (value) => {
+          // Fallback: sem negociações no Supabase, mantém a semente local.
+          if (value.length > 0) setNegotiationsStore(value);
+        });
+        applyResult(remoteOrders, "pedidos", setOrdersStore);
+        applyResult(remoteFinancialTitles, "títulos financeiros", setFinancialTitlesStore);
+        applyResult(remoteRealizedResults, "resultados realizados", setRealizedResultsStore);
+        applyResult(remoteNegotiationWallets, "carteiras", setNegotiationWalletsStore);
+        applyResult(remoteOpportunityPools, "pool de oportunidades", setOpportunityPoolsStore);
+        applyResult(remoteFreights, "fretes", setFreightsStore);
+        applyResult(remoteDeliveries, "entregas", setDeliveriesStore);
+        applyResult(remoteClients, "clientes", setClientsStore);
+        applyResult(remoteSuppliers, "fornecedores", setSuppliersStore);
+        applyResult(remoteProducts, "produtos", setProductsStore);
+
+        if (failures.length) {
+          const message = `Falha parcial ao carregar: ${failures.join(", ")}.`;
+          setLastDataError(message);
+          if (!partialLoadWarningShown) {
+            toast.warning(
+              "Alguns dados não foram atualizados. As listas disponíveis foram mantidas.",
+            );
+            partialLoadWarningShown = true;
+          }
+        } else {
+          setLastDataError(null);
+          partialLoadWarningShown = false;
+        }
       } catch (error) {
         console.error("Falha ao carregar dados do Supabase.", error);
         setLastDataError(error instanceof Error ? error.message : "Falha ao carregar Supabase.");
