@@ -258,6 +258,7 @@ function ApprovalsPage() {
         targetUserId: ownerUser?.id,
         targetUserEmail: ownerUser?.email,
         targetUserName: ownerUser?.name ?? selected.owner,
+        targetRole: "Comercial",
       });
       toast.success(
         decision === "approve"

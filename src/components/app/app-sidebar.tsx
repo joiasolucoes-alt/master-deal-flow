@@ -7,7 +7,6 @@ import {
   FileChartColumn,
   Handshake,
   LayoutDashboard,
-  PackageSearch,
   RotateCcw,
   Settings,
   ShieldCheck,
@@ -70,7 +69,6 @@ const navigation: Array<{
     permission: "reports:view",
   },
   { title: "Fretes", to: "/fretes", icon: Truck, permission: "freights:view" },
-  { title: "Entregas", to: "/entregas", icon: PackageSearch, permission: "deliveries:view" },
   { title: "Relatórios", to: "/relatorios", icon: FileChartColumn, permission: "reports:view" },
   { title: "Configurações", to: "/configuracoes", icon: Settings, permission: "settings:manage" },
 ] as const;

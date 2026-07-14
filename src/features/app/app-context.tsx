@@ -1001,7 +1001,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const message = `Falha parcial ao carregar: ${failures.join(", ")}.`;
           setLastDataError(message);
           if (!partialLoadWarningShown) {
-            toast.warning("Alguns dados não foram atualizados. As listas disponíveis foram mantidas.");
+            toast.warning(
+              "Alguns dados não foram atualizados. As listas disponíveis foram mantidas.",
+            );
             partialLoadWarningShown = true;
           }
         } else {
@@ -1377,28 +1379,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const addNotification = useCallback((
-    input: Omit<NotificationItem, "id" | "createdAt" | "unread"> & {
-      id?: string;
-      createdAt?: string;
-      unread?: boolean;
+  const addNotification = useCallback(
+    (
+      input: Omit<NotificationItem, "id" | "createdAt" | "unread"> & {
+        id?: string;
+        createdAt?: string;
+        unread?: boolean;
+      },
+    ) => {
+      const notification: NotificationItem = {
+        ...input,
+        id: input.id ?? `ntf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        createdAt: input.createdAt ?? new Date().toISOString(),
+        unread: input.unread ?? true,
+      };
+
+      addNotificationStore(notification);
+
+      if (isSupabaseProvider() && getSupabaseConfigStatus().configured) {
+        void persistNotification(notification).catch((error) => {
+          console.warn("Notificação mantida localmente, mas não persistida no Supabase.", error);
+        });
+      }
     },
-  ) => {
-    const notification: NotificationItem = {
-      ...input,
-      id: input.id ?? `ntf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      createdAt: input.createdAt ?? new Date().toISOString(),
-      unread: input.unread ?? true,
-    };
-
-    addNotificationStore(notification);
-
-    if (isSupabaseProvider() && getSupabaseConfigStatus().configured) {
-      void persistNotification(notification).catch((error) => {
-        console.warn("Notificação mantida localmente, mas não persistida no Supabase.", error);
-      });
-    }
-  }, [addNotificationStore]);
+    [addNotificationStore],
+  );
 
   const upsertOrder = (order: Order) => {
     upsertOrderStore(order);

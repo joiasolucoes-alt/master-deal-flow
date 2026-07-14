@@ -679,7 +679,7 @@ function SimulationDetailPage() {
       createWalletFromSimulationOrder({
         simulation: draft,
         order: finalOrder,
-        organizationId: draft.unit,
+        organizationId: auth.currentOrganization?.id ?? draft.unit,
       }),
     );
     clearSavedSimulationFormDraft(draftStorageKey);
@@ -698,6 +698,7 @@ function SimulationDetailPage() {
       targetUserId: currentUser?.id,
       targetUserEmail: currentUser?.email,
       targetUserName: draft.owner,
+      targetRole: "Comercial",
     });
     // Financeiro/Faturamento: pedido confirmado, aguardando faturamento (paralelo).
     addNotification({
@@ -790,7 +791,7 @@ function SimulationDetailPage() {
       unread: true,
       entityType: "approval",
       entityId: next.id,
-      targetRole: "Aprovador",
+      targetRole: "Admin",
     });
     setDraft(next);
     toast.success("Simulação enviada para aprovação");

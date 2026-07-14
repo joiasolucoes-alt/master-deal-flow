@@ -540,7 +540,6 @@ function statusLabel(status: string, linkState: DriverTrip["linkState"]) {
         arrived_loading: "Carregando",
         in_transit: "Em trânsito",
         arrived_delivery_location: "No destino",
-        unloaded: "Descarregado",
         proof_uploaded: "Comprovante",
         delivered: "Entregue",
         completed: "Concluída",

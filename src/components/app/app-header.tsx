@@ -18,12 +18,16 @@ import { UserAvatar } from "@/components/app/user-avatar";
 import { useAppStore } from "@/store/useAppStore";
 import type { NotificationItem, UserRole } from "@/data/types";
 import { isSupabaseProvider } from "@/lib/dataProvider";
+import { getSupabaseConfigStatus } from "@/lib/supabaseClient";
 import {
-  ensureSupabaseSession,
-  getSupabaseClient,
-  getSupabaseConfigStatus,
-} from "@/lib/supabaseClient";
-import { markNotificationReadRemote } from "@/features/notifications/notificationRepository";
+  listNotificationsForUser,
+  markNotificationReadRemote,
+  type NotificationRow,
+} from "@/features/notifications/notificationRepository";
+import {
+  normalizeNotificationTargetRole,
+  notificationTargetsUser,
+} from "@/features/notifications/notificationAudience";
 import {
   filterNegotiationsForUser,
   filterOrdersForUser,
@@ -71,17 +75,8 @@ export function AppHeader() {
 
     async function loadRemoteNotifications() {
       try {
-        const client = getSupabaseClient();
-        if (!client) return;
-        await ensureSupabaseSession();
-
-        const { data, error } = await client
-          .from("notifications")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(80);
-
-        if (error) throw error;
+        if (!user) return;
+        const data = await listNotificationsForUser(user);
         if (cancelled) return;
 
         const remoteNotifications = (data ?? []).map(rowToNotification);
@@ -105,28 +100,12 @@ export function AppHeader() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", loadRemoteNotifications);
     };
-  }, [auth.hasAccess, setNotifications]);
+  }, [auth.hasAccess, setNotifications, user]);
 
-  const visibleNotifications = useMemo(() => {
-    const userEmail = user?.email?.trim().toLowerCase();
-    const userName = user?.name?.trim().toLowerCase();
-
-    return notifications.filter((item) => {
-      const hasIndividualTarget = Boolean(
-        item.targetUserId || item.targetUserEmail || item.targetUserName,
-      );
-      const matchesIndividualTarget =
-        (item.targetUserId && item.targetUserId === user?.id) ||
-        (item.targetUserEmail && item.targetUserEmail.trim().toLowerCase() === userEmail) ||
-        (item.targetUserName && item.targetUserName.trim().toLowerCase() === userName);
-
-      if (hasIndividualTarget) return Boolean(matchesIndividualTarget);
-      if (item.targetRole) return item.targetRole === user?.role;
-
-      // Somente o ADM recebe notificações legadas que ainda não possuem destinatário.
-      return user?.role === "Admin";
-    });
-  }, [notifications, user?.email, user?.id, user?.name, user?.role]);
+  const visibleNotifications = useMemo(
+    () => notifications.filter((item) => notificationTargetsUser(item, user)),
+    [notifications, user],
+  );
   const unread = visibleNotifications.filter((item) => item.unread).length;
   const trimmedQuery = query.trim().toLowerCase();
   const searchResults = useMemo<SearchResult[]>(() => {
@@ -370,26 +349,8 @@ export function AppHeader() {
   );
 }
 
-type NotificationRow = {
-  id: string;
-  external_id?: string | null;
-  title: string;
-  message: string;
-  type: string;
-  read: boolean;
-  entity_type?: string | null;
-  entity_id?: string | null;
-  entity_external_id?: string | null;
-  user_id?: string | null;
-  target_role?: string | null;
-  target_user_email?: string | null;
-  target_user_name?: string | null;
-  source?: string | null;
-  created_at: string;
-};
-
 function rowToNotification(row: NotificationRow): NotificationItem {
-  const targetRole = normalizeTargetRole(row.target_role) ?? inferTargetRole(row);
+  const targetRole = normalizeNotificationTargetRole(row.target_role) ?? inferTargetRole(row);
   const entityType = normalizeEntityType(row.entity_type, targetRole);
 
   return {
@@ -433,35 +394,19 @@ function normalizeEntityType(
   return undefined;
 }
 
-function normalizeTargetRole(targetRole: string | null | undefined): UserRole | undefined {
-  const normalized = targetRole?.trim().toLowerCase();
-  if (normalized === "admin") return "Admin";
-  if (normalized === "aprovador") return "Aprovador";
-  if (normalized === "financeiro") return "Financeiro";
-  if (normalized === "frete" || normalized === "frota") return "Frete";
-  if (normalized === "comercial") return "Comercial";
-  if (normalized === "negociações" || normalized === "negociacoes" || normalized === "gestor") {
-    return "Negociações";
-  }
-  return undefined;
-}
-
 function inferTargetRole(row: NotificationRow): UserRole | undefined {
   const text = `${row.title} ${row.message}`.toLowerCase();
-  if (
-    text.includes("pendente de aprovação") ||
-    text.includes("enviada para aprovação") ||
-    text.includes("aguardando aprovação financeira") ||
-    text.includes("aguardando financeiro")
-  ) {
+  if (text.includes("aguardando aprovação financeira") || text.includes("aguardando financeiro")) {
     return "Financeiro";
   }
   if (
+    text.includes("pendente de aprovação") ||
+    text.includes("enviada para aprovação") ||
     text.includes("aprovação final") ||
     text.includes("aguarda decisão final") ||
     text.includes("aguardando aprovação do gestor")
   ) {
-    return "Aprovador";
+    return "Admin";
   }
   return undefined;
 }

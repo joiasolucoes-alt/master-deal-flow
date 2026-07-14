@@ -236,6 +236,7 @@ function OrderDetailPage() {
       entityType: "order",
       entityId: order.id,
       targetUserName: order.owner,
+      targetRole: "Comercial",
       href: `/pedidos/${order.id}`,
     });
     // Assim que o faturamento libera o pedido, o frete é gerado automaticamente

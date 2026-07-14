@@ -651,10 +651,9 @@ function FreightsPage() {
                     </Badge>
                     <span className="text-right text-muted-foreground">
                       <span className="block">
-                        {preparation ? "Previsto" : "Contratado"}: {formatCurrency(
-                          preparation
-                            ? (freight.plannedFreightValue ?? 0)
-                            : freight.freightValue,
+                        {preparation ? "Previsto" : "Contratado"}:{" "}
+                        {formatCurrency(
+                          preparation ? (freight.plannedFreightValue ?? 0) : freight.freightValue,
                         )}
                       </span>
                       {selectedFreightId === freight.id ? (
@@ -1205,9 +1204,7 @@ function CargoSummaryCard({
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
               Valor contratado
             </p>
-            <p className="mt-1 text-lg font-semibold">
-              {formatCurrency(contractedFreightValue)}
-            </p>
+            <p className="mt-1 text-lg font-semibold">{formatCurrency(contractedFreightValue)}</p>
           </div>
           <div className="rounded-xl border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Saldo previsto</p>

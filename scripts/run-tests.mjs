@@ -361,7 +361,9 @@ function getNextFreightStatus(status) {
     quoted: "hired",
     hired: "loading",
     loading: "in_route",
-    in_route: "delivered",
+    in_route: "at_destination",
+    at_destination: "unloaded",
+    unloaded: "delivered",
     delivered: "delivered",
     cancelled: "cancelled",
   }[status];
@@ -373,6 +375,8 @@ function updateOrderFromFreight(order, freight) {
     hired: 15,
     loading: 35,
     in_route: 70,
+    at_destination: 85,
+    unloaded: 95,
     delivered: 100,
     cancelled: 0,
   };
@@ -381,9 +385,13 @@ function updateOrderFromFreight(order, freight) {
     status:
       freight.status === "delivered"
         ? "Entregue"
-        : freight.status === "in_route"
-          ? "Em rota"
-          : order.status,
+        : freight.status === "unloaded"
+          ? "Mercadoria descarregada"
+          : freight.status === "at_destination"
+            ? "No destino"
+            : freight.status === "in_route"
+              ? "Em rota"
+              : order.status,
     deliveryProgress: Math.max(order.deliveryProgress, progressByStatus[freight.status]),
   };
 }
@@ -1214,15 +1222,27 @@ function driverRegisterEvent(trip, type, info) {
   const expected = driverNextEvent(trip);
   if (type !== expected) throw new Error("event out of order");
   trip.events.push({ type, receiverName: info?.receiverName, at: Date.now() });
-  if (type === "unloaded") trip.freightStatus = "delivered";
-  trip.notifications.push({ targetRole: "Frete", title: "Atualização do motorista" });
+  const resultingState = {
+    arrived_loading: ["loading", "Em carregamento", 35],
+    in_transit: ["in_route", "Em rota", 70],
+    arrived_delivery_location: ["at_destination", "No destino", 85],
+    unloaded: ["unloaded", "Mercadoria descarregada", 95],
+  }[type];
+  if (resultingState) {
+    trip.freightStatus = resultingState[0];
+    trip.orderStatus = resultingState[1];
+    trip.orderDeliveryProgress = resultingState[2];
+  }
+  for (const targetRole of ["Frete", "Comercial", "Financeiro", "Admin"]) {
+    trip.notifications.push({ targetRole, title: "Atualização do motorista" });
+  }
   return trip;
 }
 function driverRegisterOccurrence(trip, occurrenceType, notes) {
   trip.events.push({ type: "occurrence", occurrenceType, notes, at: Date.now() });
-  trip.notifications.push({ targetRole: "Frete", title: "Ocorrência", type: "warning" });
-  trip.notifications.push({ targetRole: "Comercial", title: "Ocorrência", type: "warning" });
-  trip.notifications.push({ targetRole: "Financeiro", title: "Ocorrência", type: "warning" });
+  for (const targetRole of ["Frete", "Comercial", "Financeiro", "Admin"]) {
+    trip.notifications.push({ targetRole, title: "Ocorrência", type: "warning" });
+  }
   return trip;
 }
 function driverFinalize(trip, file, info) {
@@ -1243,6 +1263,11 @@ function driverFinalize(trip, file, info) {
   });
   trip.notifications.push({
     targetRole: "Comercial",
+    title: "Entrega finalizada",
+    type: "success",
+  });
+  trip.notifications.push({
+    targetRole: "Admin",
     title: "Entrega finalizada",
     type: "success",
   });
@@ -1290,15 +1315,17 @@ driverRegisterEvent(trip, "in_transit");
 assert.throws(() => driverRegisterEvent(trip, "unloaded"), /out of order/); // pula etapa
 driverRegisterEvent(trip, "arrived_delivery_location");
 
-// 10-11: ocorrência (repetível, não avança marco, notifica 3 áreas)
+// 10-11: ocorrência (repetível, não avança marco, notifica 4 áreas)
 driverRegisterOccurrence(trip, "Cliente ausente", "Portaria fechada");
 assert.equal(driverNextEvent(trip), "unloaded");
 assert.equal(trip.events.filter((e) => e.type === "occurrence").length, 1);
-assert.equal(trip.notifications.filter((n) => n.title === "Ocorrência").length, 3);
+assert.equal(trip.notifications.filter((n) => n.title === "Ocorrência").length, 4);
 
 // descarga com recebedor
 driverRegisterEvent(trip, "unloaded", { receiverName: "João Recebedor" });
-assert.equal(trip.freightStatus, "delivered");
+assert.equal(trip.freightStatus, "unloaded");
+assert.equal(trip.orderStatus, "Mercadoria descarregada");
+assert.equal(trip.orderDeliveryProgress, 95);
 
 // 14: finalizar sem canhoto é bloqueado
 assert.throws(() => driverFinalize(trip, null, { receiverName: "João" }), /obrigatório/);
@@ -1315,9 +1342,10 @@ assert.equal(trip.linkState, "completed");
 assert.equal(trip.proofs.length, 1);
 assert.ok(trip.events.find((e) => e.type === "proof_uploaded")?.receiverName === "João Recebedor");
 
-// 20: notificações de entrega criadas para Frete/Financeiro/Comercial
+// 20: notificações de entrega criadas para Frete/Financeiro/Comercial/Admin
 assert.ok(trip.notifications.some((n) => n.targetRole === "Frete" && n.type === "success"));
 assert.ok(trip.notifications.some((n) => n.targetRole === "Financeiro" && n.type === "success"));
+assert.ok(trip.notifications.some((n) => n.targetRole === "Admin" && n.type === "success"));
 assert.ok(trip.notifications.some((n) => n.targetRole === "Comercial" && n.type === "success"));
 
 // 21-22: provider local/supabase resolvem sem quebrar
@@ -1388,6 +1416,55 @@ function buildGestorApprovalNotifications(sim) {
     { title: "Nova operação disponível para preparação", targetRole: "Frete", entityId: sim.id },
     { title: "Simulação aprovada pelo Gestor", targetUserName: sim.owner, entityId: sim.id },
   ];
+}
+
+function normalizeNotificationRole(role) {
+  const normalized = role?.trim().toLowerCase();
+  if (["admin", "adm", "gestor"].includes(normalized)) return "Admin";
+  if (["aprovador", "aprovação", "aprovacao"].includes(normalized)) return "Aprovador";
+  if (normalized === "financeiro") return "Financeiro";
+  if (["frete", "frota", "logística", "logistica"].includes(normalized)) return "Frete";
+  if (normalized === "comercial") return "Comercial";
+  if (["negociações", "negociacoes"].includes(normalized)) return "Negociações";
+  return undefined;
+}
+
+function normalizeIdentity(value) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\bjunior\b/g, "jr")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function notificationTargetsUser(notification, user) {
+  const targetRole = normalizeNotificationRole(notification.targetRole);
+  const hasIndividualTarget = Boolean(
+    notification.targetUserId || notification.targetUserEmail || notification.targetUserName,
+  );
+  const matchesIndividual = Boolean(
+    (notification.targetUserId && notification.targetUserId === user.id) ||
+    (notification.targetUserEmail &&
+      notification.targetUserEmail.trim().toLowerCase() === user.email.trim().toLowerCase()) ||
+    (notification.targetUserName &&
+      normalizeIdentity(notification.targetUserName) === normalizeIdentity(user.name)),
+  );
+
+  if (hasIndividualTarget) {
+    return matchesIndividual && (!targetRole || targetRole === user.role);
+  }
+  if (targetRole) return targetRole === user.role;
+  return user.role === "Admin";
+}
+
+function buildSubmissionNotification(simulation) {
+  return {
+    title: "Simulação enviada para aprovação",
+    entityId: simulation.id,
+    targetRole: "Admin",
+  };
 }
 
 // Cenários da especificação (§14)
@@ -1487,6 +1564,67 @@ assert.ok(
   "notifica Comercial dono",
 );
 assert.equal(approvalNots.length, 3);
+
+// Matriz de destinatários: o Gestor atual usa a credencial Admin. Notificações
+// exclusivas de Financeiro/Frete não podem aparecer para o Admin, e avisos do
+// Comercial devem chegar somente ao dono mesmo com variação Junior/Jr.
+const adminUser = { id: "admin-1", name: "Djalma", email: "admin@master.test", role: "Admin" };
+const financeUser = {
+  id: "finance-1",
+  name: "Financeiro",
+  email: "financeiro@master.test",
+  role: "Financeiro",
+};
+const freightUser = {
+  id: "freight-1",
+  name: "Operação de Frete",
+  email: "frete@master.test",
+  role: "Frete",
+};
+const ownerUser = {
+  id: "commercial-1",
+  name: "Djalma Jr",
+  email: "djalma@master.test",
+  role: "Comercial",
+};
+const sameNameWrongRole = { ...ownerUser, id: "finance-2", role: "Financeiro" };
+const submissionNotification = buildSubmissionNotification({ id: "sim-approval" });
+
+assert.equal(submissionNotification.targetRole, "Admin");
+assert.equal(notificationTargetsUser(submissionNotification, adminUser), true);
+assert.equal(notificationTargetsUser(submissionNotification, financeUser), false);
+assert.equal(
+  notificationTargetsUser({ title: "Pagamento", targetRole: "Financeiro" }, financeUser),
+  true,
+);
+assert.equal(
+  notificationTargetsUser({ title: "Pagamento", targetRole: "Financeiro" }, adminUser),
+  false,
+);
+assert.equal(
+  notificationTargetsUser({ title: "Carga liberada", targetRole: "Frete" }, freightUser),
+  true,
+);
+assert.equal(
+  notificationTargetsUser({ title: "Carga liberada", targetRole: "Frete" }, adminUser),
+  false,
+);
+assert.equal(
+  notificationTargetsUser(
+    { title: "Reajuste", targetRole: "Comercial", targetUserName: "Djalma Junior" },
+    ownerUser,
+  ),
+  true,
+);
+assert.equal(
+  notificationTargetsUser(
+    { title: "Reajuste", targetRole: "Comercial", targetUserName: "Djalma Junior" },
+    sameNameWrongRole,
+  ),
+  false,
+);
+assert.equal(normalizeNotificationRole("Gestor"), "Admin");
+assert.equal(normalizeNotificationRole("Aprovador"), "Aprovador");
 
 // 17-18: liberação financeira depende de payables quitados quando existem
 assert.equal(
@@ -1643,7 +1781,14 @@ assert.equal(can2("Admin", "freights:operate"), true);
 
 // 5/6/7: o Frete só CONTRATA (quoted → hired). Depois disso, sem avanço manual.
 function nextFreightStatus(status) {
-  const map = { quoted: "hired", hired: "loading", loading: "in_route", in_route: "delivered" };
+  const map = {
+    quoted: "hired",
+    hired: "loading",
+    loading: "in_route",
+    in_route: "at_destination",
+    at_destination: "unloaded",
+    unloaded: "delivered",
+  };
   return map[status] ?? status;
 }
 // O botão de contratação só aparece para status "quoted".

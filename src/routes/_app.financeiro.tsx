@@ -467,6 +467,7 @@ function FinancialPage() {
           entityType: "simulation",
           entityId: simulation.id,
           targetUserName: simulation.owner,
+          targetRole: "Comercial",
         });
       }
     } else {
@@ -489,6 +490,7 @@ function FinancialPage() {
             entityType: "order",
             entityId: order.id,
             targetUserName: order.owner,
+            targetRole: "Comercial",
           });
           addNotification({
             id: `not-${Date.now()}-freight-release`,
@@ -588,6 +590,7 @@ function FinancialPage() {
             entityType: "simulation",
             entityId: simulation.id,
             targetUserName: simulation.owner,
+            targetRole: "Comercial",
           });
         }
       }
