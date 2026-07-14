@@ -1,4 +1,4 @@
-import type { FreightRecord } from "@/data/types";
+import type { FreightRecord, FreightStatus } from "@/data/types";
 import {
   ensureSupabaseSession,
   getSupabaseClient,
@@ -29,8 +29,7 @@ export const DRIVER_OCCURRENCE_TYPES = [
   "Descarga recusada",
   "Outro motivo",
 ] as const;
-export type FreightTrackingStatus =
-  "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled" | DriverEventType;
+export type FreightTrackingStatus = FreightStatus | DriverEventType;
 
 export interface DriverTrackingEvent {
   id: string;
@@ -499,7 +498,9 @@ export async function fetchDriverAccessSummary(freight: FreightRecord) {
 
   const { data: events, error: eventsError } = await client
     .from("freight_events")
-    .select("id, freight_id, order_id, event_type, event_label, occurred_at, latitude, longitude")
+    .select(
+      "id, freight_id, order_id, event_type, event_label, occurred_at, latitude, longitude, receiver_name, receiver_document, occurrence_type, notes, estimated_arrival_at",
+    )
     .eq("freight_id", freightRow.id)
     .order("occurred_at", { ascending: true });
 
@@ -591,7 +592,14 @@ export async function registerDriverEvent(
       notes: info?.notes,
     });
     mockTrip.nextEvent = getNextDriverEvent(mockTrip)?.type ?? null;
-    mockTrip.status = eventType === "unloaded" ? "delivered" : eventType;
+    mockTrip.status =
+      eventType === "arrived_loading"
+        ? "loading"
+        : eventType === "in_transit"
+          ? "in_route"
+          : eventType === "arrived_delivery_location"
+            ? "at_destination"
+            : "unloaded";
     return mockTrip;
   }
 

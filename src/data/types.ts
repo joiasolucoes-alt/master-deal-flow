@@ -21,8 +21,12 @@ export type AppStatus =
   | "Em faturamento"
   | "Aguardando frete"
   | "Frete liberado"
+  | "Aguardando carregamento"
+  | "Em carregamento"
   | "Em separação"
   | "Em rota"
+  | "No destino"
+  | "Mercadoria descarregada"
   | "Entregue"
   | "Finalizada"
   | "Cancelada";
@@ -81,18 +85,20 @@ export interface Product {
 
 export interface NotificationItem {
   id: string;
+  remoteId?: string;
   title: string;
   description: string;
   type: "info" | "warning" | "success";
   createdAt: string;
   unread: boolean;
   href?: string;
-  entityType?: "approval" | "delivery" | "simulation" | "order" | "negotiation";
+  entityType?: "approval" | "delivery" | "freight" | "simulation" | "order" | "negotiation";
   entityId?: string;
   targetUserId?: string;
   targetUserEmail?: string;
   targetUserName?: string;
   targetRole?: UserRole;
+  source?: string;
 }
 
 export interface SimulationProduct {
@@ -181,7 +187,15 @@ export interface Simulation {
   financialNotes?: string;
   status: Exclude<
     AppStatus,
-    "Em faturamento" | "Aguardando frete" | "Em separação" | "Em rota" | "Entregue"
+    | "Em faturamento"
+    | "Aguardando frete"
+    | "Aguardando carregamento"
+    | "Em carregamento"
+    | "Em separação"
+    | "Em rota"
+    | "No destino"
+    | "Mercadoria descarregada"
+    | "Entregue"
   >;
   priority: Priority;
   products: SimulationProduct[];
@@ -242,8 +256,12 @@ export interface Order {
     | "Pedido confirmado"
     | "Aguardando frete"
     | "Frete liberado"
+    | "Aguardando carregamento"
+    | "Em carregamento"
     | "Em separação"
     | "Em rota"
+    | "No destino"
+    | "Mercadoria descarregada"
     | "Entregue"
   >;
   priority: Priority;
@@ -332,7 +350,15 @@ export interface RealizedResultRecord {
   updatedAt: string;
 }
 
-export type FreightStatus = "quoted" | "hired" | "loading" | "in_route" | "delivered" | "cancelled";
+export type FreightStatus =
+  | "quoted"
+  | "hired"
+  | "loading"
+  | "in_route"
+  | "at_destination"
+  | "unloaded"
+  | "delivered"
+  | "cancelled";
 
 export type FreightCargoType = "comum" | "perigosa" | "refrigerada" | "excesso" | "rastreada";
 export type FreightDriverEmploymentType = "autonomo" | "transportadora";
@@ -354,6 +380,7 @@ export interface FreightRecord {
   trailerPlate?: string;
   anttRegistration?: string;
   route: string;
+  plannedFreightValue?: number;
   freightValue: number;
   weight: string;
   status: FreightStatus;

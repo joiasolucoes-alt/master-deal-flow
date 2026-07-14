@@ -205,12 +205,6 @@ export function createSupabaseSimulationRepository(): SimulationRepository {
       }).catch((auditError) => {
         console.warn("Simulação salva, mas auditoria não foi registrada.", auditError);
       });
-      await insertNotification(client, simulation.id, simulation.status, simulation.number).catch(
-        (notificationError) => {
-          console.warn("Simulação salva, mas notificação não foi registrada.", notificationError);
-        },
-      );
-
       const saved = await fetchSimulationInternal(client, simulation.id);
       return saved ? rowToSimulation(saved) : simulation;
     },
@@ -270,37 +264,6 @@ async function insertAuditEvent(
     action,
     description: `Evento ${action} registrado para ${entityType}.`,
     metadata,
-  });
-
-  if (error) throw error;
-}
-
-async function insertNotification(
-  client: SupabaseClient,
-  simulationExternalId: string,
-  status: Simulation["status"],
-  number: string,
-) {
-  const importantStatuses = new Set<Simulation["status"]>([
-    "Pendente de aprovação",
-    "Aguardando aprovação do Gestor",
-    "Aguardando pagamento",
-    "Pagamento realizado",
-    "Comprovante anexado",
-    "Aguardando validação comercial",
-    "Pedido confirmado",
-    "Ajuste solicitado",
-    "Reprovada",
-  ]);
-
-  if (!importantStatuses.has(status)) return;
-
-  const { error } = await client.from("notifications").insert({
-    title: `Simulação ${number}`,
-    message: `Status atualizado para ${status}.`,
-    type: "info",
-    entity_type: "simulation",
-    entity_external_id: simulationExternalId,
   });
 
   if (error) throw error;

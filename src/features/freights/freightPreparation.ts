@@ -65,7 +65,14 @@ export function getFreightBucket(
   titles: FinancialTitle[],
 ): FreightBucket {
   if (freight.status === "delivered" || freight.status === "cancelled") return "finished";
-  if (freight.status === "loading" || freight.status === "in_route") return "in_progress";
+  if (
+    freight.status === "loading" ||
+    freight.status === "in_route" ||
+    freight.status === "at_destination" ||
+    freight.status === "unloaded"
+  ) {
+    return "in_progress";
+  }
   if (canExecuteFreight(freight, order, titles)) return "released";
   return "preparation";
 }

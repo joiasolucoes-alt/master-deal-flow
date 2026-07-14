@@ -78,7 +78,6 @@ import { formatCurrency, formatDate, formatPercent, formatPrecisePercent } from 
 import { toast } from "sonner";
 import { downloadTextFile } from "@/lib/actions";
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage";
-import { useAppStore } from "@/store/useAppStore";
 import { createSupabaseApprovalRepository } from "@/features/approvals/repositories/supabaseApprovalRepository";
 import { createSupabaseSimulationRepository } from "@/features/simulations/repositories/supabaseSimulationRepository";
 import {
@@ -432,8 +431,8 @@ function SimulationDetailPage() {
     upsertFinancialTitle,
     upsertFreight,
     upsertNegotiationWallet,
+    addNotification,
   } = useAppContext();
-  const addNotification = useAppStore((store) => store.addNotification);
   const currentUser = auth.user;
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, currentUser),

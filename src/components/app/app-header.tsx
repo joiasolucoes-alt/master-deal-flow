@@ -23,6 +23,7 @@ import {
   getSupabaseClient,
   getSupabaseConfigStatus,
 } from "@/lib/supabaseClient";
+import { markNotificationReadRemote } from "@/features/notifications/notificationRepository";
 import {
   filterNegotiationsForUser,
   filterOrdersForUser,
@@ -76,9 +77,7 @@ export function AppHeader() {
 
         const { data, error } = await client
           .from("notifications")
-          .select(
-            "id, external_id, title, message, type, read, entity_type, entity_id, entity_external_id, created_at",
-          )
+          .select("*")
           .order("created_at", { ascending: false })
           .limit(80);
 
@@ -89,7 +88,7 @@ export function AppHeader() {
         const remoteIds = new Set(remoteNotifications.map((item) => item.id));
         const localOnly = notificationsRef.current.filter((item) => !remoteIds.has(item.id));
         const nextNotifications = [...remoteNotifications, ...localOnly];
-        if (!sameNotificationIds(nextNotifications, notificationsRef.current)) {
+        if (!sameNotifications(nextNotifications, notificationsRef.current)) {
           setNotifications(nextNotifications);
         }
       } catch (error) {
@@ -109,20 +108,23 @@ export function AppHeader() {
   }, [auth.hasAccess, setNotifications]);
 
   const visibleNotifications = useMemo(() => {
-    if (user?.role === "Admin") return notifications;
     const userEmail = user?.email?.trim().toLowerCase();
     const userName = user?.name?.trim().toLowerCase();
 
     return notifications.filter((item) => {
-      if (item.targetUserId && item.targetUserId === user?.id) return true;
-      if (item.targetUserEmail && item.targetUserEmail.trim().toLowerCase() === userEmail) {
-        return true;
-      }
-      if (item.targetUserName && item.targetUserName.trim().toLowerCase() === userName) {
-        return true;
-      }
-      if (item.targetRole && item.targetRole === user?.role) return true;
-      return false;
+      const hasIndividualTarget = Boolean(
+        item.targetUserId || item.targetUserEmail || item.targetUserName,
+      );
+      const matchesIndividualTarget =
+        (item.targetUserId && item.targetUserId === user?.id) ||
+        (item.targetUserEmail && item.targetUserEmail.trim().toLowerCase() === userEmail) ||
+        (item.targetUserName && item.targetUserName.trim().toLowerCase() === userName);
+
+      if (hasIndividualTarget) return Boolean(matchesIndividualTarget);
+      if (item.targetRole) return item.targetRole === user?.role;
+
+      // Somente o ADM recebe notificações legadas que ainda não possuem destinatário.
+      return user?.role === "Admin";
     });
   }, [notifications, user?.email, user?.id, user?.name, user?.role]);
   const unread = visibleNotifications.filter((item) => item.unread).length;
@@ -185,6 +187,11 @@ export function AppHeader() {
 
   function openNotification(item: (typeof notifications)[number]) {
     markNotificationRead(item.id);
+    if (isSupabaseProvider() && getSupabaseConfigStatus().configured) {
+      void markNotificationReadRemote(item).catch((error) => {
+        console.warn("Não foi possível marcar a notificação como lida no Supabase.", error);
+      });
+    }
     window.setTimeout(() => {
       if (item.entityType === "approval" && item.entityId) {
         if (user?.role === "Admin" || user?.role === "Aprovador" || user?.role === "Financeiro") {
@@ -206,8 +213,12 @@ export function AppHeader() {
         navigate({ to: "/negociacoes/$id", params: { id: item.entityId } });
         return;
       }
+      if (item.entityType === "freight") {
+        navigate({ to: "/fretes" });
+        return;
+      }
       if (item.href === "/aprovacoes") navigate({ to: "/aprovacoes" });
-      if (item.href === "/entregas") navigate({ to: "/entregas" });
+      if (item.href === "/entregas" || item.href === "/fretes") navigate({ to: "/fretes" });
       if (item.href === "/simulacoes") navigate({ to: "/simulacoes" });
       if (item.href === "/pedidos") navigate({ to: "/pedidos" });
       if (item.href === "/negociacoes") navigate({ to: "/negociacoes" });
@@ -369,15 +380,21 @@ type NotificationRow = {
   entity_type?: string | null;
   entity_id?: string | null;
   entity_external_id?: string | null;
+  user_id?: string | null;
+  target_role?: string | null;
+  target_user_email?: string | null;
+  target_user_name?: string | null;
+  source?: string | null;
   created_at: string;
 };
 
 function rowToNotification(row: NotificationRow): NotificationItem {
-  const targetRole = inferTargetRole(row);
+  const targetRole = normalizeTargetRole(row.target_role) ?? inferTargetRole(row);
   const entityType = normalizeEntityType(row.entity_type, targetRole);
 
   return {
     id: row.external_id ?? `remote-${row.id}`,
+    remoteId: row.id,
     title: row.title,
     description: row.message,
     type: normalizeNotificationType(row.type),
@@ -385,7 +402,11 @@ function rowToNotification(row: NotificationRow): NotificationItem {
     unread: !row.read,
     entityType,
     entityId: row.entity_external_id ?? row.entity_id ?? undefined,
+    targetUserId: row.user_id ?? undefined,
+    targetUserEmail: row.target_user_email ?? undefined,
+    targetUserName: row.target_user_name ?? undefined,
     targetRole,
+    source: row.source ?? undefined,
   };
 }
 
@@ -402,11 +423,25 @@ function normalizeEntityType(
   if (
     entityType === "approval" ||
     entityType === "delivery" ||
+    entityType === "freight" ||
     entityType === "simulation" ||
     entityType === "order" ||
     entityType === "negotiation"
   ) {
     return entityType;
+  }
+  return undefined;
+}
+
+function normalizeTargetRole(targetRole: string | null | undefined): UserRole | undefined {
+  const normalized = targetRole?.trim().toLowerCase();
+  if (normalized === "admin") return "Admin";
+  if (normalized === "aprovador") return "Aprovador";
+  if (normalized === "financeiro") return "Financeiro";
+  if (normalized === "frete" || normalized === "frota") return "Frete";
+  if (normalized === "comercial") return "Comercial";
+  if (normalized === "negociações" || normalized === "negociacoes" || normalized === "gestor") {
+    return "Negociações";
   }
   return undefined;
 }
@@ -431,7 +466,24 @@ function inferTargetRole(row: NotificationRow): UserRole | undefined {
   return undefined;
 }
 
-function sameNotificationIds(left: NotificationItem[], right: NotificationItem[]) {
+function sameNotifications(left: NotificationItem[], right: NotificationItem[]) {
   if (left.length !== right.length) return false;
-  return left.every((item, index) => item.id === right[index]?.id);
+  return left.every((item, index) => {
+    const other = right[index];
+    return (
+      item.id === other?.id &&
+      item.remoteId === other.remoteId &&
+      item.title === other.title &&
+      item.description === other.description &&
+      item.type === other.type &&
+      item.createdAt === other.createdAt &&
+      item.unread === other.unread &&
+      item.entityType === other.entityType &&
+      item.entityId === other.entityId &&
+      item.targetUserId === other.targetUserId &&
+      item.targetUserEmail === other.targetUserEmail &&
+      item.targetUserName === other.targetUserName &&
+      item.targetRole === other.targetRole
+    );
+  });
 }
