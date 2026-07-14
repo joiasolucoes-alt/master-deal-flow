@@ -25,12 +25,16 @@ import { Route as AppFinanceiroRouteImport } from './routes/_app.financeiro'
 import { Route as AppEntregasRouteImport } from './routes/_app.entregas'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppConfiguracoesRouteImport } from './routes/_app.configuracoes'
+import { Route as AppClientesRouteImport } from './routes/_app.clientes'
 import { Route as AppAprovacoesRouteImport } from './routes/_app.aprovacoes'
 import { Route as AppSimulacoesIndexRouteImport } from './routes/_app.simulacoes.index'
 import { Route as AppPedidosIndexRouteImport } from './routes/_app.pedidos.index'
+import { Route as AppNegociacoesIndexRouteImport } from './routes/_app.negociacoes.index'
+import { Route as AppClientesIndexRouteImport } from './routes/_app.clientes.index'
 import { Route as AppSimulacoesIdRouteImport } from './routes/_app.simulacoes.$id'
 import { Route as AppPedidosIdRouteImport } from './routes/_app.pedidos.$id'
 import { Route as AppNegociacoesIdRouteImport } from './routes/_app.negociacoes.$id'
+import { Route as AppClientesIdRouteImport } from './routes/_app.clientes.$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -111,6 +115,11 @@ const AppConfiguracoesRoute = AppConfiguracoesRouteImport.update({
   path: '/configuracoes',
   getParentRoute: () => AppRoute,
 } as any)
+const AppClientesRoute = AppClientesRouteImport.update({
+  id: '/clientes',
+  path: '/clientes',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAprovacoesRoute = AppAprovacoesRouteImport.update({
   id: '/aprovacoes',
   path: '/aprovacoes',
@@ -125,6 +134,16 @@ const AppPedidosIndexRoute = AppPedidosIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppPedidosRoute,
+} as any)
+const AppNegociacoesIndexRoute = AppNegociacoesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppNegociacoesRoute,
+} as any)
+const AppClientesIndexRoute = AppClientesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppClientesRoute,
 } as any)
 const AppSimulacoesIdRoute = AppSimulacoesIdRouteImport.update({
   id: '/$id',
@@ -141,11 +160,17 @@ const AppNegociacoesIdRoute = AppNegociacoesIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AppNegociacoesRoute,
 } as any)
+const AppClientesIdRoute = AppClientesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppClientesRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/aprovacoes': typeof AppAprovacoesRoute
+  '/clientes': typeof AppClientesRouteWithChildren
   '/configuracoes': typeof AppConfiguracoesRoute
   '/dashboard': typeof AppDashboardRoute
   '/entregas': typeof AppEntregasRoute
@@ -159,9 +184,12 @@ export interface FileRoutesByFullPath {
   '/relatorios': typeof AppRelatoriosRoute
   '/simulacoes': typeof AppSimulacoesRouteWithChildren
   '/motorista/$token': typeof MotoristaTokenRoute
+  '/clientes/$id': typeof AppClientesIdRoute
   '/negociacoes/$id': typeof AppNegociacoesIdRoute
   '/pedidos/$id': typeof AppPedidosIdRoute
   '/simulacoes/$id': typeof AppSimulacoesIdRoute
+  '/clientes/': typeof AppClientesIndexRoute
+  '/negociacoes/': typeof AppNegociacoesIndexRoute
   '/pedidos/': typeof AppPedidosIndexRoute
   '/simulacoes/': typeof AppSimulacoesIndexRoute
 }
@@ -174,15 +202,17 @@ export interface FileRoutesByTo {
   '/entregas': typeof AppEntregasRoute
   '/financeiro': typeof AppFinanceiroRoute
   '/fretes': typeof AppFretesRoute
-  '/negociacoes': typeof AppNegociacoesRouteWithChildren
   '/perfil': typeof AppPerfilRoute
   '/pool-oportunidades': typeof AppPoolOportunidadesRoute
   '/reajustes': typeof AppReajustesRoute
   '/relatorios': typeof AppRelatoriosRoute
   '/motorista/$token': typeof MotoristaTokenRoute
+  '/clientes/$id': typeof AppClientesIdRoute
   '/negociacoes/$id': typeof AppNegociacoesIdRoute
   '/pedidos/$id': typeof AppPedidosIdRoute
   '/simulacoes/$id': typeof AppSimulacoesIdRoute
+  '/clientes': typeof AppClientesIndexRoute
+  '/negociacoes': typeof AppNegociacoesIndexRoute
   '/pedidos': typeof AppPedidosIndexRoute
   '/simulacoes': typeof AppSimulacoesIndexRoute
 }
@@ -192,6 +222,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/aprovacoes': typeof AppAprovacoesRoute
+  '/_app/clientes': typeof AppClientesRouteWithChildren
   '/_app/configuracoes': typeof AppConfiguracoesRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/entregas': typeof AppEntregasRoute
@@ -205,9 +236,12 @@ export interface FileRoutesById {
   '/_app/relatorios': typeof AppRelatoriosRoute
   '/_app/simulacoes': typeof AppSimulacoesRouteWithChildren
   '/motorista/$token': typeof MotoristaTokenRoute
+  '/_app/clientes/$id': typeof AppClientesIdRoute
   '/_app/negociacoes/$id': typeof AppNegociacoesIdRoute
   '/_app/pedidos/$id': typeof AppPedidosIdRoute
   '/_app/simulacoes/$id': typeof AppSimulacoesIdRoute
+  '/_app/clientes/': typeof AppClientesIndexRoute
+  '/_app/negociacoes/': typeof AppNegociacoesIndexRoute
   '/_app/pedidos/': typeof AppPedidosIndexRoute
   '/_app/simulacoes/': typeof AppSimulacoesIndexRoute
 }
@@ -217,6 +251,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/aprovacoes'
+    | '/clientes'
     | '/configuracoes'
     | '/dashboard'
     | '/entregas'
@@ -230,9 +265,12 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/simulacoes'
     | '/motorista/$token'
+    | '/clientes/$id'
     | '/negociacoes/$id'
     | '/pedidos/$id'
     | '/simulacoes/$id'
+    | '/clientes/'
+    | '/negociacoes/'
     | '/pedidos/'
     | '/simulacoes/'
   fileRoutesByTo: FileRoutesByTo
@@ -245,15 +283,17 @@ export interface FileRouteTypes {
     | '/entregas'
     | '/financeiro'
     | '/fretes'
-    | '/negociacoes'
     | '/perfil'
     | '/pool-oportunidades'
     | '/reajustes'
     | '/relatorios'
     | '/motorista/$token'
+    | '/clientes/$id'
     | '/negociacoes/$id'
     | '/pedidos/$id'
     | '/simulacoes/$id'
+    | '/clientes'
+    | '/negociacoes'
     | '/pedidos'
     | '/simulacoes'
   id:
@@ -262,6 +302,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/_app/aprovacoes'
+    | '/_app/clientes'
     | '/_app/configuracoes'
     | '/_app/dashboard'
     | '/_app/entregas'
@@ -275,9 +316,12 @@ export interface FileRouteTypes {
     | '/_app/relatorios'
     | '/_app/simulacoes'
     | '/motorista/$token'
+    | '/_app/clientes/$id'
     | '/_app/negociacoes/$id'
     | '/_app/pedidos/$id'
     | '/_app/simulacoes/$id'
+    | '/_app/clientes/'
+    | '/_app/negociacoes/'
     | '/_app/pedidos/'
     | '/_app/simulacoes/'
   fileRoutesById: FileRoutesById
@@ -403,6 +447,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppConfiguracoesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/clientes': {
+      id: '/_app/clientes'
+      path: '/clientes'
+      fullPath: '/clientes'
+      preLoaderRoute: typeof AppClientesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/aprovacoes': {
       id: '/_app/aprovacoes'
       path: '/aprovacoes'
@@ -423,6 +474,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/pedidos/'
       preLoaderRoute: typeof AppPedidosIndexRouteImport
       parentRoute: typeof AppPedidosRoute
+    }
+    '/_app/negociacoes/': {
+      id: '/_app/negociacoes/'
+      path: '/'
+      fullPath: '/negociacoes/'
+      preLoaderRoute: typeof AppNegociacoesIndexRouteImport
+      parentRoute: typeof AppNegociacoesRoute
+    }
+    '/_app/clientes/': {
+      id: '/_app/clientes/'
+      path: '/'
+      fullPath: '/clientes/'
+      preLoaderRoute: typeof AppClientesIndexRouteImport
+      parentRoute: typeof AppClientesRoute
     }
     '/_app/simulacoes/$id': {
       id: '/_app/simulacoes/$id'
@@ -445,15 +510,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppNegociacoesIdRouteImport
       parentRoute: typeof AppNegociacoesRoute
     }
+    '/_app/clientes/$id': {
+      id: '/_app/clientes/$id'
+      path: '/$id'
+      fullPath: '/clientes/$id'
+      preLoaderRoute: typeof AppClientesIdRouteImport
+      parentRoute: typeof AppClientesRoute
+    }
   }
 }
 
+interface AppClientesRouteChildren {
+  AppClientesIdRoute: typeof AppClientesIdRoute
+  AppClientesIndexRoute: typeof AppClientesIndexRoute
+}
+
+const AppClientesRouteChildren: AppClientesRouteChildren = {
+  AppClientesIdRoute: AppClientesIdRoute,
+  AppClientesIndexRoute: AppClientesIndexRoute,
+}
+
+const AppClientesRouteWithChildren = AppClientesRoute._addFileChildren(
+  AppClientesRouteChildren,
+)
+
 interface AppNegociacoesRouteChildren {
   AppNegociacoesIdRoute: typeof AppNegociacoesIdRoute
+  AppNegociacoesIndexRoute: typeof AppNegociacoesIndexRoute
 }
 
 const AppNegociacoesRouteChildren: AppNegociacoesRouteChildren = {
   AppNegociacoesIdRoute: AppNegociacoesIdRoute,
+  AppNegociacoesIndexRoute: AppNegociacoesIndexRoute,
 }
 
 const AppNegociacoesRouteWithChildren = AppNegociacoesRoute._addFileChildren(
@@ -490,6 +578,7 @@ const AppSimulacoesRouteWithChildren = AppSimulacoesRoute._addFileChildren(
 
 interface AppRouteChildren {
   AppAprovacoesRoute: typeof AppAprovacoesRoute
+  AppClientesRoute: typeof AppClientesRouteWithChildren
   AppConfiguracoesRoute: typeof AppConfiguracoesRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppEntregasRoute: typeof AppEntregasRoute
@@ -506,6 +595,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAprovacoesRoute: AppAprovacoesRoute,
+  AppClientesRoute: AppClientesRouteWithChildren,
   AppConfiguracoesRoute: AppConfiguracoesRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppEntregasRoute: AppEntregasRoute,

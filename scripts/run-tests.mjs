@@ -287,18 +287,41 @@ function createPayableTitlesFromSimulationOrder(simulation, order) {
   return titles;
 }
 
+function isFreightPayableTitle(title) {
+  return (
+    Boolean(title.id?.startsWith("pay-freight-")) ||
+    Boolean(title.titleNumber?.endsWith("-PAG-FRETE"))
+  );
+}
+
 function getRequiredPayablesForFreightRelease(titles, orderId) {
   return titles.filter(
     (title) =>
       title.orderId === orderId &&
       title.type === "payable" &&
       title.status !== "cancelled" &&
-      title.amount > 0,
+      title.amount > 0 &&
+      !isFreightPayableTitle(title),
   );
 }
 
+const FREIGHT_GATE_RELEASED_STATUSES = new Set([
+  "Pedido confirmado",
+  "Frete liberado",
+  "Aguardando frete",
+  "Aguardando carregamento",
+  "Em carregamento",
+  "Em separação",
+  "Em rota",
+  "No destino",
+  "Mercadoria descarregada",
+  "Entregue",
+]);
+
 function isOrderFinanciallyReleased(order, titles) {
-  const payables = getRequiredPayablesForFreightRelease(titles, order?.id);
+  if (!order) return false;
+  if (FREIGHT_GATE_RELEASED_STATUSES.has(order.status)) return true;
+  const payables = getRequiredPayablesForFreightRelease(titles, order.id);
   return payables.length > 0 && payables.every((title) => title.paidAmount >= title.amount);
 }
 
@@ -887,6 +910,40 @@ assert.equal(
   releaseOrderForFreightIfReady(operationalOrder, paidOperationalTitles).status,
   "Frete liberado",
 );
+
+// Regressão do deadlock: a conta a pagar do frete (gerada na contratação, paga só
+// depois da entrega) não pode voltar a travar a liberação operacional do pedido.
+const titlesWithOpenFreightPayable = [
+  ...paidOperationalTitles,
+  {
+    id: "pay-freight-freight-ord-oper-1",
+    orderId: "ord-oper-1",
+    titleNumber: "PED OPER 1-PAG-FRETE",
+    type: "payable",
+    status: "open",
+    amount: 350,
+    paidAmount: 0,
+  },
+];
+assert.equal(isOrderFinanciallyReleased(operationalOrder, titlesWithOpenFreightPayable), true);
+
+// Liberação é portão de entrada: status pós-conversão (incluindo a jornada do
+// motorista) nunca regridem para "aguardando liberação financeira".
+for (const releasedStatus of [
+  "Pedido confirmado",
+  "Aguardando carregamento",
+  "Em carregamento",
+  "No destino",
+  "Mercadoria descarregada",
+]) {
+  assert.equal(
+    isOrderFinanciallyReleased({ ...operationalOrder, status: releasedStatus }, []),
+    true,
+  );
+}
+
+// Pedido pré-conversão sem contas a pagar continua travado (caminho legado).
+assert.equal(isOrderFinanciallyReleased(operationalOrder, []), false);
 assert.equal(
   calculateBillingProgress([
     { amount: 500, paidAmount: 500 },

@@ -40,6 +40,7 @@ export type AppStore = AppStoreState & {
   selectedApprovalId: string | null;
   selectedOrderId: string | null;
   setSimulations: (value: Simulation[]) => void;
+  setNegotiations: (value: Negotiation[]) => void;
   setOrders: (value: Order[]) => void;
   setFinancialTitles: (value: FinancialTitle[]) => void;
   setRealizedResults: (value: RealizedResultRecord[]) => void;
@@ -73,6 +74,7 @@ export type AppStore = AppStoreState & {
 type PersistedState = Omit<
   AppStore,
   | "setSimulations"
+  | "setNegotiations"
   | "setOrders"
   | "setFinancialTitles"
   | "setRealizedResults"
@@ -240,6 +242,8 @@ function subscribe(listener: Listener) {
 const storeActions = {
   setSimulations: (value: Simulation[]) =>
     setState((current) => ({ ...current, simulations: value })),
+  setNegotiations: (value: Negotiation[]) =>
+    setState((current) => ({ ...current, negotiations: value })),
   setOrders: (value: Order[]) => setState((current) => ({ ...current, orders: value })),
   setFinancialTitles: (value: FinancialTitle[]) =>
     setState((current) => ({ ...current, financialTitles: value })),

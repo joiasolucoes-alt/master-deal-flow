@@ -11,6 +11,7 @@ import {
   Settings,
   ShieldCheck,
   Truck,
+  Users,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -42,6 +43,7 @@ const navigation: Array<{
 }> = [
   { title: "Dashboard", to: "/dashboard", icon: LayoutDashboard, permission: "dashboard:view" },
   { title: "Negociações", to: "/negociacoes", icon: Handshake, permission: "negotiations:view" },
+  { title: "Clientes", to: "/clientes", icon: Users, permission: "clients:view" },
   {
     title: "Simulações",
     to: "/simulacoes",

@@ -278,6 +278,16 @@ export function createPayableTitlesFromSimulationOrder(
   return dedupeFinancialTitles(titles).filter((title) => title.amount > 0);
 }
 
+/**
+ * A conta a pagar do frete (transportador) vence depois da entrega — o canhoto é o
+ * apoio de conferência. Ela não pode condicionar a liberação operacional do próprio
+ * frete, senão o fluxo trava em deadlock: para transportar seria preciso já ter pago
+ * o transporte.
+ */
+function isFreightPayableTitle(title: FinancialTitle) {
+  return title.id.startsWith("pay-freight-") || title.titleNumber.endsWith("-PAG-FRETE");
+}
+
 export function getRequiredPayablesForFreightRelease(
   titles: FinancialTitle[],
   orderId: string | undefined,
@@ -288,7 +298,8 @@ export function getRequiredPayablesForFreightRelease(
       title.orderId === orderId &&
       title.type === "payable" &&
       title.status !== "cancelled" &&
-      title.amount > 0,
+      title.amount > 0 &&
+      !isFreightPayableTitle(title),
   );
 }
 
@@ -296,13 +307,18 @@ export function getRequiredPayablesForFreightRelease(
 // Regra vigente (fix: separate freight release from financial invoicing): o frete
 // é liberado assim que a SIM vira Pedido ("Pedido confirmado"), em paralelo ao
 // faturamento. O faturamento/NF NÃO bloqueia o frete. Por isso "Pedido confirmado"
-// já conta como liberado, junto com os status operacionais seguintes.
+// já conta como liberado, junto com TODOS os status operacionais seguintes —
+// incluindo os da jornada do motorista, que nunca regridem a liberação.
 const FREIGHT_RELEASED_ORDER_STATUSES: ReadonlyArray<Order["status"]> = [
   "Pedido confirmado",
   "Frete liberado",
   "Aguardando frete",
+  "Aguardando carregamento",
+  "Em carregamento",
   "Em separação",
   "Em rota",
+  "No destino",
+  "Mercadoria descarregada",
   "Entregue",
 ];
 

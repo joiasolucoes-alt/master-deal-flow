@@ -47,6 +47,7 @@ import { createSupabaseFreightRepository } from "@/features/freights/repositorie
 import { createSupabaseDeliveryRepository } from "@/features/deliveries/repositories/supabaseDeliveryRepository";
 import { createSupabaseRealizedResultRepository } from "@/features/results/repositories/supabaseRealizedResultRepository";
 import { createSupabaseNegotiationWalletRepository } from "@/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository";
+import { createSupabaseNegotiationRepository } from "@/features/negotiations/repositories/supabaseNegotiationRepository";
 import { persistNotification } from "@/features/notifications/notificationRepository";
 import { toast } from "sonner";
 
@@ -580,6 +581,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const suppliers = useAppStore((store) => store.suppliers);
   const products = useAppStore((store) => store.products);
   const setSimulationsStore = useAppStore((store) => store.setSimulations);
+  const setNegotiationsStore = useAppStore((store) => store.setNegotiations);
   const setOrdersStore = useAppStore((store) => store.setOrders);
   const setFinancialTitlesStore = useAppStore((store) => store.setFinancialTitles);
   const setRealizedResultsStore = useAppStore((store) => store.setRealizedResults);
@@ -928,6 +930,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
+    let partialLoadWarningShown = false;
     const simulationRepository = createSupabaseSimulationRepository();
     const orderRepository = createSupabaseOrderRepository();
     const catalogRepository = createSupabaseCatalogRepository();
@@ -936,13 +939,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const freightRepository = createSupabaseFreightRepository();
     const deliveryRepository = createSupabaseDeliveryRepository();
     const negotiationWalletRepository = createSupabaseNegotiationWalletRepository();
-    let partialLoadWarningShown = false;
+    const negotiationRepository = createSupabaseNegotiationRepository();
 
     async function loadRemoteData() {
       try {
         const [
           remoteSimulations,
           remoteOrders,
+          remoteNegotiations,
           remoteFinancialTitles,
           remoteRealizedResults,
           remoteNegotiationWallets,
@@ -955,6 +959,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ] = await Promise.allSettled([
           simulationRepository.list(),
           orderRepository.list(),
+          negotiationRepository.list(),
           financialRepository.listTitles(),
           realizedResultRepository.list(),
           negotiationWalletRepository.listWallets(),
@@ -986,6 +991,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             mergeRemoteSimulationsWithLocalPending(value, getAppStoreSnapshot().simulations),
           ),
         );
+        applyResult(remoteNegotiations, "negociações", (value) => {
+          // Fallback: sem negociações no Supabase, mantém a semente local.
+          if (value.length > 0) setNegotiationsStore(value);
+        });
         applyResult(remoteOrders, "pedidos", setOrdersStore);
         applyResult(remoteFinancialTitles, "títulos financeiros", setFinancialTitlesStore);
         applyResult(remoteRealizedResults, "resultados realizados", setRealizedResultsStore);
@@ -1045,6 +1054,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFinancialTitlesStore,
     setRealizedResultsStore,
     setNegotiationWalletsStore,
+    setNegotiationsStore,
     setOpportunityPoolsStore,
     setFreightsStore,
     setOrdersStore,

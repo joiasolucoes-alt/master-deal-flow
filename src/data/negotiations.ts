@@ -4,13 +4,15 @@ export const negotiations: Negotiation[] = [
   {
     id: "neg-1",
     number: "NEG-2026-0084",
-    client: "Mercado Bom Lar",
-    owner: "João Silva",
-    stage: "Simulação",
-    expectedValue: 312450,
-    marginPercent: 18.7,
-    nextAction: "Revisar composição de custos",
-    status: "Aberta",
+    // Vinculado (por cliente + responsável) às simulações e pedidos reais deste
+    // cliente, populando histórico, produtos e métricas realizadas no detalhe.
+    client: "Usuario teste 1.0",
+    owner: "Djalma Junior",
+    stage: "Pedido",
+    expectedValue: 275789,
+    marginPercent: 4.6,
+    nextAction: "Acompanhar faturamento e entrega dos pedidos em rota",
+    status: "Convertida",
   },
   {
     id: "neg-2",
