@@ -21,6 +21,7 @@ export type SimulationRow = {
   id?: string;
   external_id?: string | null;
   number: string;
+  negotiation_id?: string | null;
   client_name?: string | null;
   supplier_name?: string | null;
   responsible_name?: string | null;
@@ -140,6 +141,13 @@ function toDateTime(value: string | null | undefined) {
   return value || new Date().toISOString();
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** `negotiation_id` é uuid (FK). Só persiste quando o valor é um uuid válido. */
+function toNegotiationId(value: string | null | undefined) {
+  return value && UUID_PATTERN.test(value) ? value : null;
+}
+
 function getApprovalRowTime(row: SimulationApprovalRow) {
   return row.decided_at || row.updated_at || row.created_at || "";
 }
@@ -237,6 +245,7 @@ export function simulationToRow(simulation: Simulation): Record<string, unknown>
   return {
     external_id: simulation.id,
     number: simulation.number,
+    negotiation_id: toNegotiationId(simulation.negotiationId),
     client_name: simulation.client,
     supplier_name: simulation.supplier,
     responsible_name: simulation.owner,
@@ -379,6 +388,7 @@ export function rowToSimulation(row: SimulationRow): Simulation {
   return {
     id: row.external_id || row.id || row.number,
     number: row.number,
+    negotiationId: row.negotiation_id ?? undefined,
     client: row.client_name || "",
     supplier: row.supplier_name || "",
     deliveryCity: row.delivery_city || "",

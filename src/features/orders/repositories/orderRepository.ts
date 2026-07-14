@@ -12,6 +12,7 @@ export type OrderRow = {
   external_id?: string | null;
   number: string;
   simulation_external_id?: string | null;
+  negotiation_id?: string | null;
   client_name?: string | null;
   responsible_name?: string | null;
   unit_name?: string | null;
@@ -59,6 +60,13 @@ function toDateTime(value: string | null | undefined) {
   return value || new Date().toISOString();
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** `negotiation_id` é uuid (FK). Só persiste quando o valor é um uuid válido. */
+function toNegotiationId(value: string | null | undefined) {
+  return value && UUID_PATTERN.test(value) ? value : null;
+}
+
 export function orderToRow(order: Order): Record<string, unknown> {
   const goodsTotal = order.products.reduce((sum, product) => {
     return sum + (product.costTotal ?? product.quantityTotal * product.costUnit);
@@ -68,6 +76,7 @@ export function orderToRow(order: Order): Record<string, unknown> {
     external_id: order.id,
     number: order.number,
     simulation_external_id: order.simulationId ?? null,
+    negotiation_id: toNegotiationId(order.negotiationId),
     client_name: order.client,
     responsible_name: order.owner,
     unit_name: order.unit,
@@ -118,6 +127,7 @@ export function rowToOrder(row: OrderRow): Order {
     id: row.external_id || row.id || row.number,
     number: row.number,
     simulationId: row.simulation_external_id ?? undefined,
+    negotiationId: row.negotiation_id ?? undefined,
     client: row.client_name || "",
     origin: row.origin || "",
     destination: row.destination || "",

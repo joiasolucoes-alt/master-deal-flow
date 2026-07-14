@@ -167,6 +167,8 @@ export interface SimulationApprovalFlow {
 export interface Simulation {
   id: string;
   number: string;
+  /** Vínculo explícito com a negociação (uuid da tabela `negotiations`). Opcional. */
+  negotiationId?: string;
   client: string;
   supplier: string;
   deliveryCity: string;
@@ -227,6 +229,8 @@ export interface Order {
   id: string;
   number: string;
   simulationId?: string;
+  /** Vínculo explícito com a negociação (uuid da tabela `negotiations`). Opcional. */
+  negotiationId?: string;
   client: string;
   origin: string;
   destination: string;

@@ -3,6 +3,7 @@ import { matchesUserIdentity } from "@/lib/userIdentity";
 
 export type Permission =
   | "dashboard:view"
+  | "clients:view"
   | "negotiations:view"
   | "negotiations:manage"
   | "simulations:view"
@@ -22,6 +23,7 @@ export type Permission =
 
 const allPermissions: Permission[] = [
   "dashboard:view",
+  "clients:view",
   "negotiations:view",
   "negotiations:manage",
   "simulations:view",
@@ -43,6 +45,7 @@ const allPermissions: Permission[] = [
 const permissionsByRole: Record<UserRole, Permission[]> = {
   Comercial: [
     "dashboard:view",
+    "clients:view",
     "negotiations:view",
     "negotiations:manage",
     "simulations:view",
@@ -56,6 +59,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
   ],
   Negociações: [
     "dashboard:view",
+    "clients:view",
     "negotiations:view",
     "negotiations:manage",
     "simulations:view",
@@ -67,6 +71,7 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
   ],
   Aprovador: [
     "dashboard:view",
+    "clients:view",
     "simulations:view",
     "approvals:view",
     "approvals:decide",
@@ -74,12 +79,20 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "orders:convert",
     "reports:view",
   ],
-  Financeiro: ["dashboard:view", "orders:view", "finance:view", "freights:view", "reports:view"],
+  Financeiro: [
+    "dashboard:view",
+    "clients:view",
+    "orders:view",
+    "finance:view",
+    "freights:view",
+    "reports:view",
+  ],
   Admin: allPermissions,
 };
 
 const routePermissions: Array<{ prefix: string; permission: Permission }> = [
   { prefix: "/dashboard", permission: "dashboard:view" },
+  { prefix: "/clientes", permission: "clients:view" },
   { prefix: "/negociacoes", permission: "negotiations:view" },
   { prefix: "/simulacoes", permission: "simulations:view" },
   { prefix: "/reajustes", permission: "adjustments:view" },

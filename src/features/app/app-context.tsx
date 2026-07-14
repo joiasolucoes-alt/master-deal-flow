@@ -46,6 +46,7 @@ import { createSupabaseFreightRepository } from "@/features/freights/repositorie
 import { createSupabaseDeliveryRepository } from "@/features/deliveries/repositories/supabaseDeliveryRepository";
 import { createSupabaseRealizedResultRepository } from "@/features/results/repositories/supabaseRealizedResultRepository";
 import { createSupabaseNegotiationWalletRepository } from "@/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository";
+import { createSupabaseNegotiationRepository } from "@/features/negotiations/repositories/supabaseNegotiationRepository";
 import { toast } from "sonner";
 
 type AuthProfile = {
@@ -568,6 +569,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const suppliers = useAppStore((store) => store.suppliers);
   const products = useAppStore((store) => store.products);
   const setSimulationsStore = useAppStore((store) => store.setSimulations);
+  const setNegotiationsStore = useAppStore((store) => store.setNegotiations);
   const setOrdersStore = useAppStore((store) => store.setOrders);
   const setFinancialTitlesStore = useAppStore((store) => store.setFinancialTitles);
   const setRealizedResultsStore = useAppStore((store) => store.setRealizedResults);
@@ -922,12 +924,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const freightRepository = createSupabaseFreightRepository();
     const deliveryRepository = createSupabaseDeliveryRepository();
     const negotiationWalletRepository = createSupabaseNegotiationWalletRepository();
+    const negotiationRepository = createSupabaseNegotiationRepository();
 
     async function loadRemoteData() {
       try {
         const [
           remoteSimulations,
           remoteOrders,
+          remoteNegotiations,
           remoteFinancialTitles,
           remoteRealizedResults,
           remoteNegotiationWallets,
@@ -940,6 +944,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ] = await Promise.all([
           simulationRepository.list(),
           orderRepository.list(),
+          negotiationRepository.list(),
           financialRepository.listTitles(),
           realizedResultRepository.list(),
           negotiationWalletRepository.listWallets(),
@@ -958,6 +963,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             getAppStoreSnapshot().simulations,
           ),
         );
+        // Fallback: sem negociações no Supabase, mantém a semente local.
+        if (remoteNegotiations.length > 0) setNegotiationsStore(remoteNegotiations);
         setOrdersStore(remoteOrders);
         setFinancialTitlesStore(remoteFinancialTitles);
         setRealizedResultsStore(remoteRealizedResults);
@@ -989,6 +996,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFinancialTitlesStore,
     setRealizedResultsStore,
     setNegotiationWalletsStore,
+    setNegotiationsStore,
     setOpportunityPoolsStore,
     setFreightsStore,
     setOrdersStore,
