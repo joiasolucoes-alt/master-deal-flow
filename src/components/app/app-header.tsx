@@ -315,9 +315,11 @@ export function AppHeader() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
+              {/* py-0 + leading-tight: o Button herda py-2, que somado às duas linhas
+                  (nome + perfil) estourava a altura fixa de 40px e desalinhava o texto. */}
               <Button
                 variant="outline"
-                className="grid h-10 min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 bg-card px-2.5 shadow-none"
+                className="grid h-10 min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 bg-card px-2.5 py-0 shadow-none"
               >
                 <UserAvatar
                   name={user?.name ?? "Usuário"}
@@ -325,10 +327,10 @@ export function AppHeader() {
                   className="h-7 w-7"
                 />
                 <span className="min-w-0 text-left">
-                  <span className="block truncate text-sm font-semibold text-foreground">
+                  <span className="block truncate text-sm font-semibold leading-tight text-foreground">
                     {user?.name ?? "Visitante"}
                   </span>
-                  <span className="block truncate text-xs text-muted-foreground">
+                  <span className="block truncate text-xs leading-tight text-muted-foreground">
                     {user?.role ?? "Sem perfil"}
                   </span>
                 </span>
