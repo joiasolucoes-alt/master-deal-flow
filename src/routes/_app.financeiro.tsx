@@ -64,7 +64,6 @@ import {
 } from "@/lib/visibility";
 import { toast } from "sonner";
 import { createWalletEntry, upsertWalletEntry } from "@/features/negotiation-wallets";
-import { useAppStore } from "@/store/useAppStore";
 
 export const Route = createFileRoute("/_app/financeiro")({
   component: FinancialPage,
@@ -83,8 +82,8 @@ function FinancialPage() {
     upsertOrder,
     upsertFreight,
     upsertNegotiationWallet,
+    addNotification,
   } = useAppContext();
-  const addNotification = useAppStore((store) => store.addNotification);
   const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
   const [selectedPaymentTitle, setSelectedPaymentTitle] = useState<FinancialTitle | null>(null);

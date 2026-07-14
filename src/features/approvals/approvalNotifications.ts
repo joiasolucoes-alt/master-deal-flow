@@ -13,7 +13,7 @@ import type { AuditEvent } from "@/store/types";
 
 export function buildGestorApprovalNotifications(
   simulation: Simulation,
-  options: { now?: string; idSeed?: string | number } = {},
+  options: { now?: string; idSeed?: string | number; owner?: User | null } = {},
 ): NotificationItem[] {
   const createdAt = options.now ?? new Date().toISOString();
   const seed = options.idSeed ?? Date.now();
@@ -50,7 +50,10 @@ export function buildGestorApprovalNotifications(
       unread: true,
       entityType: "simulation",
       entityId: simulation.id,
-      targetUserName: simulation.owner,
+      targetUserId: options.owner?.id,
+      targetUserEmail: options.owner?.email,
+      targetUserName: options.owner?.name ?? simulation.owner,
+      targetRole: "Comercial",
     },
   ];
 }

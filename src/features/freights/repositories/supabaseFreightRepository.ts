@@ -30,11 +30,24 @@ export function createSupabaseFreightRepository(): FreightRepository {
     async save(freight) {
       await ensureSupabaseSession();
       const client = requireClient();
-      const { data, error } = await client
+      const row = freightToRow(freight);
+      let { data, error } = await client
         .from("freights")
-        .upsert(freightToRow(freight), { onConflict: "external_id" })
+        .upsert(row, { onConflict: "external_id" })
         .select("*")
         .single();
+
+      if (error) {
+        const compatibleRow = { ...row };
+        delete compatibleRow.planned_freight_value;
+        const retry = await client
+          .from("freights")
+          .upsert(compatibleRow, { onConflict: "external_id" })
+          .select("*")
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) throw error;
       return rowToFreight(data as FreightRow);

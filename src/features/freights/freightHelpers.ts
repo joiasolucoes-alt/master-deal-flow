@@ -5,6 +5,8 @@ const FREIGHT_PROGRESS_BY_STATUS: Record<FreightStatus, number> = {
   hired: 15,
   loading: 35,
   in_route: 70,
+  at_destination: 85,
+  unloaded: 95,
   delivered: 100,
   cancelled: 0,
 };
@@ -24,6 +26,7 @@ export function createFreightFromOrder(order: Order): FreightRecord {
     vehicleDescription: "Veículo a definir",
     vehiclePlate: "",
     route: `${order.origin} → ${order.destination}`,
+    plannedFreightValue: 0,
     freightValue: 0,
     weight: units > 0 ? `${units.toLocaleString("pt-BR")} un` : "A definir",
     status,
@@ -51,7 +54,8 @@ export function createFreightFromSimulation(simulation: Simulation): FreightReco
     vehicleDescription: "Veículo a definir",
     vehiclePlate: "",
     route: `${simulation.unit} → ${simulation.deliveryCity} • ${simulation.deliveryState}`,
-    freightValue: getPlannedFreightValue(simulation),
+    plannedFreightValue: getPlannedFreightValue(simulation),
+    freightValue: 0,
     weight: units > 0 ? `${units.toLocaleString("pt-BR")} un` : "A definir",
     status: "quoted",
     pickupDate: new Date().toISOString(),
@@ -79,10 +83,12 @@ export function linkFreightToConfirmedOrder(freight: FreightRecord, order: Order
 
 export function getFreightStatusLabel(status: FreightStatus) {
   const labels: Record<FreightStatus, string> = {
-    quoted: "Em contratação",
-    hired: "Em contratação",
-    loading: "Carregando",
+    quoted: "Liberado para contratação",
+    hired: "Aguardando carregamento",
+    loading: "Em carregamento",
     in_route: "Em rota",
+    at_destination: "No destino",
+    unloaded: "Mercadoria descarregada",
     delivered: "Entregue",
     cancelled: "Cancelado",
   };
@@ -94,7 +100,9 @@ export function getNextFreightStatus(status: FreightStatus): FreightStatus {
     quoted: "hired",
     hired: "loading",
     loading: "in_route",
-    in_route: "delivered",
+    in_route: "at_destination",
+    at_destination: "unloaded",
+    unloaded: "delivered",
     delivered: "delivered",
     cancelled: "cancelled",
   };
@@ -106,14 +114,7 @@ export function updateOrderFromFreight(order: Order, freight: FreightRecord): Or
     order.deliveryProgress,
     FREIGHT_PROGRESS_BY_STATUS[freight.status],
   );
-  const status =
-    freight.status === "delivered"
-      ? "Entregue"
-      : freight.status === "in_route"
-        ? "Em rota"
-        : order.status === "Aguardando faturamento" || order.status === "Em faturamento"
-          ? order.status
-          : "Aguardando frete";
+  const status = getOrderStatusFromFreight(order, freight);
 
   return {
     ...order,
@@ -126,7 +127,11 @@ export function updateOrderFromFreight(order: Order, freight: FreightRecord): Or
 
 function getInitialFreightStatus(order: Order): FreightStatus {
   if (order.status === "Entregue") return "delivered";
+  if (order.status === "Mercadoria descarregada") return "unloaded";
+  if (order.status === "No destino") return "at_destination";
   if (order.status === "Em rota") return "in_route";
+  if (order.status === "Em carregamento") return "loading";
+  if (order.status === "Aguardando carregamento") return "hired";
   return "quoted";
 }
 
@@ -143,11 +148,28 @@ function getPlannedFreightValue(simulation: Simulation) {
 
 function getOrderLogisticsStatus(freight: FreightRecord) {
   if (freight.status === "delivered") return "Entrega concluída pelo fluxo de frete.";
+  if (freight.status === "unloaded") {
+    return "Mercadoria descarregada. Aguardando envio do canhoto para finalizar o pedido.";
+  }
+  if (freight.status === "at_destination") return "Motorista chegou ao destino da entrega.";
   if (freight.status === "in_route") return "Frete em rota para entrega.";
   if (freight.status === "loading") return "Frete em carregamento.";
-  if (freight.status === "hired") return "Frete em contratação.";
+  if (freight.status === "hired") return "Frete contratado. Aguardando carregamento.";
   if (freight.status === "cancelled") return "Frete cancelado.";
   return "Frete em contratação.";
+}
+
+function getOrderStatusFromFreight(order: Order, freight: FreightRecord): Order["status"] {
+  if (freight.status === "delivered") return "Entregue";
+  if (freight.status === "unloaded") return "Mercadoria descarregada";
+  if (freight.status === "at_destination") return "No destino";
+  if (freight.status === "in_route") return "Em rota";
+  if (freight.status === "loading") return "Em carregamento";
+  if (freight.status === "hired") return "Aguardando carregamento";
+  if (order.status === "Aguardando faturamento" || order.status === "Em faturamento") {
+    return order.status;
+  }
+  return order.status === "Frete liberado" ? "Frete liberado" : "Aguardando frete";
 }
 
 function upsertTimeline(order: Order, freight: FreightRecord) {

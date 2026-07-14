@@ -47,6 +47,7 @@ import { createSupabaseFreightRepository } from "@/features/freights/repositorie
 import { createSupabaseDeliveryRepository } from "@/features/deliveries/repositories/supabaseDeliveryRepository";
 import { createSupabaseRealizedResultRepository } from "@/features/results/repositories/supabaseRealizedResultRepository";
 import { createSupabaseNegotiationWalletRepository } from "@/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository";
+import { persistNotification } from "@/features/notifications/notificationRepository";
 import { toast } from "sonner";
 
 type AuthProfile = {
@@ -935,6 +936,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const freightRepository = createSupabaseFreightRepository();
     const deliveryRepository = createSupabaseDeliveryRepository();
     const negotiationWalletRepository = createSupabaseNegotiationWalletRepository();
+    let partialLoadWarningShown = false;
 
     async function loadRemoteData() {
       try {
@@ -950,7 +952,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remoteClients,
           remoteSuppliers,
           remoteProducts,
-        ] = await Promise.all([
+        ] = await Promise.allSettled([
           simulationRepository.list(),
           orderRepository.list(),
           financialRepository.listTitles(),
@@ -962,26 +964,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
           catalogRepository.listClients(),
           catalogRepository.listSuppliers(),
           catalogRepository.listProducts(),
-        ]);
+        ] as const);
 
         if (cancelled) return;
-        setSimulationsStore(
-          mergeRemoteSimulationsWithLocalPending(
-            remoteSimulations,
-            getAppStoreSnapshot().simulations,
+        const failures: string[] = [];
+        const applyResult = <T,>(
+          result: PromiseSettledResult<T>,
+          label: string,
+          apply: (value: T) => void,
+        ) => {
+          if (result.status === "fulfilled") {
+            apply(result.value);
+            return;
+          }
+          console.error(`Falha ao carregar ${label} do Supabase.`, result.reason);
+          failures.push(label);
+        };
+
+        applyResult(remoteSimulations, "simulações", (value) =>
+          setSimulationsStore(
+            mergeRemoteSimulationsWithLocalPending(value, getAppStoreSnapshot().simulations),
           ),
         );
-        setOrdersStore(remoteOrders);
-        setFinancialTitlesStore(remoteFinancialTitles);
-        setRealizedResultsStore(remoteRealizedResults);
-        setNegotiationWalletsStore(remoteNegotiationWallets);
-        setOpportunityPoolsStore(remoteOpportunityPools);
-        setFreightsStore(remoteFreights);
-        setDeliveriesStore(remoteDeliveries);
-        setClientsStore(remoteClients);
-        setSuppliersStore(remoteSuppliers);
-        setProductsStore(remoteProducts);
-        setLastDataError(null);
+        applyResult(remoteOrders, "pedidos", setOrdersStore);
+        applyResult(remoteFinancialTitles, "títulos financeiros", setFinancialTitlesStore);
+        applyResult(remoteRealizedResults, "resultados realizados", setRealizedResultsStore);
+        applyResult(remoteNegotiationWallets, "carteiras", setNegotiationWalletsStore);
+        applyResult(remoteOpportunityPools, "pool de oportunidades", setOpportunityPoolsStore);
+        applyResult(remoteFreights, "fretes", setFreightsStore);
+        applyResult(remoteDeliveries, "entregas", setDeliveriesStore);
+        applyResult(remoteClients, "clientes", setClientsStore);
+        applyResult(remoteSuppliers, "fornecedores", setSuppliersStore);
+        applyResult(remoteProducts, "produtos", setProductsStore);
+
+        if (failures.length) {
+          const message = `Falha parcial ao carregar: ${failures.join(", ")}.`;
+          setLastDataError(message);
+          if (!partialLoadWarningShown) {
+            toast.warning("Alguns dados não foram atualizados. As listas disponíveis foram mantidas.");
+            partialLoadWarningShown = true;
+          }
+        } else {
+          setLastDataError(null);
+          partialLoadWarningShown = false;
+        }
       } catch (error) {
         console.error("Falha ao carregar dados do Supabase.", error);
         setLastDataError(error instanceof Error ? error.message : "Falha ao carregar Supabase.");
@@ -1351,20 +1377,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const addNotification = (
+  const addNotification = useCallback((
     input: Omit<NotificationItem, "id" | "createdAt" | "unread"> & {
       id?: string;
       createdAt?: string;
       unread?: boolean;
     },
   ) => {
-    addNotificationStore({
+    const notification: NotificationItem = {
       ...input,
       id: input.id ?? `ntf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       createdAt: input.createdAt ?? new Date().toISOString(),
       unread: input.unread ?? true,
-    });
-  };
+    };
+
+    addNotificationStore(notification);
+
+    if (isSupabaseProvider() && getSupabaseConfigStatus().configured) {
+      void persistNotification(notification).catch((error) => {
+        console.warn("Notificação mantida localmente, mas não persistida no Supabase.", error);
+      });
+    }
+  }, [addNotificationStore]);
 
   const upsertOrder = (order: Order) => {
     upsertOrderStore(order);

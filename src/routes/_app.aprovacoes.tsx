@@ -90,8 +90,8 @@ function ApprovalsPage() {
     selectedApprovalId,
     setSelectedApprovalId,
     users,
+    addNotification,
   } = useAppContext();
-  const addNotification = useAppStore((store) => store.addNotification);
   const addAuditEvents = useAppStore((store) => store.addAuditEvents);
   const currentUser = auth.user;
   const canReview = canReviewApprovals(currentUser);
@@ -229,7 +229,9 @@ function ApprovalsPage() {
       payables.forEach(upsertFinancialTitle);
       upsertFreight(freight);
       // Notifica Financeiro, Frete e Comercial (§9) e registra a auditoria (§10).
-      buildGestorApprovalNotifications(nextSimulation).forEach(addNotification);
+      buildGestorApprovalNotifications(nextSimulation, { owner: ownerUser }).forEach(
+        addNotification,
+      );
       addAuditEvents(
         buildGestorApprovalAudit(nextSimulation, currentUser, { previousStatus: selected.status }),
       );

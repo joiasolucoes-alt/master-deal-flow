@@ -319,13 +319,13 @@ function DriverTrackingPage() {
                   placeholder="Nome do recebedor"
                   value={receiverName}
                   onChange={(event) => setReceiverName(event.target.value)}
-                  className="bg-white"
+                  className="bg-white text-slate-950 placeholder:text-slate-500"
                 />
                 <Input
                   placeholder="Documento / setor (opcional)"
                   value={receiverDocument}
                   onChange={(event) => setReceiverDocument(event.target.value)}
-                  className="bg-white"
+                  className="bg-white text-slate-950 placeholder:text-slate-500"
                 />
               </div>
             ) : null}
@@ -408,7 +408,7 @@ function DriverTrackingPage() {
                     placeholder="Descreva o que aconteceu"
                     value={occurrenceNotes}
                     onChange={(event) => setOccurrenceNotes(event.target.value)}
-                    className="bg-white"
+                    className="bg-white text-slate-950 placeholder:text-slate-500"
                   />
                   <div className="flex gap-2">
                     <Button
@@ -535,6 +535,8 @@ function statusLabel(status: string, linkState: DriverTrip["linkState"]) {
         hired: "Contratado",
         loading: "Carregando",
         in_route: "Em rota",
+        at_destination: "No destino",
+        unloaded: "Mercadoria descarregada",
         arrived_loading: "Carregando",
         in_transit: "Em trânsito",
         arrived_delivery_location: "No destino",

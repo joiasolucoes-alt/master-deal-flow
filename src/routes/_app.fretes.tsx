@@ -140,8 +140,8 @@ function FreightsPage() {
     upsertOrder,
     upsertFinancialTitle,
     upsertNegotiationWallet,
+    addNotification,
   } = useAppContext();
-  const addNotification = useAppStore((store) => store.addNotification);
   const addAuditEvents = useAppStore((store) => store.addAuditEvents);
   // Só Frete/Logística e Admin operam o frete (contratar, avançar, gerar link/PIN).
   // Financeiro tem apenas visualização.
@@ -204,16 +204,21 @@ function FreightsPage() {
   const [generatedDriverAccess, setGeneratedDriverAccess] = useState<GeneratedDriverAccess | null>(
     null,
   );
+  const selectedFreightRef = useRef<FreightRecord | null>(selectedFreight ?? null);
 
-  const refreshDriverAccess = useCallback(async (freight: FreightRecord) => {
-    setDriverAccessLoading(true);
+  useEffect(() => {
+    selectedFreightRef.current = selectedFreight ?? null;
+  }, [selectedFreight]);
+
+  const refreshDriverAccess = useCallback(async (freight: FreightRecord, silent = false) => {
+    if (!silent) setDriverAccessLoading(true);
     try {
       const summary = await fetchDriverAccessSummary(freight);
       setDriverAccess(summary);
     } catch {
-      setDriverAccess(null);
+      if (!silent) setDriverAccess(null);
     } finally {
-      setDriverAccessLoading(false);
+      if (!silent) setDriverAccessLoading(false);
     }
   }, []);
 
@@ -263,6 +268,29 @@ function FreightsPage() {
     void refreshDriverAccess(selectedFreight);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFreightId, refreshDriverAccess, refreshFreightDocuments]);
+
+  useEffect(() => {
+    if (!selectedFreightId) return;
+
+    const refreshSelectedDriverAccess = () => {
+      const currentFreight = selectedFreightRef.current;
+      if (currentFreight) void refreshDriverAccess(currentFreight, true);
+    };
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshSelectedDriverAccess();
+    }, 12000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshSelectedDriverAccess();
+    };
+
+    window.addEventListener("focus", refreshSelectedDriverAccess);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshSelectedDriverAccess);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshDriverAccess, selectedFreightId]);
 
   // Auto-gera o registro de frete para pedidos JÁ LIBERADOS que ainda não têm frete,
   // para que apareçam na tela sem depender do botão "Gerar". Restrito a pedidos
@@ -360,6 +388,7 @@ function FreightsPage() {
         entityType: "order",
         entityId: order?.id ?? freight.id,
         targetUserName: freight.owner,
+        targetRole: "Comercial",
       });
       addNotification({
         id: `not-${Date.now()}-contract-fin`,
@@ -620,10 +649,26 @@ function FreightsPage() {
                     >
                       {releaseLabel}
                     </Badge>
-                    <span className="text-muted-foreground">
-                      {selectedFreightId === freight.id
-                        ? `${status.driverCount.done + status.vehicleCount.done + status.operationCount.done}/${status.driverCount.total + status.vehicleCount.total + status.operationCount.total} docs`
-                        : formatCurrency(freight.freightValue)}
+                    <span className="text-right text-muted-foreground">
+                      <span className="block">
+                        {preparation ? "Previsto" : "Contratado"}: {formatCurrency(
+                          preparation
+                            ? (freight.plannedFreightValue ?? 0)
+                            : freight.freightValue,
+                        )}
+                      </span>
+                      {selectedFreightId === freight.id ? (
+                        <span className="block text-[11px]">
+                          {status.driverCount.done +
+                            status.vehicleCount.done +
+                            status.operationCount.done}
+                          /
+                          {status.driverCount.total +
+                            status.vehicleCount.total +
+                            status.operationCount.total}{" "}
+                          documentos
+                        </span>
+                      ) : null}
                     </span>
                   </div>
                 </button>
@@ -734,7 +779,11 @@ function FreightDetailPanel({
   const preparation = isPreparationFreight(freight);
   // Após a contratação (hired em diante), quem avança a operação é o motorista.
   const contractedInProgress =
-    freight.status === "hired" || freight.status === "loading" || freight.status === "in_route";
+    freight.status === "hired" ||
+    freight.status === "loading" ||
+    freight.status === "in_route" ||
+    freight.status === "at_destination" ||
+    freight.status === "unloaded";
 
   return (
     <>
@@ -908,12 +957,6 @@ function FreightDetailPanel({
                     placeholder="Instruções para coleta, contatos, restrições operacionais."
                   />
                 </Field>
-                <div className="flex justify-end">
-                  <Button onClick={onSaveForm}>
-                    <Save />
-                    Salvar dados
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -959,12 +1002,6 @@ function FreightDetailPanel({
                       </SelectContent>
                     </Select>
                   </Field>
-                </div>
-                <div className="flex justify-end">
-                  <Button onClick={onSaveForm}>
-                    <Save />
-                    Salvar dados do motorista
-                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -1016,12 +1053,6 @@ function FreightDetailPanel({
                     />
                   </Field>
                 </div>
-                <div className="flex justify-end">
-                  <Button onClick={onSaveForm}>
-                    <Save />
-                    Salvar dados do veículo
-                  </Button>
-                </div>
               </CardContent>
             </Card>
             <ChecklistBlock
@@ -1058,7 +1089,7 @@ function FreightDetailPanel({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  <Field label="Valor do frete (R$)">
+                  <Field label="Valor contratado do frete (R$)">
                     <Input
                       type="number"
                       min="0"
@@ -1076,12 +1107,6 @@ function FreightDetailPanel({
                       }
                     />
                   </Field>
-                </div>
-                <div className="flex justify-end">
-                  <Button onClick={onSaveForm}>
-                    <Save />
-                    Gerar / atualizar conta a pagar
-                  </Button>
                 </div>
                 <div className="rounded-xl border bg-muted/30 p-3 text-sm">
                   {paymentTitle ? (
@@ -1123,6 +1148,12 @@ function FreightDetailPanel({
               onOpenProof={onOpenDriverProof}
             />
           </TabsContent>
+          <div className="sticky bottom-4 z-10 mt-4 flex justify-end rounded-2xl border bg-background/95 p-3 shadow-card backdrop-blur">
+            <Button onClick={onSaveForm}>
+              <Save />
+              Salvar todos os dados do frete
+            </Button>
+          </div>
         </Tabs>
       )}
     </>
@@ -1140,6 +1171,9 @@ function CargoSummaryCard({
 }) {
   const totalBoxes = products.reduce((sum, product) => sum + (product.boxes ?? 0), 0);
   const totalUnits = products.reduce((sum, product) => sum + (product.quantityTotal ?? 0), 0);
+  const plannedFreightValue = freight.plannedFreightValue ?? 0;
+  const contractedFreightValue = freight.freightValue;
+  const availableFreightValue = plannedFreightValue - contractedFreightValue;
   const [origin, destination] = freight.route.split("→").map((part) => part.trim());
   const pairs: Array<[string, string]> = [
     ["Cliente", freight.client || "—"],
@@ -1158,6 +1192,35 @@ function CargoSummaryCard({
         <CardTitle className="text-base">Resumo da carga</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-primary/20 bg-primary-soft p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              Valor previsto liberado
+            </p>
+            <p className="mt-1 text-lg font-semibold text-primary">
+              {formatCurrency(plannedFreightValue)}
+            </p>
+          </div>
+          <div className="rounded-xl border p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              Valor contratado
+            </p>
+            <p className="mt-1 text-lg font-semibold">
+              {formatCurrency(contractedFreightValue)}
+            </p>
+          </div>
+          <div className="rounded-xl border p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Saldo previsto</p>
+            <p
+              className={cn(
+                "mt-1 text-lg font-semibold",
+                availableFreightValue < 0 ? "text-danger" : "text-success",
+              )}
+            >
+              {formatCurrency(availableFreightValue)}
+            </p>
+          </div>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {pairs.map(([label, value]) => (
             <div key={label} className="space-y-0.5">
@@ -1551,6 +1614,20 @@ function DriverAccessCard({
                     <p className="text-xs text-muted-foreground">
                       {formatDateTime(event.occurredAt)}
                     </p>
+                    {event.occurrenceType ? (
+                      <p className="mt-1 text-xs font-medium text-warning">
+                        {event.occurrenceType}
+                      </p>
+                    ) : null}
+                    {event.receiverName ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Recebido por {event.receiverName}
+                        {event.receiverDocument ? ` • ${event.receiverDocument}` : ""}
+                      </p>
+                    ) : null}
+                    {event.notes ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{event.notes}</p>
+                    ) : null}
                   </div>
                 </div>
               ))
