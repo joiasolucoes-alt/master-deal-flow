@@ -1194,7 +1194,7 @@ function OrderCatalogCrud({
             description="Crie, edite ou selecione opções usadas nos campos acima."
           />
           <Tabs defaultValue="clients">
-            <TabsList className="flex w-full flex-wrap justify-start">
+            <TabsList className="flex h-auto w-full flex-wrap justify-start">
               <TabsTrigger value="clients">Clientes</TabsTrigger>
               <TabsTrigger value="suppliers">Fornecedores</TabsTrigger>
             </TabsList>

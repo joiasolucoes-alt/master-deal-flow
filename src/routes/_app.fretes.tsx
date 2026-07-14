@@ -578,7 +578,7 @@ function FreightsPage() {
               value={bucketFilter}
               onValueChange={(value) => setBucketFilter(value as FreightBucket | "all")}
             >
-              <TabsList className="w-full flex-wrap justify-start gap-1">
+              <TabsList className="h-auto w-full flex-wrap justify-start gap-1">
                 <TabsTrigger value="all">Todos ({total})</TabsTrigger>
                 <TabsTrigger value="preparation">
                   {FREIGHT_BUCKET_LABEL.preparation} ({bucketCounts.preparation})
@@ -880,7 +880,7 @@ function FreightDetailPanel({
         </div>
       ) : (
         <Tabs defaultValue="summary">
-          <TabsList className="w-full flex-wrap justify-start gap-1">
+          <TabsList className="h-auto w-full flex-wrap justify-start gap-1">
             <TabsTrigger value="summary">Resumo</TabsTrigger>
             <TabsTrigger value="driver">Motorista</TabsTrigger>
             <TabsTrigger value="vehicle">Veículo</TabsTrigger>
