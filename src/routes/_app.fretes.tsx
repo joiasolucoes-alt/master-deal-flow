@@ -1345,6 +1345,72 @@ function ChecklistBlock({
   );
 }
 
+function formatFileSize(size?: number) {
+  if (!size || size <= 0) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function AttachmentPreview({
+  doc,
+  onOpen,
+}: {
+  doc: FreightDocumentRecord;
+  onOpen: (doc: FreightDocumentRecord) => void;
+}) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const isImage = doc.mimeType?.startsWith("image/");
+  const isPdf = doc.mimeType === "application/pdf";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isImage || !doc.filePath) return;
+    getFreightDocumentSignedUrl(doc.filePath)
+      .then((url) => {
+        if (!cancelled) setThumbUrl(url);
+      })
+      .catch(() => {
+        /* silencioso: mantém ícone */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc.filePath, isImage]);
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2">
+      <div className="grid h-10 w-10 flex-none place-items-center overflow-hidden rounded-md border bg-background">
+        {isImage && thumbUrl ? (
+          <img src={thumbUrl} alt={doc.fileName} className="h-full w-full object-cover" />
+        ) : (
+          <FileText
+            className={cn("h-5 w-5", isPdf ? "text-danger" : "text-muted-foreground")}
+          />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium">{doc.fileName}</p>
+        <p className="text-[10px] text-muted-foreground">
+          {[formatFileSize(doc.fileSize), formatDateTime(doc.createdAt)]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      </div>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-8 px-2"
+        onClick={() => onOpen(doc)}
+        disabled={!doc.filePath}
+        title={doc.filePath ? "Abrir documento" : "Pré-visualização indisponível"}
+      >
+        <ExternalLink className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
 function ChecklistRow({
   item,
   freight,
@@ -1363,22 +1429,29 @@ function ChecklistRow({
   onOpenDocument: (document: FreightDocumentRecord) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const required = isRequiredForCargo(item, freight.cargoType);
   const done = attached.length > 0;
+  const missing = required && !done;
 
   const handleFile = async (file?: File) => {
     if (!file) return;
+    setRowError(null);
     const validation = validateFreightDocumentFile(file);
     if (validation) {
+      setRowError(validation);
       toast.error(validation);
       return;
     }
     setUploading(true);
     try {
       await onUploadDocument({ type: item.type, file, notes: "" });
+      toast.success(`${item.label}: documento anexado.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível anexar.";
+      setRowError(message);
       toast.error(message);
     } finally {
       setUploading(false);
@@ -1387,8 +1460,32 @@ function ChecklistRow({
   };
 
   return (
-    <div className="rounded-xl border p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div
+      className={cn(
+        "rounded-xl border p-3 transition-colors",
+        done && "border-success/40 bg-success-soft/40",
+        missing && !dragOver && "border-warning/40 bg-warning-soft/30",
+        dragOver && "border-primary bg-primary/5 ring-2 ring-primary/30",
+      )}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!uploading) setDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDragOver(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDragOver(false);
+        const file = event.dataTransfer.files?.[0];
+        if (file) void handleFile(file);
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-2">
           {done ? (
             <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-success" />
@@ -1401,14 +1498,14 @@ function ChecklistRow({
             />
           )}
           <div className="min-w-0">
-            <p className="text-sm font-medium">
-              {item.label}
+            <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+              <span className="min-w-0 truncate">{item.label}</span>
               {required ? (
-                <Badge variant="outline" className="ml-2 rounded-full text-[10px]">
+                <Badge className="rounded-full bg-warning/15 text-[10px] text-warning hover:bg-warning/20">
                   Obrigatório
                 </Badge>
               ) : (
-                <Badge variant="outline" className="ml-2 rounded-full text-[10px]">
+                <Badge variant="outline" className="rounded-full text-[10px] text-muted-foreground">
                   Opcional
                 </Badge>
               )}
@@ -1416,6 +1513,9 @@ function ChecklistRow({
             {item.helper ? (
               <p className="mt-0.5 text-xs text-muted-foreground">{item.helper}</p>
             ) : null}
+            <p className="mt-0.5 text-[10px] text-muted-foreground">
+              PDF, JPG ou PNG · até 10 MB
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1433,28 +1533,40 @@ function ChecklistRow({
             onClick={() => inputRef.current?.click()}
           >
             <Upload />
-            {uploading ? "..." : done ? "Substituir" : "Anexar"}
+            {uploading ? "Enviando..." : done ? "Substituir" : "Anexar"}
           </Button>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className={cn(
+          "mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground transition-colors",
+          "hover:border-primary/60 hover:bg-primary/5 hover:text-foreground",
+          dragOver && "border-primary bg-primary/10 text-foreground",
+          uploading && "opacity-60",
+        )}
+      >
+        <Upload className="h-3.5 w-3.5" />
+        {dragOver
+          ? "Solte o arquivo para anexar"
+          : uploading
+            ? "Enviando arquivo..."
+            : "Arraste um arquivo aqui ou clique para selecionar"}
+      </button>
+
+      {rowError ? (
+        <p className="mt-2 rounded-md border border-danger/30 bg-danger-soft px-2 py-1 text-[11px] text-danger">
+          {rowError}
+        </p>
+      ) : null}
+
       {attached.length > 0 ? (
         <div className="mt-2 space-y-1">
           {attached.map((doc) => (
-            <button
-              key={doc.id}
-              type="button"
-              onClick={() => onOpenDocument(doc)}
-              disabled={!doc.filePath}
-              className="flex w-full items-center justify-between gap-2 rounded-lg border bg-muted/40 px-2 py-1 text-left text-xs hover:bg-muted"
-            >
-              <span className="min-w-0 truncate">
-                <ExternalLink className="mr-1 inline h-3 w-3" />
-                {doc.fileName}
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                {formatDateTime(doc.createdAt)}
-              </span>
-            </button>
+            <AttachmentPreview key={doc.id} doc={doc} onOpen={onOpenDocument} />
           ))}
         </div>
       ) : null}
