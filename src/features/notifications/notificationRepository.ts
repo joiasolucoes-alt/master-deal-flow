@@ -99,7 +99,9 @@ export async function persistNotification(notification: NotificationItem) {
     created_at: notification.createdAt,
   };
 
-  let result = await client.from("notifications").upsert(row, { onConflict: "external_id" });
+  let result = await client
+    .from("notifications")
+    .upsert(row as never, { onConflict: "external_id" });
 
   // Compatibilidade apenas para bancos anteriores à SQL 031. Outros erros não
   // devem ser mascarados por uma segunda tentativa com destinatário incompleto.
@@ -109,7 +111,7 @@ export async function persistNotification(notification: NotificationItem) {
     delete compatibleRow.target_user_name;
     result = await client
       .from("notifications")
-      .upsert(compatibleRow, { onConflict: "external_id" });
+      .upsert(compatibleRow as never, { onConflict: "external_id" });
   }
 
   if (result.error) throw result.error;
