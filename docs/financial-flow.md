@@ -29,6 +29,19 @@ Ao aprovar uma simulacao no Gestor, o sistema cria automaticamente:
 
 O Financeiro pode dar baixa total ou parcial nos titulos.
 
+## Submenus financeiros
+
+A tela do Financeiro passa a separar os controles em:
+
+- **Boletos / faturamento**: títulos a receber gerados pelo faturamento do pedido.
+- **Antecipação**: registra valor antecipado, banco e custo financeiro da antecipação.
+- **Prorrogação**: altera vencimento, guarda vencimento original e registra custo da prorrogação.
+- **Devoluções / faltas**: abre conta a pagar quando houver devolução, falta ou diferença de mercadoria, definindo quem custeia o valor.
+- **Contas a receber / Contas a pagar**: visão geral dos títulos financeiros.
+
+Esses controles são gerenciais. Ainda não há emissão real de boleto bancário nem integração
+automática com banco.
+
 Regra de liberacao do frete:
 
 - se existir conta a pagar do pedido em aberto, o frete fica bloqueado;
@@ -39,5 +52,4 @@ Regra de liberacao do frete:
 
 - emissao oficial de NF/SEFAZ;
 - integracao bancaria real;
-- anexos de comprovantes financeiros;
 - boletos reais.

@@ -82,7 +82,7 @@ export function canUserDecideApprovalStage(
   if (role !== "Admin" && isSimulationOwner(user, simulation)) return false;
   if (role === "Admin") return true;
   if (stage === "financial") return role === "Financeiro";
-  return role === "Aprovador";
+  return role === "Gestor" || role === "Aprovador" || role === "Negociações";
 }
 
 export function canConvertApprovedSimulation(simulation: Simulation) {

@@ -17,6 +17,8 @@ export type Permission =
   | "orders:convert"
   | "orders:invoice"
   | "finance:view"
+  | "finance:billing"
+  | "finance:operate"
   | "freights:view"
   | "freights:operate"
   | "deliveries:view"
@@ -39,6 +41,8 @@ const allPermissions: Permission[] = [
   "orders:convert",
   "orders:invoice",
   "finance:view",
+  "finance:billing",
+  "finance:operate",
   "freights:view",
   "freights:operate",
   "deliveries:view",
@@ -64,17 +68,34 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "freights:view",
     "deliveries:view",
   ],
+  Gestor: [
+    "dashboard:view",
+    "negotiations:view",
+    "negotiations:manage",
+    "simulations:view",
+    "approvals:view",
+    "approvals:decide",
+    "orders:view",
+    "reports:view",
+  ],
+  Faturista: [
+    "dashboard:view",
+    "orders:view",
+    "orders:invoice",
+    "finance:view",
+    "finance:billing",
+    "reports:view",
+  ],
   Negociações: [
     "dashboard:view",
     "clients:view",
     "negotiations:view",
     "negotiations:manage",
     "simulations:view",
-    "simulations:create",
-    "simulations:edit-own",
-    "simulations:submit",
-    "adjustments:view",
+    "approvals:view",
+    "approvals:decide",
     "orders:view",
+    "reports:view",
   ],
   Aprovador: [
     "dashboard:view",
@@ -83,7 +104,6 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "approvals:view",
     "approvals:decide",
     "orders:view",
-    "orders:convert",
     "reports:view",
   ],
   Financeiro: [
@@ -91,6 +111,8 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "clients:view",
     "orders:view",
     "finance:view",
+    "finance:billing",
+    "finance:operate",
     "freights:view",
     "reports:view",
   ],
@@ -115,9 +137,13 @@ const routePermissions: Array<{ prefix: string; permission: Permission }> = [
 
 export function normalizeRole(role: string): UserRole {
   if (role === "Aprovação") return "Aprovador";
+  if (role === "Gestão" || role === "Gestao") return "Gestor";
+  if (role === "Faturamento") return "Faturista";
   if (role === "Frota" || role === "Logística" || role === "Logistica") return "Frete";
   if (
     role === "Comercial" ||
+    role === "Gestor" ||
+    role === "Faturista" ||
     role === "Negociações" ||
     role === "Aprovador" ||
     role === "Financeiro" ||
@@ -204,5 +230,13 @@ export function canOperateFreight(user: User | null | undefined) {
 // Registrar faturamento/NF. Apenas Financeiro/Faturamento e Admin. Comercial e Frete
 // não podem faturar.
 export function canRegisterInvoice(user: User | null | undefined) {
-  return hasPermission(user, "orders:invoice");
+  return hasPermission(user, "orders:invoice") || normalizeRole(user?.role ?? "") === "Admin";
+}
+
+export function canOperateFinance(user: User | null | undefined) {
+  return hasPermission(user, "finance:operate");
+}
+
+export function canOperateBilling(user: User | null | undefined) {
+  return hasPermission(user, "finance:billing") || canRegisterInvoice(user);
 }

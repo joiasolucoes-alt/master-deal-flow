@@ -62,6 +62,7 @@ export function createFinancialTitlesFromOrder(order: Order, now = new Date()) {
         client: order.client,
         titleNumber: `${order.number}-PARC-${index + 1}`,
         type: "receivable",
+        kind: "boleto",
         status: "open",
         dueDate,
         amount,
@@ -395,6 +396,7 @@ function createPayableTitle(payload: {
   amount: number;
   dueDate: string;
   notes: string;
+  kind?: FinancialTitle["kind"];
   now: Date;
 }): FinancialTitle {
   const title: FinancialTitle = {
@@ -404,6 +406,7 @@ function createPayableTitle(payload: {
     client: payload.payee,
     titleNumber: payload.titleNumber,
     type: "payable",
+    kind: payload.kind ?? "standard",
     status: "open",
     dueDate: payload.dueDate,
     amount: payload.amount,
@@ -427,6 +430,7 @@ function createSimulationPayableTitle(payload: {
   amount: number;
   dueDate: string;
   notes: string;
+  kind?: FinancialTitle["kind"];
   now: Date;
 }): FinancialTitle {
   const title: FinancialTitle = {
@@ -436,6 +440,7 @@ function createSimulationPayableTitle(payload: {
     client: payload.payee,
     titleNumber: payload.titleNumber,
     type: "payable",
+    kind: payload.kind ?? "standard",
     status: "open",
     dueDate: payload.dueDate,
     amount: payload.amount,
@@ -492,6 +497,7 @@ function createExpensePayables(simulation: Simulation, order: Order, now: Date) 
         amount,
         dueDate: addDays(order.date, getExpenseDueDays(expense)),
         notes: `${expense.type} previsto na simulação (${expense.calculationType === "percentage" ? `${expense.value}%` : "valor fixo"}).`,
+        kind: expense.type === "Comissão" ? "commission" : "expense",
         now,
       });
     })
@@ -520,6 +526,7 @@ function createSimulationExpensePayables(simulation: Simulation, now: Date) {
         amount,
         dueDate: expense.type === "Comissão" ? addDays(simulation.deliveryDate, 30) : baseDueDate,
         notes: `${expense.type} previsto na proposta antes da confirmação do pedido.`,
+        kind: expense.type === "Comissão" ? "commission" : "expense",
         now,
       });
     })
@@ -619,6 +626,7 @@ export function buildFreightPayableTitle(
     client: freight.carrierName || "Transportadora do frete",
     titleNumber: `${order?.number ?? freight.code}-PAG-FRETE`,
     type: "payable",
+    kind: "expense",
     status: existing?.status ?? "open",
     dueDate,
     amount: roundCurrency(freight.freightValue),

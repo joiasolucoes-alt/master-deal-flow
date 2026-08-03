@@ -1,5 +1,13 @@
 export type ThemeMode = "light" | "dark" | "system";
-export type UserRole = "Comercial" | "Negociações" | "Aprovador" | "Financeiro" | "Frete" | "Admin";
+export type UserRole =
+  | "Comercial"
+  | "Gestor"
+  | "Faturista"
+  | "Financeiro"
+  | "Frete"
+  | "Admin"
+  | "Negociações"
+  | "Aprovador";
 export type UserStatus = "Pendente" | "Ativo" | "Bloqueado";
 
 export type AppStatus =
@@ -142,6 +150,24 @@ export interface ExpenseItem {
   calculationType: "fixed" | "percentage";
   calculationBase?: "revenue" | "purchaseTotal" | "grossProfit";
   value: number;
+  allocations?: ExpenseAllocation[];
+}
+
+export type ExpenseAllocationCostOwner =
+  | "Master"
+  | "Comercial"
+  | "Transportadora"
+  | "Cliente"
+  | "Fornecedor"
+  | "Outro";
+
+export interface ExpenseAllocation {
+  id: string;
+  receiver: string;
+  amount: number;
+  percent?: number;
+  costOwner?: ExpenseAllocationCostOwner;
+  notes?: string;
 }
 
 export interface FinancialData {
@@ -152,6 +178,9 @@ export interface FinancialData {
   discountPercent: number;
   notes: string;
 }
+
+export type LoadMode = "Carga fechada" | "Compartilhada";
+export type PlannedVehicleType = "Carreta" | "Truck" | "Toco" | "3/4";
 
 export type ApprovalStage = "financial" | "principal";
 export type ApprovalStageStatus = "pending" | "approved" | "adjustment_requested" | "rejected";
@@ -182,6 +211,8 @@ export interface Simulation {
   owner: string;
   unit: string;
   paymentCondition: string;
+  loadMode?: LoadMode;
+  plannedVehicleType?: PlannedVehicleType;
   deliveryDate: string;
   createdAt: string;
   validUntil: string;
@@ -205,6 +236,12 @@ export interface Simulation {
   expenseItems: ExpenseItem[];
   financial: FinancialData;
   approvalChecklist?: {
+    assumptionsReviewed: boolean;
+    marginValidated: boolean;
+    costsChecked: boolean;
+    notesRegistered: boolean;
+  };
+  approvalChecklistRequired?: {
     assumptionsReviewed: boolean;
     marginValidated: boolean;
     costsChecked: boolean;
@@ -288,6 +325,15 @@ export interface Order {
 
 export type FinancialTitleType = "receivable" | "payable";
 export type FinancialTitleStatus = "open" | "partial" | "paid" | "overdue" | "cancelled";
+export type FinancialTitleKind =
+  | "standard"
+  | "boleto"
+  | "anticipation"
+  | "extension"
+  | "return"
+  | "shortage"
+  | "commission"
+  | "expense";
 
 export interface FinancialTitle {
   id: string;
@@ -298,10 +344,19 @@ export interface FinancialTitle {
   client: string;
   titleNumber: string;
   type: FinancialTitleType;
+  kind?: FinancialTitleKind;
   status: FinancialTitleStatus;
+  parentTitleId?: string;
   dueDate: string;
+  originalDueDate?: string;
+  extendedDueDate?: string;
   amount: number;
   paidAmount: number;
+  anticipatedAmount?: number;
+  anticipationCost?: number;
+  extensionCost?: number;
+  costOwner?: ExpenseAllocationCostOwner;
+  costReason?: string;
   paymentMethod: string;
   bankName: string;
   invoiceNumber?: string;

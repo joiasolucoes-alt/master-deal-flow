@@ -44,11 +44,15 @@ export const Route = createFileRoute("/_app/aprovacoes")({
   component: ApprovalsPage,
 });
 
-const CHECKLIST: { key: keyof NonNullable<Simulation["approvalChecklist"]>; label: string }[] = [
-  { key: "assumptionsReviewed", label: "Premissas comerciais revisadas" },
-  { key: "marginValidated", label: "Margem validada com a meta da unidade" },
-  { key: "costsChecked", label: "Custos e impostos conferidos" },
-  { key: "notesRegistered", label: "Notas e justificativas registradas" },
+const CHECKLIST: {
+  key: keyof NonNullable<Simulation["approvalChecklist"]>;
+  label: string;
+  defaultRequired: boolean;
+}[] = [
+  { key: "assumptionsReviewed", label: "Premissas comerciais revisadas", defaultRequired: true },
+  { key: "marginValidated", label: "Margem validada com a meta da unidade", defaultRequired: true },
+  { key: "costsChecked", label: "Custos e impostos conferidos", defaultRequired: true },
+  { key: "notesRegistered", label: "Notas e justificativas registradas", defaultRequired: false },
 ];
 
 function saveApprovalDecision(payload: {
@@ -170,6 +174,18 @@ function ApprovalsPage() {
     });
   }
 
+  function updateChecklistRequirement(
+    key: keyof NonNullable<Simulation["approvalChecklistRequired"]>,
+    value: boolean,
+  ) {
+    if (!selected) return;
+    const required = getApprovalChecklistRequired(selected);
+    upsertSimulation({
+      ...selected,
+      approvalChecklistRequired: { ...required, [key]: value },
+    });
+  }
+
   function decide(decision: "approve" | "reject" | "adjust") {
     if (!selected) return;
     const stage = getCurrentApprovalStage(selected);
@@ -184,12 +200,9 @@ function ApprovalsPage() {
     }
 
     const checklist = selected.approvalChecklist;
+    const required = getApprovalChecklistRequired(selected);
     if (decision === "approve" && stage === "principal") {
-      if (
-        !checklist?.assumptionsReviewed ||
-        !checklist.marginValidated ||
-        !checklist.costsChecked
-      ) {
+      if (CHECKLIST.some((item) => required[item.key] && !checklist?.[item.key])) {
         toast.error("Conclua o checklist obrigatório antes de aprovar.");
         return;
       }
@@ -377,6 +390,7 @@ function ApprovalsPage() {
             setBankAccount={setBankAccount}
             currentUser={currentUser}
             onUpdate={updateChecklist}
+            onUpdateRequirement={updateChecklistRequirement}
             onDecide={decide}
             canDecide={canUserDecideApprovalStage(
               currentUser,
@@ -404,6 +418,7 @@ function ApprovalDetails({
   setBankAccount,
   currentUser,
   onUpdate,
+  onUpdateRequirement,
   onDecide,
   canDecide,
 }: {
@@ -414,6 +429,10 @@ function ApprovalDetails({
   setBankAccount: (v: string) => void;
   currentUser: User | null | undefined;
   onUpdate: (key: keyof NonNullable<Simulation["approvalChecklist"]>, value: boolean) => void;
+  onUpdateRequirement: (
+    key: keyof NonNullable<Simulation["approvalChecklistRequired"]>,
+    value: boolean,
+  ) => void;
   onDecide: (decision: "approve" | "reject" | "adjust") => void;
   canDecide: boolean;
 }) {
@@ -425,9 +444,12 @@ function ApprovalDetails({
     notesRegistered: false,
     ...(simulation.approvalChecklist ?? {}),
   };
+  const required = getApprovalChecklistRequired(simulation);
   const flow = getApprovalFlow(simulation);
   const currentStage = getCurrentApprovalStage(simulation);
   const canDecideCurrentStage = canUserDecideApprovalStage(currentUser, simulation, currentStage);
+  const canConfigureRequired =
+    canDecideCurrentStage && (currentUser?.role === "Admin" || currentUser?.role === "Gestor");
 
   return (
     <Card className="shadow-card">
@@ -489,17 +511,24 @@ function ApprovalDetails({
           <h3 className="text-sm font-semibold text-foreground">Checklist da etapa</h3>
           <div className="grid gap-2 md:grid-cols-2">
             {CHECKLIST.map((item) => (
-              <label
-                key={item.key}
-                className="flex items-center gap-3 rounded-xl border border-border p-3"
-              >
-                <Checkbox
-                  checked={checklist[item.key]}
-                  disabled={!canDecideCurrentStage}
-                  onCheckedChange={(v) => onUpdate(item.key, Boolean(v))}
-                />
-                <span className="text-sm">{item.label}</span>
-              </label>
+              <div key={item.key} className="rounded-xl border border-border p-3">
+                <label className="flex items-center gap-3">
+                  <Checkbox
+                    checked={checklist[item.key]}
+                    disabled={!canDecideCurrentStage}
+                    onCheckedChange={(v) => onUpdate(item.key, Boolean(v))}
+                  />
+                  <span className="text-sm">{item.label}</span>
+                </label>
+                <label className="mt-3 flex items-center gap-2 pl-7 text-xs text-muted-foreground">
+                  <Checkbox
+                    checked={required[item.key]}
+                    disabled={!canConfigureRequired}
+                    onCheckedChange={(v) => onUpdateRequirement(item.key, Boolean(v))}
+                  />
+                  Obrigatório para aprovar
+                </label>
+              </div>
             ))}
           </div>
         </div>
@@ -644,4 +673,15 @@ function findSimulationOwnerUser(users: User[], simulation: Simulation) {
   return users.find(
     (user) => user.name.trim().toLowerCase() === owner || user.email.trim().toLowerCase() === owner,
   );
+}
+
+function getApprovalChecklistRequired(simulation: Simulation) {
+  const defaults = CHECKLIST.reduce(
+    (acc, item) => ({ ...acc, [item.key]: item.defaultRequired }),
+    {} as NonNullable<Simulation["approvalChecklistRequired"]>,
+  );
+  return {
+    ...defaults,
+    ...(simulation.approvalChecklistRequired ?? {}),
+  };
 }

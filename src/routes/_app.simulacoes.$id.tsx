@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -57,6 +57,7 @@ import { createWalletFromSimulationOrder } from "@/features/negotiation-wallets"
 import { businessUnits } from "@/data/users";
 import type {
   Client,
+  ExpenseAllocation,
   ExpenseItem,
   PurchaseItem,
   Simulation,
@@ -131,6 +132,13 @@ const STANDARD_EXPENSE_TYPES: StandardExpenseType[] = [
   "PIS E COFINS",
   "Financeiro",
   "Outros",
+];
+const LOAD_MODE_OPTIONS: NonNullable<Simulation["loadMode"]>[] = ["Carga fechada", "Compartilhada"];
+const PLANNED_VEHICLE_OPTIONS: NonNullable<Simulation["plannedVehicleType"]>[] = [
+  "Carreta",
+  "Truck",
+  "Toco",
+  "3/4",
 ];
 const REQUIRED_TEXT_FIELDS: Array<
   [
@@ -254,6 +262,8 @@ function createEmptySimulation(
     owner,
     unit,
     paymentCondition: "28 dias",
+    loadMode: "Carga fechada",
+    plannedVehicleType: "Truck",
     deliveryDate: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     validUntil: new Date(Date.now() + 1000 * 60 * 60 * 24 * 15).toISOString(),
@@ -791,7 +801,7 @@ function SimulationDetailPage() {
       unread: true,
       entityType: "approval",
       entityId: next.id,
-      targetRole: "Admin",
+      targetRole: "Gestor",
     });
     setDraft(next);
     toast.success("Simulação enviada para aprovação");
@@ -1115,6 +1125,42 @@ function ClientStep({
             value={draft.paymentCondition}
             onChange={(e) => update("paymentCondition", e.target.value)}
           />
+        </Field>
+        <Field label="Tipo de carga">
+          <Select
+            value={draft.loadMode ?? "Carga fechada"}
+            onValueChange={(v) => update("loadMode", v as NonNullable<Simulation["loadMode"]>)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LOAD_MODE_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Veículo previsto">
+          <Select
+            value={draft.plannedVehicleType ?? "Truck"}
+            onValueChange={(v) =>
+              update("plannedVehicleType", v as NonNullable<Simulation["plannedVehicleType"]>)
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PLANNED_VEHICLE_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Prioridade">
           <Select
@@ -1904,6 +1950,14 @@ function ExpensesStep({
   draft: Simulation;
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
+  const [expandedExpenseId, setExpandedExpenseId] = useState<string | null>(null);
+  const totals = getSimulationTotals(draft);
+  const bases = {
+    revenue: totals.revenue,
+    purchaseTotal: totals.purchaseTotal,
+    grossProfit: totals.grossProfit,
+  };
+
   function updateItem(id: string, patch: Partial<ExpenseItem>) {
     setDraft((d) => ({
       ...d,
@@ -1911,6 +1965,49 @@ function ExpensesStep({
         d.expenseItems.map((i) => (i.id === id ? { ...i, ...patch } : i)),
       ),
     }));
+  }
+
+  function addAllocation(expense: ExpenseItem) {
+    const currentTotal = getExpenseTotal(expense, bases);
+    const allocatedTotal = (expense.allocations ?? []).reduce((sum, item) => sum + item.amount, 0);
+    const remaining = Math.max(0, roundCurrency(currentTotal - allocatedTotal));
+    const allocation: ExpenseAllocation = {
+      id: `alloc-${Date.now()}`,
+      receiver: "",
+      amount: remaining,
+      percent: currentTotal > 0 ? roundCurrency((remaining / currentTotal) * 100) : 0,
+      costOwner: "Master",
+      notes: "",
+    };
+    updateItem(expense.id, { allocations: [...(expense.allocations ?? []), allocation] });
+  }
+
+  function updateAllocation(
+    expense: ExpenseItem,
+    allocationId: string,
+    patch: Partial<ExpenseAllocation>,
+  ) {
+    const expenseTotal = getExpenseTotal(expense, bases);
+    const allocations = (expense.allocations ?? []).map((allocation) => {
+      if (allocation.id !== allocationId) return allocation;
+      const next = { ...allocation, ...patch };
+      if ("amount" in patch) {
+        next.percent = expenseTotal > 0 ? roundCurrency((next.amount / expenseTotal) * 100) : 0;
+      }
+      if ("percent" in patch) {
+        next.amount = roundCurrency(expenseTotal * ((next.percent ?? 0) / 100));
+      }
+      return next;
+    });
+    updateItem(expense.id, { allocations });
+  }
+
+  function removeAllocation(expense: ExpenseItem, allocationId: string) {
+    updateItem(expense.id, {
+      allocations: (expense.allocations ?? []).filter(
+        (allocation) => allocation.id !== allocationId,
+      ),
+    });
   }
 
   return (
@@ -1933,63 +2030,210 @@ function ExpensesStep({
                 <TableHead>TIPO</TableHead>
                 <TableHead>BASE</TableHead>
                 <TableHead className="text-right">VALOR</TableHead>
+                <TableHead className="text-right">DETALHE</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {draft.expenseItems.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.type}</TableCell>
-                  <TableCell>
-                    <Select
-                      value={item.calculationType}
-                      onValueChange={(v) =>
-                        updateItem(item.id, {
-                          calculationType: v as ExpenseItem["calculationType"],
-                          calculationBase:
-                            v === "percentage" ? (item.calculationBase ?? "revenue") : undefined,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="w-36">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fixed">Valor fixo</SelectItem>
-                        <SelectItem value="percentage">%</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={item.calculationBase ?? "revenue"}
-                      disabled={item.calculationType === "fixed"}
-                      onValueChange={(v) =>
-                        updateItem(item.id, {
-                          calculationBase: v as NonNullable<ExpenseItem["calculationBase"]>,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="w-36">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="revenue">VENDA TOTAL (R$)</SelectItem>
-                        <SelectItem value="purchaseTotal">NF / VALORES (R$)</SelectItem>
-                        <SelectItem value="grossProfit">LUCRO BRUTO (R$)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={item.value}
-                      onChange={(e) => updateItem(item.id, { value: Number(e.target.value) })}
-                      className="ml-auto w-32 text-right"
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {draft.expenseItems.map((item) => {
+                const canDetail = item.type === "Comissão" || item.type === "Outros";
+                const expenseTotal = getExpenseTotal(item, bases);
+                const allocatedTotal = (item.allocations ?? []).reduce(
+                  (sum, allocation) => sum + allocation.amount,
+                  0,
+                );
+                const allocationDiff = roundCurrency(expenseTotal - allocatedTotal);
+                return (
+                  <Fragment key={item.id}>
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.type}</TableCell>
+                      <TableCell>
+                        <Select
+                          value={item.calculationType}
+                          onValueChange={(v) =>
+                            updateItem(item.id, {
+                              calculationType: v as ExpenseItem["calculationType"],
+                              calculationBase:
+                                v === "percentage"
+                                  ? (item.calculationBase ?? "revenue")
+                                  : undefined,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="fixed">Valor fixo</SelectItem>
+                            <SelectItem value="percentage">%</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={item.calculationBase ?? "revenue"}
+                          disabled={item.calculationType === "fixed"}
+                          onValueChange={(v) =>
+                            updateItem(item.id, {
+                              calculationBase: v as NonNullable<ExpenseItem["calculationBase"]>,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="revenue">VENDA TOTAL (R$)</SelectItem>
+                            <SelectItem value="purchaseTotal">NF / VALORES (R$)</SelectItem>
+                            <SelectItem value="grossProfit">LUCRO BRUTO (R$)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={item.value}
+                          onChange={(e) => updateItem(item.id, { value: Number(e.target.value) })}
+                          className="ml-auto w-32 text-right"
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {canDetail ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setExpandedExpenseId((current) =>
+                                current === item.id ? null : item.id,
+                              )
+                            }
+                          >
+                            <Pencil />
+                            Detalhar
+                          </Button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    {canDetail && expandedExpenseId === item.id ? (
+                      <TableRow key={`${item.id}-details`}>
+                        <TableCell colSpan={5} className="bg-muted/20">
+                          <div className="space-y-3 rounded-xl border border-border p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="font-semibold">
+                                  Rateio de {item.type} - {formatCurrency(expenseTotal)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Saldo a ratear: {formatCurrency(allocationDiff)}
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => addAllocation(item)}
+                              >
+                                <Plus />
+                                Adicionar rateio
+                              </Button>
+                            </div>
+                            {(item.allocations ?? []).length === 0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                Nenhum rateio informado.
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {(item.allocations ?? []).map((allocation) => (
+                                  <div
+                                    key={allocation.id}
+                                    className="grid gap-2 rounded-lg border border-border p-2 md:grid-cols-[1.3fr_110px_100px_150px_1fr_auto]"
+                                  >
+                                    <Input
+                                      value={allocation.receiver}
+                                      placeholder="Quem recebe"
+                                      onChange={(event) =>
+                                        updateAllocation(item, allocation.id, {
+                                          receiver: event.target.value,
+                                        })
+                                      }
+                                    />
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={allocation.amount}
+                                      onChange={(event) =>
+                                        updateAllocation(item, allocation.id, {
+                                          amount: Number(event.target.value),
+                                        })
+                                      }
+                                    />
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={allocation.percent ?? 0}
+                                      onChange={(event) =>
+                                        updateAllocation(item, allocation.id, {
+                                          percent: Number(event.target.value),
+                                        })
+                                      }
+                                    />
+                                    <Select
+                                      value={allocation.costOwner ?? "Master"}
+                                      onValueChange={(value) =>
+                                        updateAllocation(item, allocation.id, {
+                                          costOwner: value as ExpenseAllocation["costOwner"],
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {[
+                                          "Master",
+                                          "Comercial",
+                                          "Transportadora",
+                                          "Cliente",
+                                          "Fornecedor",
+                                          "Outro",
+                                        ].map((option) => (
+                                          <SelectItem key={option} value={option}>
+                                            {option}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Input
+                                      value={allocation.notes ?? ""}
+                                      placeholder="Observação"
+                                      onChange={(event) =>
+                                        updateAllocation(item, allocation.id, {
+                                          notes: event.target.value,
+                                        })
+                                      }
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => removeAllocation(item, allocation.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -2005,6 +2249,12 @@ function FinancialStep({
   draft: Simulation;
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
 }) {
+  const totals = getSimulationTotals(draft);
+  const installments = draft.financial.installmentDays.length
+    ? draft.financial.installmentDays
+    : [0];
+  const installmentBaseAmount = totals.revenue / installments.length;
+
   function update<K extends keyof Simulation["financial"]>(
     key: K,
     value: Simulation["financial"][K],
@@ -2074,6 +2324,46 @@ function FinancialStep({
           onChange={(e) => update("notes", e.target.value)}
         />
       </Field>
+      <Card className="shadow-card">
+        <CardHeader>
+          <CardTitle className="text-base">Resumo das parcelas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-hidden rounded-xl border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Parcela</TableHead>
+                  <TableHead className="text-right">Dias</TableHead>
+                  <TableHead>Forma</TableHead>
+                  <TableHead>Banco</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {installments.map((days, index) => {
+                  const isLast = index === installments.length - 1;
+                  const previousTotal = roundCurrency(installmentBaseAmount) * index;
+                  const amount = isLast
+                    ? roundCurrency(totals.revenue - previousTotal)
+                    : roundCurrency(installmentBaseAmount);
+                  return (
+                    <TableRow key={`${days}-${index}`}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell className="text-right">{days}</TableCell>
+                      <TableCell>{draft.financial.paymentMethod || "-"}</TableCell>
+                      <TableCell>{draft.financial.bank || "-"}</TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatCurrency(amount)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -2245,6 +2535,12 @@ function ResultStep({
                 </p>
                 <p>
                   <strong>Prazo de pagamento:</strong> {draft.paymentCondition}
+                </p>
+                <p>
+                  <strong>Tipo de carga:</strong> {draft.loadMode ?? "-"}
+                </p>
+                <p>
+                  <strong>Veículo previsto:</strong> {draft.plannedVehicleType ?? "-"}
                 </p>
                 <p>
                   <strong>Validade:</strong> {draft.validUntil ? formatDate(draft.validUntil) : "-"}
@@ -2498,6 +2794,10 @@ function SummaryTile({
       <CheckCircle2 className="mt-2 h-4 w-4 opacity-60" />
     </div>
   );
+}
+
+function roundCurrency(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function canValidatePaymentProof(user: User | null | undefined, simulation: Simulation) {

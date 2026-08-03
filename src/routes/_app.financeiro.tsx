@@ -62,6 +62,7 @@ import {
   filterOrdersForUser,
   filterSimulationsForUser,
 } from "@/lib/visibility";
+import { canOperateBilling, canOperateFinance } from "@/lib/permissions";
 import { toast } from "sonner";
 import { createWalletEntry, upsertWalletEntry } from "@/features/negotiation-wallets";
 
@@ -90,6 +91,8 @@ function FinancialPage() {
   const [paymentListSimulationId, setPaymentListSimulationId] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState<PaymentForm>(() => createEmptyPaymentForm());
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const canBilling = canOperateBilling(auth.user);
+  const canFinance = canOperateFinance(auth.user);
   const visibleOrders = useMemo(() => filterOrdersForUser(orders, auth.user), [auth.user, orders]);
   const visibleSimulations = useMemo(
     () => filterSimulationsForUser(simulations, auth.user),
@@ -121,6 +124,23 @@ function FinancialPage() {
   );
   const visiblePayables = useMemo(
     () => visibleTitles.filter((title) => title.type === "payable"),
+    [visibleTitles],
+  );
+  const boletoTitles = useMemo(
+    () =>
+      visibleReceivables.filter((title) => title.kind === "boleto" || Boolean(title.invoiceNumber)),
+    [visibleReceivables],
+  );
+  const anticipationTitles = useMemo(
+    () => visibleTitles.filter((title) => title.kind === "anticipation"),
+    [visibleTitles],
+  );
+  const extensionTitles = useMemo(
+    () => visibleTitles.filter((title) => title.kind === "extension"),
+    [visibleTitles],
+  );
+  const adjustmentTitles = useMemo(
+    () => visibleTitles.filter((title) => title.kind === "return" || title.kind === "shortage"),
     [visibleTitles],
   );
   const totalReceive = visibleReceivables
@@ -238,6 +258,7 @@ function FinancialPage() {
       client: selectedBillingOrder.client,
       titleNumber: invoiceNumber,
       type: "receivable",
+      kind: "boleto",
       status: "open",
       dueDate: dateInputToIso(billingForm.billingDueDate),
       amount: invoiceAmount,
@@ -314,6 +335,177 @@ function FinancialPage() {
         ? "Faturamento concluído e pedido liberado para frete."
         : "Faturamento parcial registrado.",
     );
+  };
+
+  const handleAnticipateTitle = (title: FinancialTitle) => {
+    if (!canFinance) {
+      toast.error("Seu perfil não pode registrar antecipação.");
+      return;
+    }
+    if (title.type !== "receivable") return;
+    const amountText = window.prompt(
+      `Valor antecipado para ${title.titleNumber}`,
+      Math.max(title.amount - title.paidAmount, 0)
+        .toFixed(2)
+        .replace(".", ","),
+    );
+    if (amountText === null) return;
+    const anticipatedAmount = parseCurrencyInput(amountText);
+    if (anticipatedAmount <= 0) {
+      toast.error("Informe um valor antecipado maior que zero.");
+      return;
+    }
+    const costText = window.prompt("Custo da antecipação", "0,00");
+    if (costText === null) return;
+    const anticipationCost = parseCurrencyInput(costText);
+    const bankName = window.prompt("Banco da antecipação", title.bankName || "") ?? title.bankName;
+    const now = new Date().toISOString();
+    const updatedTitle: FinancialTitle = {
+      ...title,
+      anticipatedAmount,
+      anticipationCost,
+      bankName,
+      notes: addUniqueText(
+        title.notes,
+        `Antecipação registrada em ${formatDate(now)} no banco ${bankName || "-"}.`,
+      ),
+    };
+    upsertFinancialTitle(updatedTitle);
+    if (anticipationCost > 0) {
+      upsertFinancialTitle({
+        id: `fin-ant-${title.id}-${Date.now()}`,
+        parentTitleId: title.id,
+        orderId: title.orderId,
+        orderNumber: title.orderNumber,
+        simulationId: title.simulationId,
+        simulationNumber: title.simulationNumber,
+        client: bankName || "Banco da antecipação",
+        titleNumber: `${title.titleNumber}-ANT`,
+        type: "payable",
+        kind: "anticipation",
+        status: "open",
+        dueDate: now,
+        amount: anticipationCost,
+        paidAmount: 0,
+        anticipatedAmount,
+        anticipationCost,
+        costOwner: "Master",
+        costReason: "Custo financeiro de antecipação de boleto.",
+        paymentMethod: "Débito bancário",
+        bankName,
+        notes: `Custo de antecipação vinculado ao boleto ${title.titleNumber}.`,
+        owner: title.owner,
+        unit: title.unit,
+        createdAt: now,
+      });
+    }
+    toast.success("Antecipação registrada.");
+  };
+
+  const handleExtendTitle = (title: FinancialTitle) => {
+    if (!canFinance) {
+      toast.error("Seu perfil não pode registrar prorrogação.");
+      return;
+    }
+    const nextDueDate = window.prompt(
+      "Nova data de vencimento (AAAA-MM-DD)",
+      title.dueDate.slice(0, 10),
+    );
+    if (!nextDueDate) return;
+    const costText = window.prompt("Custo da prorrogação", "0,00");
+    if (costText === null) return;
+    const extensionCost = parseCurrencyInput(costText);
+    const reason = window.prompt("Motivo da prorrogação", "") ?? "";
+    const now = new Date().toISOString();
+    const updatedTitle: FinancialTitle = {
+      ...title,
+      originalDueDate: title.originalDueDate ?? title.dueDate,
+      extendedDueDate: dateInputToIso(nextDueDate),
+      dueDate: dateInputToIso(nextDueDate),
+      extensionCost,
+      costReason: reason,
+      notes: addUniqueText(
+        title.notes,
+        `Prorrogado para ${formatDate(dateInputToIso(nextDueDate))}.`,
+      ),
+    };
+    upsertFinancialTitle(updatedTitle);
+    if (extensionCost > 0) {
+      upsertFinancialTitle({
+        id: `fin-ext-${title.id}-${Date.now()}`,
+        parentTitleId: title.id,
+        orderId: title.orderId,
+        orderNumber: title.orderNumber,
+        simulationId: title.simulationId,
+        simulationNumber: title.simulationNumber,
+        client: "Custo de prorrogação",
+        titleNumber: `${title.titleNumber}-PROR`,
+        type: "payable",
+        kind: "extension",
+        status: "open",
+        dueDate: now,
+        amount: extensionCost,
+        paidAmount: 0,
+        extensionCost,
+        costOwner: "Master",
+        costReason: reason || "Custo por prorrogação de boleto.",
+        paymentMethod: "A definir",
+        bankName: title.bankName,
+        notes: `Custo de prorrogação vinculado ao título ${title.titleNumber}.`,
+        owner: title.owner,
+        unit: title.unit,
+        createdAt: now,
+      });
+    }
+    toast.success("Prorrogação registrada.");
+  };
+
+  const handleCreateReturnOrShortage = () => {
+    if (!canFinance) {
+      toast.error("Seu perfil não pode abrir devolução/falta.");
+      return;
+    }
+    const kind = window.confirm(
+      "Clique OK para Falta de mercadoria. Clique Cancelar para Devolução.",
+    )
+      ? "shortage"
+      : "return";
+    const client = window.prompt("Cliente ou responsável", "")?.trim();
+    if (!client) return;
+    const amountText = window.prompt("Valor a controlar", "0,00");
+    if (amountText === null) return;
+    const amount = parseCurrencyInput(amountText);
+    if (amount <= 0) {
+      toast.error("Informe um valor maior que zero.");
+      return;
+    }
+    const costOwner =
+      (window.prompt(
+        "Quem vai custear? Master, Comercial, Transportadora, Cliente, Fornecedor ou Outro",
+        "Master",
+      ) as FinancialTitle["costOwner"]) || "Master";
+    const reason = window.prompt("Motivo", "") ?? "";
+    const now = new Date().toISOString();
+    upsertFinancialTitle({
+      id: `fin-${kind}-${Date.now()}`,
+      client,
+      titleNumber: `${kind === "shortage" ? "FALTA" : "DEV"}-${Date.now().toString().slice(-6)}`,
+      type: "payable",
+      kind,
+      status: "open",
+      dueDate: now,
+      amount,
+      paidAmount: 0,
+      costOwner,
+      costReason: reason,
+      paymentMethod: "A definir",
+      bankName: "",
+      notes: reason || (kind === "shortage" ? "Falta de mercadoria." : "Devolução de mercadoria."),
+      owner: auth.user?.name ?? auth.user?.email ?? "Financeiro",
+      unit: auth.user?.unit ?? "Todas as unidades",
+      createdAt: now,
+    });
+    toast.success("Controle financeiro criado.");
   };
 
   const handleGeneratePayables = () => {
@@ -711,6 +903,67 @@ function FinancialPage() {
 
       <Card className="shadow-card">
         <CardHeader>
+          <CardTitle>Gestão financeira</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Submenus para boleto, antecipação, prorrogação e devolução/falta de mercadoria.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="boletos" className="space-y-4">
+            <TabsList className="flex w-full flex-wrap justify-start">
+              <TabsTrigger value="boletos">Boletos / faturamento</TabsTrigger>
+              <TabsTrigger value="antecipacao">Antecipação</TabsTrigger>
+              <TabsTrigger value="prorrogacao">Prorrogação</TabsTrigger>
+              <TabsTrigger value="devolucao">Devoluções / faltas</TabsTrigger>
+            </TabsList>
+            <TabsContent value="boletos">
+              <DataTable
+                columns={buildBoletoColumns(
+                  handleAnticipateTitle,
+                  handleExtendTitle,
+                  canBilling || canFinance,
+                )}
+                data={boletoTitles}
+                emptyTitle="Sem boletos faturados"
+                emptyDescription="Registre o faturamento para gerar boletos/contas a receber."
+              />
+            </TabsContent>
+            <TabsContent value="antecipacao">
+              <DataTable
+                columns={buildFinancialEventColumns("Custo de antecipação")}
+                data={anticipationTitles}
+                emptyTitle="Sem antecipações"
+                emptyDescription="Use a ação Antecipar em um boleto para registrar custo financeiro."
+              />
+            </TabsContent>
+            <TabsContent value="prorrogacao">
+              <DataTable
+                columns={buildFinancialEventColumns("Custo de prorrogação")}
+                data={extensionTitles}
+                emptyTitle="Sem prorrogações"
+                emptyDescription="Use a ação Prorrogar em um boleto ou título para registrar o custo."
+              />
+            </TabsContent>
+            <TabsContent value="devolucao" className="space-y-3">
+              <div className="flex justify-end">
+                <Button onClick={handleCreateReturnOrShortage} disabled={!canFinance}>
+                  <Plus />
+                  Abrir devolução/falta
+                </Button>
+              </div>
+              <DataTable
+                columns={buildFinancialEventColumns("Responsável pelo custo")}
+                data={adjustmentTitles}
+                emptyTitle="Sem devoluções ou faltas"
+                emptyDescription="Abra um controle quando houver devolução, falta ou diferença de mercadoria."
+              />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-card">
+        <CardHeader>
           <CardTitle>Fluxo de caixa</CardTitle>
         </CardHeader>
         <CardContent className="h-72">
@@ -888,7 +1141,7 @@ function FinancialPage() {
                   >
                     Cancelar
                   </Button>
-                  <Button onClick={handleRegisterBilling}>
+                  <Button onClick={handleRegisterBilling} disabled={!canBilling}>
                     <FileCheck2 />
                     Registrar faturamento
                   </Button>
@@ -1165,6 +1418,99 @@ function buildFinancialColumns(
           Dar baixa
         </Button>
       ),
+    },
+  ];
+}
+
+function buildBoletoColumns(
+  onAnticipate: (title: FinancialTitle) => void,
+  onExtend: (title: FinancialTitle) => void,
+  canManage: boolean,
+): DataColumn<FinancialTitle>[] {
+  return [
+    { key: "doc", header: "Boleto/NF", cell: (row) => row.titleNumber },
+    { key: "client", header: "Cliente", cell: (row) => row.client },
+    { key: "order", header: "Pedido", cell: (row) => row.orderNumber ?? "-" },
+    { key: "due", header: "Vencimento", cell: (row) => formatDate(row.dueDate) },
+    {
+      key: "amount",
+      header: "Valor",
+      className: "text-right",
+      cell: (row) => formatCurrency(row.amount),
+    },
+    {
+      key: "bank",
+      header: "Banco",
+      cell: (row) => row.bankName || "-",
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (row) => <StatusBadge status={getStatusLabel(row.status)} />,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      cell: (row) => (
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canManage || row.status === "paid" || row.status === "cancelled"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAnticipate(row);
+            }}
+          >
+            Antecipar
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canManage || row.status === "paid" || row.status === "cancelled"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onExtend(row);
+            }}
+          >
+            Prorrogar
+          </Button>
+        </div>
+      ),
+    },
+  ];
+}
+
+function buildFinancialEventColumns(extraLabel: string): DataColumn<FinancialTitle>[] {
+  return [
+    { key: "doc", header: "Documento", cell: (row) => row.titleNumber },
+    { key: "client", header: "Favorecido/Cliente", cell: (row) => row.client },
+    {
+      key: "ref",
+      header: "Referência",
+      cell: (row) => row.orderNumber ?? row.simulationNumber ?? row.parentTitleId ?? "-",
+    },
+    { key: "due", header: "Vencimento", cell: (row) => formatDate(row.dueDate) },
+    {
+      key: "amount",
+      header: "Valor",
+      className: "text-right",
+      cell: (row) => formatCurrency(row.amount),
+    },
+    {
+      key: "extra",
+      header: extraLabel,
+      cell: (row) =>
+        row.costOwner ??
+        (row.anticipationCost ? formatCurrency(row.anticipationCost) : undefined) ??
+        (row.extensionCost ? formatCurrency(row.extensionCost) : undefined) ??
+        "-",
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (row) => <StatusBadge status={getStatusLabel(row.status)} />,
     },
   ];
 }
@@ -1551,6 +1897,11 @@ function slugify(value: string) {
 function addUnique(values: string[], value: string) {
   if (values.includes(value)) return values;
   return [...values, value];
+}
+
+function addUniqueText(current: string, value: string) {
+  if (current.includes(value)) return current;
+  return current ? `${current} ${value}` : value;
 }
 
 function getRemainingAmount(title: FinancialTitle) {

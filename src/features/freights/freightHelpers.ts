@@ -51,7 +51,7 @@ export function createFreightFromSimulation(simulation: Simulation): FreightReco
     client: simulation.client,
     carrierName: "Transportadora a definir",
     driverName: "",
-    vehicleDescription: "Veículo a definir",
+    vehicleDescription: simulation.plannedVehicleType ?? "Veículo a definir",
     vehiclePlate: "",
     route: `${simulation.unit} → ${simulation.deliveryCity} • ${simulation.deliveryState}`,
     plannedFreightValue: getPlannedFreightValue(simulation),
@@ -62,8 +62,7 @@ export function createFreightFromSimulation(simulation: Simulation): FreightReco
     expectedDeliveryDate: simulation.deliveryDate,
     owner: simulation.owner,
     unit: simulation.unit,
-    notes:
-      "Operação futura gerada a partir da proposta aprovada. Aguardando pagamento e validação comercial.",
+    notes: `Operação futura gerada a partir da proposta aprovada. Tipo de carga: ${simulation.loadMode ?? "não informado"}. Aguardando pagamento e validação comercial.`,
     createdAt: new Date().toISOString(),
   };
 }

@@ -11,6 +11,11 @@ oficial de migration **não foi exposta** nesta sessão do agente, por isso
 os arquivos foram colocados em `supabase/sql/` em vez de
 `supabase/migrations/`. Para aplicar:
 
+> Estado atual do projeto: a produção do Master Flow está evoluindo pela trilha
+> `supabase/manual-sql/`, documentada em `docs/manual-sql-order.md`. Antes de
+> aplicar qualquer script deste diretório, confira se ele não pertence à trilha
+> alternativa multiempresa.
+
 1. Abra o painel do Supabase → SQL Editor.
 2. Execute, **na ordem**:
    - `001_master_flow_multitenant.sql` — schema, RLS e funções.

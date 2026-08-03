@@ -68,8 +68,10 @@ export async function listNotificationsForUser(user: User): Promise<Notification
 }
 
 function getRoleAliases(role: User["role"]) {
-  if (role === "Admin") return ["Admin", "admin", "ADM", "Gestor", "gestor"];
-  if (role === "Aprovador") return ["Aprovador", "aprovador", "Aprovação", "aprovacao"];
+  if (role === "Admin") return ["Admin", "admin", "ADM"];
+  if (role === "Gestor") return ["Gestor", "gestor", "Aprovador", "aprovador", "Negociações"];
+  if (role === "Aprovador") return ["Aprovador", "aprovador", "Aprovação", "aprovacao", "Gestor"];
+  if (role === "Faturista") return ["Faturista", "faturista", "Faturamento", "faturamento"];
   if (role === "Frete") return ["Frete", "frete", "Frota", "frota", "Logística", "logistica"];
   return [role, role.toLowerCase()];
 }

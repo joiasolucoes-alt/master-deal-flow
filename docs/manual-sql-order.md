@@ -54,6 +54,7 @@ Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 | 029 | `verify_freight_preparation`                | ✅ **Somente leitura** — verificação da feature "SIM aprovada visível para o Frete como preparação". **Não altera schema** (reutiliza `freights.order_id NULL`). Rode os SELECTs para conferir. Ver `docs/operational-flow.md` e `docs/freight-flow.md`.                       |
 | 030 | `fix_driver_event_columns`                  | ⚠️ **RODAR** — corrige o erro 400/`42703` no checklist e na ocorrência do motorista. Adiciona `organization_id`/`order_id` (nullable) em `freight_events` e `delivery_proofs` (tabelas antigas sem essas colunas). Aditivo, 0 linhas, sem backfill. Ver `docs/driver-flow.md`. |
 | 031 | `freight_notifications_and_driver_statuses` | ⚠️ **RODAR após 030** — separa frete previsto/contratado, amplia os status logísticos, sincroniza os quatro marcos do motorista com o pedido e conclui a entrega somente após canhoto válido. Notifica Frete, Comercial, Financeiro e Admin.                                   |
+| 032 | `wave_1_2_3_finance_simulation_extensions`  | ⚠️ **RODAR após 031** — adiciona tipo de carga/veículo previsto na simulação, checklist obrigatório configurável, rateio de Comissão/Outros e campos financeiros para boleto, antecipação, prorrogação, devolução/falta e responsável pelo custo.                              |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 

@@ -50,8 +50,8 @@ function SettingsPage() {
   const user = auth.user;
   const roleOptions: UserRole[] = [
     "Comercial",
-    "Negociações",
-    "Aprovador",
+    "Gestor",
+    "Faturista",
     "Financeiro",
     "Frete",
     "Admin",

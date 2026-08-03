@@ -161,6 +161,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 const DATABASE_ROLE_BY_APP_ROLE: Record<UserRole, string> = {
   Comercial: "comercial",
+  Gestor: "gestor",
+  Faturista: "faturista",
   Negociações: "gestor",
   Aprovador: "aprovador",
   Financeiro: "financeiro",
@@ -186,7 +188,15 @@ function getAvatarHue(seed: string) {
 }
 
 function chooseHighestRole(roles: Array<string | null | undefined>) {
-  const priority = ["admin", "gestor", "aprovador", "financeiro", "frota", "comercial"];
+  const priority = [
+    "admin",
+    "gestor",
+    "aprovador",
+    "faturista",
+    "financeiro",
+    "frota",
+    "comercial",
+  ];
   const normalizedRoles = roles.map(normalizeDatabaseRole).filter(Boolean);
 
   return priority.find((role) => normalizedRoles.includes(role)) ?? normalizedRoles[0] ?? null;
@@ -374,6 +384,7 @@ function normalizeDatabaseRole(role?: string | null): string | null {
   if (normalized.includes("admin")) return "admin";
   if (normalized.includes("gest") || normalized.includes("negocia")) return "gestor";
   if (normalized.includes("aprov")) return "aprovador";
+  if (normalized.includes("fatur")) return "faturista";
   if (normalized.includes("financ")) return "financeiro";
   if (normalized.includes("frota") || normalized.includes("frete") || normalized.includes("logist"))
     return "frota";
@@ -432,7 +443,7 @@ async function resolveMembershipRole(
   organizationId: string,
   profileRole?: string | null,
 ) {
-  const roles = ["admin", "gestor", "aprovador", "financeiro", "frota", "comercial"];
+  const roles = ["admin", "gestor", "aprovador", "faturista", "financeiro", "frota", "comercial"];
 
   for (const role of roles) {
     const { data, error } = await client.rpc("has_role", {
@@ -651,8 +662,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const mapRole = (role?: string | null): UserRole => {
     const normalized = normalizeDatabaseRole(role);
     if (normalized === "admin") return "Admin";
-    if (normalized === "gestor") return "Negociações";
+    if (normalized === "gestor") return "Gestor";
     if (normalized === "aprovador") return "Aprovador";
+    if (normalized === "faturista") return "Faturista";
     if (normalized === "financeiro") return "Financeiro";
     if (normalized === "frota") return "Frete";
     return "Comercial";

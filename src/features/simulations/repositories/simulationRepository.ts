@@ -29,6 +29,8 @@ export type SimulationRow = {
   delivery_city?: string | null;
   delivery_state?: string | null;
   payment_condition?: string | null;
+  load_mode?: Simulation["loadMode"] | null;
+  planned_vehicle_type?: Simulation["plannedVehicleType"] | null;
   expected_delivery_date?: string | null;
   valid_until?: string | null;
   status?: string | null;
@@ -44,6 +46,7 @@ export type SimulationRow = {
   financial_notes?: string | null;
   financial?: Partial<FinancialData> | null;
   approval_checklist?: Simulation["approvalChecklist"] | null;
+  approval_checklist_required?: Simulation["approvalChecklistRequired"] | null;
   approval_flow?: Simulation["approvalFlow"] | null;
   approval_notes?: string | null;
   adjustment_reason?: string | null;
@@ -105,6 +108,7 @@ export type SimulationCostRow = {
   calculation_base?: ExpenseItem["calculationBase"] | null;
   percentage?: number | null;
   amount?: number | null;
+  allocation_details?: ExpenseItem["allocations"] | null;
 };
 
 export type SimulationPurchaseCostRow = {
@@ -253,6 +257,8 @@ export function simulationToRow(simulation: Simulation): Record<string, unknown>
     delivery_city: simulation.deliveryCity,
     delivery_state: simulation.deliveryState,
     payment_condition: simulation.paymentCondition,
+    load_mode: simulation.loadMode ?? null,
+    planned_vehicle_type: simulation.plannedVehicleType ?? null,
     expected_delivery_date: simulation.deliveryDate.slice(0, 10),
     valid_until: simulation.validUntil,
     status: simulation.status,
@@ -269,6 +275,7 @@ export function simulationToRow(simulation: Simulation): Record<string, unknown>
     financial_notes: simulation.financialNotes ?? null,
     financial: simulation.financial,
     approval_checklist: simulation.approvalChecklist ?? null,
+    approval_checklist_required: simulation.approvalChecklistRequired ?? null,
     approval_flow: simulation.approvalFlow ?? null,
     approval_notes: simulation.approvalNotes ?? null,
     adjustment_reason:
@@ -338,6 +345,7 @@ export function expenseToSimulationCostRow(
     calculation_base: expense.calculationBase ?? null,
     percentage: expense.calculationType === "percentage" ? expense.value : null,
     amount: expense.value,
+    allocation_details: expense.allocations ?? null,
   };
 }
 
@@ -396,6 +404,8 @@ export function rowToSimulation(row: SimulationRow): Simulation {
     owner: row.responsible_name || "",
     unit: row.unit_name || "",
     paymentCondition: row.payment_condition || "",
+    loadMode: row.load_mode ?? undefined,
+    plannedVehicleType: row.planned_vehicle_type ?? undefined,
     deliveryDate: row.expected_delivery_date || toDateTime(row.created_at),
     createdAt: toDateTime(row.created_at),
     validUntil: toDateTime(row.valid_until),
@@ -408,6 +418,7 @@ export function rowToSimulation(row: SimulationRow): Simulation {
     expenseItems: (row.simulation_costs ?? []).map(rowToExpense),
     financial,
     approvalChecklist: row.approval_checklist ?? undefined,
+    approvalChecklistRequired: row.approval_checklist_required ?? undefined,
     approvalFlow: row.approval_flow ?? getApprovalFlowFromRows(row.approvals),
     approvalNotes: getApprovalNotesFromRows(row.approval_notes, row.approvals),
     adjustmentReason: getAdjustmentReasonFromRows(row),
@@ -466,5 +477,6 @@ function rowToExpense(row: SimulationCostRow): ExpenseItem {
     calculationType,
     calculationBase: row.calculation_base ?? undefined,
     value: calculationType === "percentage" ? toNumber(row.percentage) : toNumber(row.amount),
+    allocations: row.allocation_details ?? undefined,
   };
 }

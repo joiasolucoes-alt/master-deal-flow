@@ -8,7 +8,14 @@ export function canViewAllFlows(user: User | null | undefined) {
 
 export function canViewOperationalQueues(user: User | null | undefined) {
   const role = normalizeRole(user?.role ?? "Comercial");
-  return role === "Admin" || role === "Financeiro" || role === "Aprovador" || role === "Frete";
+  return (
+    role === "Admin" ||
+    role === "Gestor" ||
+    role === "Financeiro" ||
+    role === "Faturista" ||
+    role === "Aprovador" ||
+    role === "Frete"
+  );
 }
 
 export function belongsToUser(owner: string | null | undefined, user: User | null | undefined) {
@@ -21,7 +28,10 @@ export function filterSimulationsForUser(simulations: Simulation[], user: User |
   return simulations.filter((simulation) => {
     if (belongsToUser(simulation.owner, user)) return true;
     if (
-      (role === "Financeiro" || role === "Aprovador") &&
+      (role === "Financeiro" ||
+        role === "Faturista" ||
+        role === "Gestor" ||
+        role === "Aprovador") &&
       isPendingApprovalStatus(simulation.status)
     ) {
       return true;

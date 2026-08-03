@@ -6,9 +6,11 @@ export function normalizeNotificationTargetRole(
   targetRole: string | null | undefined,
 ): UserRole | undefined {
   const normalized = targetRole?.trim().toLowerCase();
-  if (normalized === "admin" || normalized === "adm" || normalized === "gestor") {
+  if (normalized === "admin" || normalized === "adm") {
     return "Admin";
   }
+  if (normalized === "gestor") return "Gestor";
+  if (normalized === "faturista" || normalized === "faturamento") return "Faturista";
   if (normalized === "aprovador" || normalized === "aprovação" || normalized === "aprovacao") {
     return "Aprovador";
   }
