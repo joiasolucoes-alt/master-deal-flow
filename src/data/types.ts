@@ -374,6 +374,7 @@ export interface FinancialTitle {
 
 export type RealizedResultStatus = "draft" | "in_progress" | "closed" | "cancelled";
 export type CommissionApprovalStatus = "pending" | "approved" | "rejected";
+export type CommissionPaymentStatus = "pending" | "paid" | "blocked";
 
 export interface RealizedResultRecord {
   id: string;
@@ -403,7 +404,14 @@ export interface RealizedResultRecord {
   commissionApprovedBy?: string;
   commissionApprovedAt?: string;
   commissionNotes: string;
+  commissionPaymentStatus: CommissionPaymentStatus;
+  commissionPaidBy?: string;
+  commissionPaidAt?: string;
+  commissionPaymentNotes: string;
   closedAt?: string;
+  reopenedAt?: string;
+  reopenedBy?: string;
+  reopenReason?: string;
   notes: string;
   createdAt: string;
   updatedAt: string;

@@ -17,11 +17,13 @@ O Comercial precisa acompanhar:
 
 ## Nesta onda
 
-A comissao continua vinculada aos custos/despesas da proposta e ao resultado realizado. A comissao realizada completa fica como proxima evolucao apos estabilizar pre-pedido, pagamento e frete.
+- A comissão aparece em uma fila própria em `Relatórios`.
+- O pagamento fica bloqueado até o resultado estar fechado e a comissão aprovada.
+- Admin e Financeiro podem aprovar e marcar a comissão como paga.
+- Resultado fechado pode ser reaberto com motivo, desde que a comissão ainda não tenha sido paga.
+- A reabertura bloqueia novamente o pagamento da comissão até novo fechamento/aprovação.
 
 ## Proximas melhorias
 
-- Criar fila de comissoes pendentes.
-- Bloquear pagamento de comissao antes do recebimento do cliente, se essa for a regra comercial.
 - Exibir previsto x realizado por vendedor.
 - Exportar relatorio de comissao.

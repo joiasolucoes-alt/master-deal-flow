@@ -41,7 +41,8 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 - Upload real de arquivo de comprovante/canhoto no Supabase Storage.
 - Resultado realizado v1 em Relatórios, comparando margem prevista, margem realizada, receita recebida, custos pagos e comissão estimada.
 - Fechamento oficial do resultado por pedido, gravando histórico na tabela `realized_results`.
-- Aprovação formal de comissão no resultado realizado, liberada para Admin e Financeiro.
+- Aprovação formal e pagamento de comissão no resultado realizado, liberados para Admin e Financeiro.
+- Reabertura controlada de resultado fechado antes do pagamento da comissão.
 - Financeiro v2 iniciado com baixa parcial/manual de contas a receber e contas a pagar.
 - Saldo em aberto por título financeiro e atualização proporcional do faturamento do pedido.
 - Fretes v2 iniciado com cadastro de documentos por frete: contrato, proposta, nota/documento e outros anexos.
@@ -54,7 +55,7 @@ O Master Flow já possui base funcional do fluxo comercial até pedido e iniciou
 
 - O modo local continua como fallback e para testes offline.
 - RLS por perfil/unidade/responsável ainda deve ser refinado no banco.
-- Resultado realizado já grava fechamento oficial e aprovação de comissão; reabertura controlada fica para próxima evolução.
+- Resultado realizado já grava fechamento oficial, aprovação de comissão, pagamento de comissão e reabertura controlada antes do pagamento.
 - Fechamento contábil definitivo ainda fica para próximas ondas.
 - Financeiro ainda não possui conciliação bancária ou integração com banco.
 - Frete já possui cadastro operacional e documentos anexos; ainda não há cotação real com transportadoras ou cálculo automático por tabela.
@@ -78,6 +79,7 @@ Nenhum SQL foi aplicado automaticamente. Scripts para execução manual:
 11. `supabase/manual-sql/013_wave_1_3_commission_approval.sql`
 12. `supabase/manual-sql/014_self_signup_commercial_access.sql`
 13. `supabase/manual-sql/015_wave_3_freight_documents.sql`
+14. `supabase/manual-sql/033_commission_payment_and_result_reopen.sql`
 
 ## Onda 3
 

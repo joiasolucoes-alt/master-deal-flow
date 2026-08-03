@@ -20,6 +20,7 @@ import {
   Download,
   FileText,
   Percent,
+  RotateCcw,
   Scale,
   Share2,
   WalletCards,
@@ -40,6 +41,8 @@ import {
   approveCommissionForRealizedResult,
   buildRealizedResults,
   createClosedRealizedResultRecord,
+  payCommissionForRealizedResult,
+  reopenRealizedResultRecord,
   summarizeRealizedResults,
   type RealizedOrderResult,
 } from "@/features/results/realizedResult";
@@ -48,6 +51,7 @@ import {
   filterOrdersForUser,
   filterSimulationsForUser,
 } from "@/lib/visibility";
+import type { RealizedResultRecord } from "@/data/types";
 
 export const Route = createFileRoute("/_app/relatorios")({
   component: ReportsPage,
@@ -153,6 +157,16 @@ function ReportsPage() {
     [closedRealizedResults],
   );
   const canCloseResults = auth.user?.role === "Admin" || auth.user?.role === "Financeiro";
+  const commissionRows = useMemo<CommissionQueueRow[]>(
+    () =>
+      realizedResults
+        .filter((result) => result.commissionTotal > 0)
+        .map((result) => ({
+          ...result,
+          closedResult: closedResultByOrderId.get(result.orderId),
+        })),
+    [closedResultByOrderId, realizedResults],
+  );
   const handleCloseResult = useCallback(
     (result: RealizedOrderResult) => {
       if (!canCloseResults) {
@@ -189,6 +203,66 @@ function ReportsPage() {
       toast.success(`Comissão do pedido ${result.orderNumber} aprovada.`);
     },
     [auth.user?.name, canCloseResults, closedResultByOrderId, upsertRealizedResult],
+  );
+  const handlePayCommission = useCallback(
+    (row: CommissionQueueRow) => {
+      if (!canCloseResults) {
+        toast.error("Somente Admin ou Financeiro pode pagar comissão.");
+        return;
+      }
+
+      const closedResult = row.closedResult;
+      if (!closedResult || closedResult.status !== "closed") {
+        toast.error("Feche o resultado antes de pagar a comissão.");
+        return;
+      }
+      if (closedResult.commissionApprovalStatus !== "approved") {
+        toast.error("A comissão precisa ser aprovada antes do pagamento.");
+        return;
+      }
+      if (!closedResult.financialCompleted) {
+        toast.error(
+          "Pagamento de comissão bloqueado: financeiro do pedido ainda não foi concluído.",
+        );
+        return;
+      }
+      if (closedResult.commissionPaymentStatus === "paid") return;
+
+      const notes = window.prompt("Observação do pagamento da comissão", "") ?? "";
+      upsertRealizedResult(
+        payCommissionForRealizedResult(closedResult, auth.user?.name, notes.trim()),
+      );
+      toast.success(`Comissão do pedido ${row.orderNumber} marcada como paga.`);
+    },
+    [auth.user?.name, canCloseResults, upsertRealizedResult],
+  );
+  const handleReopenResult = useCallback(
+    (closedResult: RealizedResultRecord | undefined) => {
+      if (!canCloseResults) {
+        toast.error("Somente Admin ou Financeiro pode reabrir resultado.");
+        return;
+      }
+      if (!closedResult || closedResult.status !== "closed") {
+        toast.error("Resultado ainda não está fechado.");
+        return;
+      }
+      if (closedResult.commissionPaymentStatus === "paid") {
+        toast.error("Resultado com comissão já paga não pode ser reaberto nesta etapa.");
+        return;
+      }
+
+      const reason = window.prompt("Motivo da reabertura do resultado", "");
+      if (!reason?.trim()) {
+        toast.error("Informe o motivo da reabertura.");
+        return;
+      }
+
+      upsertRealizedResult(
+        reopenRealizedResultRecord(closedResult, auth.user?.name, reason.trim()),
+      );
+      toast.success(`Resultado do pedido ${closedResult.orderNumber} reaberto.`);
+    },
+    [auth.user?.name, canCloseResults, upsertRealizedResult],
   );
   const realizedColumns = useMemo<DataColumn<RealizedOrderResult>[]>(
     () => [
@@ -303,15 +377,26 @@ function ReportsPage() {
 
           if (alreadyClosed) {
             return (
-              <Button
-                variant={commissionApproved ? "outline" : "default"}
-                size="sm"
-                disabled={!canCloseResults || commissionApproved}
-                onClick={() => handleApproveCommission(result)}
-              >
-                <CheckCircle2 />
-                {commissionApproved ? "Aprovada" : "Aprovar comissão"}
-              </Button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  variant={commissionApproved ? "outline" : "default"}
+                  size="sm"
+                  disabled={!canCloseResults || commissionApproved}
+                  onClick={() => handleApproveCommission(result)}
+                >
+                  <CheckCircle2 />
+                  {commissionApproved ? "Aprovada" : "Aprovar comissão"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!canCloseResults || closedResult?.commissionPaymentStatus === "paid"}
+                  onClick={() => handleReopenResult(closedResult)}
+                >
+                  <RotateCcw />
+                  Reabrir
+                </Button>
+              </div>
             );
           }
 
@@ -329,7 +414,98 @@ function ReportsPage() {
         },
       },
     ],
-    [canCloseResults, closedResultByOrderId, handleApproveCommission, handleCloseResult],
+    [
+      canCloseResults,
+      closedResultByOrderId,
+      handleApproveCommission,
+      handleCloseResult,
+      handleReopenResult,
+    ],
+  );
+  const commissionColumns = useMemo<DataColumn<CommissionQueueRow>[]>(
+    () => [
+      {
+        key: "order",
+        header: "Pedido",
+        cell: (row) => (
+          <div>
+            <p className="font-semibold text-foreground">{row.orderNumber}</p>
+            <p className="text-xs text-muted-foreground">{row.client}</p>
+          </div>
+        ),
+      },
+      { key: "owner", header: "Comercial", cell: (row) => row.owner },
+      {
+        key: "commission",
+        header: "Comissão",
+        className: "text-right",
+        cell: (row) => (
+          <div>
+            <p className="font-semibold text-foreground">{formatCurrency(row.commissionTotal)}</p>
+            <p className="text-xs text-muted-foreground">
+              {formatPercent(row.commissionPercent, 2)}
+            </p>
+          </div>
+        ),
+      },
+      {
+        key: "closing",
+        header: "Fechamento",
+        cell: (row) => getCommissionClosingLabel(row),
+      },
+      {
+        key: "approval",
+        header: "Aprovação",
+        cell: (row) => getCommissionApprovalLabel(row.closedResult),
+      },
+      {
+        key: "payment",
+        header: "Pagamento",
+        cell: (row) => getCommissionPaymentLabel(row.closedResult),
+      },
+      {
+        key: "actions",
+        header: "",
+        className: "text-right",
+        cell: (row) => {
+          const closed = row.closedResult;
+          const approved = closed?.commissionApprovalStatus === "approved";
+          const paid = closed?.commissionPaymentStatus === "paid";
+          return (
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                size="sm"
+                variant={approved ? "outline" : "default"}
+                disabled={!canCloseResults || !closed || closed.status !== "closed" || approved}
+                onClick={() => handleApproveCommission(row)}
+              >
+                <CheckCircle2 />
+                {approved ? "Aprovada" : "Aprovar"}
+              </Button>
+              <Button
+                size="sm"
+                variant={paid ? "outline" : "default"}
+                disabled={!canCloseResults || !approved || paid}
+                onClick={() => handlePayCommission(row)}
+              >
+                <BadgeDollarSign />
+                {paid ? "Paga" : "Pagar"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!canCloseResults || !closed || closed.status !== "closed" || paid}
+                onClick={() => handleReopenResult(closed)}
+              >
+                <RotateCcw />
+                Reabrir
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    [canCloseResults, handleApproveCommission, handlePayCommission, handleReopenResult],
   );
 
   function exportReports() {
@@ -563,6 +739,24 @@ function ReportsPage() {
 
       <Card className="shadow-card">
         <CardHeader>
+          <CardTitle>Fila de comissões</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Controle de comissão por pedido fechado, com aprovação, pagamento e reabertura
+            controlada.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            columns={commissionColumns}
+            data={commissionRows}
+            emptyTitle="Nenhuma comissão em fila"
+            emptyDescription="Pedidos com comissão calculada aparecerão aqui para fechamento, aprovação e pagamento."
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-card">
+        <CardHeader>
           <CardTitle>Resultado realizado por pedido</CardTitle>
         </CardHeader>
         <CardContent>
@@ -576,4 +770,68 @@ function ReportsPage() {
       </Card>
     </div>
   );
+}
+
+type CommissionQueueRow = RealizedOrderResult & {
+  closedResult?: RealizedResultRecord;
+};
+
+function getCommissionClosingLabel(row: CommissionQueueRow) {
+  const closed = row.closedResult;
+  if (!closed) return row.closingStatus;
+  if (closed.status === "closed") {
+    return (
+      <div>
+        <p className="font-semibold text-success">Resultado fechado</p>
+        {closed.closedAt ? (
+          <p className="text-xs text-muted-foreground">{formatDateTime(closed.closedAt)}</p>
+        ) : null}
+      </div>
+    );
+  }
+  if (closed.status === "in_progress") {
+    return (
+      <div>
+        <p className="font-semibold text-warning">Reaberto</p>
+        {closed.reopenReason ? (
+          <p className="text-xs text-muted-foreground">{closed.reopenReason}</p>
+        ) : null}
+      </div>
+    );
+  }
+  return closed.status;
+}
+
+function getCommissionApprovalLabel(result?: RealizedResultRecord) {
+  if (!result || result.status !== "closed") return "Aguardando fechamento";
+  if (result.commissionApprovalStatus === "approved") {
+    return (
+      <div>
+        <p className="font-semibold text-success">Aprovada</p>
+        {result.commissionApprovedBy ? (
+          <p className="text-xs text-muted-foreground">Por {result.commissionApprovedBy}</p>
+        ) : null}
+      </div>
+    );
+  }
+  if (result.commissionApprovalStatus === "rejected") return "Reprovada";
+  return "Pendente";
+}
+
+function getCommissionPaymentLabel(result?: RealizedResultRecord) {
+  if (!result || result.status !== "closed") return "Bloqueado";
+  if (result.commissionPaymentStatus === "paid") {
+    return (
+      <div>
+        <p className="font-semibold text-success">Paga</p>
+        {result.commissionPaidAt ? (
+          <p className="text-xs text-muted-foreground">{formatDateTime(result.commissionPaidAt)}</p>
+        ) : null}
+      </div>
+    );
+  }
+  if (result.commissionApprovalStatus !== "approved") return "Aguardando aprovação";
+  if (!result.financialCompleted) return "Aguardando quitação";
+  if (result.commissionPaymentStatus === "blocked") return "Bloqueado";
+  return "Liberado para pagamento";
 }

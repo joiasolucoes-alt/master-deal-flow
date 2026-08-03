@@ -1,5 +1,6 @@
 import type {
   CommissionApprovalStatus,
+  CommissionPaymentStatus,
   RealizedResultRecord,
   RealizedResultStatus,
 } from "@/data/types";
@@ -38,7 +39,14 @@ export type RealizedResultRow = {
   commission_approved_by?: string | null;
   commission_approved_at?: string | null;
   commission_notes?: string | null;
+  commission_payment_status?: string | null;
+  commission_paid_by?: string | null;
+  commission_paid_at?: string | null;
+  commission_payment_notes?: string | null;
   closed_at?: string | null;
+  reopened_at?: string | null;
+  reopened_by?: string | null;
+  reopen_reason?: string | null;
   notes?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -73,7 +81,14 @@ export function realizedResultToRow(result: RealizedResultRecord): Record<string
     commission_approved_by: result.commissionApprovedBy ?? null,
     commission_approved_at: result.commissionApprovedAt ?? null,
     commission_notes: result.commissionNotes || null,
+    commission_payment_status: result.commissionPaymentStatus,
+    commission_paid_by: result.commissionPaidBy ?? null,
+    commission_paid_at: result.commissionPaidAt ?? null,
+    commission_payment_notes: result.commissionPaymentNotes || null,
     closed_at: result.closedAt ?? null,
+    reopened_at: result.reopenedAt ?? null,
+    reopened_by: result.reopenedBy ?? null,
+    reopen_reason: result.reopenReason ?? null,
     notes: result.notes || null,
     created_at: result.createdAt,
     updated_at: result.updatedAt,
@@ -110,7 +125,14 @@ export function rowToRealizedResult(row: RealizedResultRow): RealizedResultRecor
     commissionApprovedBy: row.commission_approved_by ?? undefined,
     commissionApprovedAt: row.commission_approved_at ?? undefined,
     commissionNotes: row.commission_notes || "",
+    commissionPaymentStatus: normalizeCommissionPaymentStatus(row.commission_payment_status),
+    commissionPaidBy: row.commission_paid_by ?? undefined,
+    commissionPaidAt: row.commission_paid_at ?? undefined,
+    commissionPaymentNotes: row.commission_payment_notes || "",
     closedAt: row.closed_at ?? undefined,
+    reopenedAt: row.reopened_at ?? undefined,
+    reopenedBy: row.reopened_by ?? undefined,
+    reopenReason: row.reopen_reason ?? undefined,
     notes: row.notes || "",
     createdAt: row.created_at || now,
     updatedAt: row.updated_at || now,
@@ -124,6 +146,11 @@ function normalizeStatus(status?: string | null): RealizedResultStatus {
 
 function normalizeCommissionStatus(status?: string | null): CommissionApprovalStatus {
   if (status === "approved" || status === "rejected") return status;
+  return "pending";
+}
+
+function normalizeCommissionPaymentStatus(status?: string | null): CommissionPaymentStatus {
+  if (status === "paid" || status === "blocked") return status;
   return "pending";
 }
 

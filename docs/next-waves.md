@@ -23,10 +23,13 @@
 - Upload real de arquivos de comprovante/canhoto.
 - Fechamento gerencial do resultado por pedido.
 - Aprovação formal de comissão.
+- Fila de comissões no relatório.
+- Pagamento de comissão controlado por Admin/Financeiro.
+- Reabertura controlada de resultado fechado antes do pagamento.
 
 ### Próximos blocos
 
-- Onda 1.3: reabertura controlada de resultado fechado e pagamento de comissão.
+- Exportação e visão consolidada de comissão por vendedor.
 
 ## Onda 1.3 - Resultado realizado
 
@@ -35,6 +38,7 @@
 - Fechamento por pedido.
 - Relatórios gerenciais.
 - Reabertura controlada de resultado fechado.
+- Pagamento de comissão.
 
 ## Onda 1.4 - Integrações
 

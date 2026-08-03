@@ -125,7 +125,14 @@ export function createClosedRealizedResultRecord(
     commissionApprovedBy: undefined,
     commissionApprovedAt: undefined,
     commissionNotes: "",
+    commissionPaymentStatus: "pending",
+    commissionPaidBy: undefined,
+    commissionPaidAt: undefined,
+    commissionPaymentNotes: "",
     closedAt: now,
+    reopenedAt: undefined,
+    reopenedBy: undefined,
+    reopenReason: undefined,
     notes: `Fechamento registrado por ${closedBy}.`,
     createdAt: now,
     updatedAt: now,
@@ -143,6 +150,46 @@ export function approveCommissionForRealizedResult(
     commissionApprovedBy: approvedBy,
     commissionApprovedAt: now,
     commissionNotes: `Comissão aprovada por ${approvedBy}.`,
+    updatedAt: now,
+  };
+}
+
+export function payCommissionForRealizedResult(
+  result: RealizedResultRecord,
+  paidBy = "Sistema",
+  notes = "",
+): RealizedResultRecord {
+  const now = new Date().toISOString();
+  return {
+    ...result,
+    commissionPaymentStatus: "paid",
+    commissionPaidBy: paidBy,
+    commissionPaidAt: now,
+    commissionPaymentNotes: notes || `Comissão paga por ${paidBy}.`,
+    updatedAt: now,
+  };
+}
+
+export function reopenRealizedResultRecord(
+  result: RealizedResultRecord,
+  reopenedBy = "Sistema",
+  reason = "",
+): RealizedResultRecord {
+  const now = new Date().toISOString();
+  const reopenText = reason || "Resultado reaberto para revisão.";
+  return {
+    ...result,
+    status: "in_progress",
+    commissionApprovalStatus: "pending",
+    commissionApprovedBy: undefined,
+    commissionApprovedAt: undefined,
+    commissionNotes: "",
+    commissionPaymentStatus: "blocked",
+    commissionPaymentNotes: "Pagamento bloqueado por reabertura do resultado.",
+    reopenedAt: now,
+    reopenedBy,
+    reopenReason: reopenText,
+    notes: `${result.notes ? `${result.notes}\n` : ""}Reaberto por ${reopenedBy}: ${reopenText}`,
     updatedAt: now,
   };
 }
