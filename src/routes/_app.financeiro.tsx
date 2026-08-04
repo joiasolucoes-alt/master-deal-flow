@@ -86,6 +86,8 @@ function FinancialPage() {
     addNotification,
   } = useAppContext();
   const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
+  const [selectedReceivableOrderId, setSelectedReceivableOrderId] = useState<string | null>(null);
+  const [selectedPayableOrderId, setSelectedPayableOrderId] = useState<string | null>(null);
   const [billingForm, setBillingForm] = useState<BillingForm>(() => createEmptyBillingForm());
   const [selectedPaymentTitle, setSelectedPaymentTitle] = useState<FinancialTitle | null>(null);
   const [paymentListSimulationId, setPaymentListSimulationId] = useState<string | null>(null);
@@ -201,6 +203,30 @@ function FinancialPage() {
           return buildNegotiationPaymentRow(simulation, titles);
         }),
     [visiblePayables, visibleSimulations],
+  );
+  const receivableOrderRows = useMemo(
+    () =>
+      buildFinancialOrderRows(
+        visibleOrders,
+        visibleReceivables.filter((title) => Boolean(title.orderId)),
+      ),
+    [visibleOrders, visibleReceivables],
+  );
+  const payableOrderRows = useMemo(
+    () =>
+      buildFinancialOrderRows(
+        visibleOrders,
+        visiblePayables.filter((title) => Boolean(title.orderId)),
+      ),
+    [visibleOrders, visiblePayables],
+  );
+  const selectedReceivableOrderRow = useMemo(
+    () => receivableOrderRows.find((row) => row.order.id === selectedReceivableOrderId) ?? null,
+    [receivableOrderRows, selectedReceivableOrderId],
+  );
+  const selectedPayableOrderRow = useMemo(
+    () => payableOrderRows.find((row) => row.order.id === selectedPayableOrderId) ?? null,
+    [payableOrderRows, selectedPayableOrderId],
   );
 
   const handleGenerateReceivables = () => {
@@ -812,6 +838,11 @@ function FinancialPage() {
 
   const receivableColumns = buildFinancialColumns("Cliente", "Recebido", handleRegisterPayment);
   const payableColumns = buildFinancialColumns("Favorecido", "Pago", handleRegisterPayment);
+  const receivableOrderColumns = buildFinancialOrderColumns(
+    "Receber",
+    setSelectedReceivableOrderId,
+  );
+  const payableOrderColumns = buildFinancialOrderColumns("Pagar", setSelectedPayableOrderId);
   const negotiationPaymentColumns = buildNegotiationPaymentColumns(
     handleGenerateNegotiationPayment,
     handlePayNegotiation,
@@ -879,25 +910,57 @@ function FinancialPage() {
         </TabsContent>
 
         <TabsContent value="receivable">
-          <FinancialTitleCard
-            title="Contas a receber"
-            actionLabel="Gerar contas dos pedidos"
-            onGenerate={handleGenerateReceivables}
-            columns={receivableColumns}
-            titles={visibleReceivables}
-            emptyDescription="Não há contas a receber para exibir."
-          />
+          <div className="space-y-4">
+            <FinancialOrderCard
+              title="Pedidos com contas a receber"
+              description="Clique em um pedido para ver e baixar somente os recebimentos dele."
+              actionLabel="Gerar contas dos pedidos"
+              onGenerate={handleGenerateReceivables}
+              columns={receivableOrderColumns}
+              rows={receivableOrderRows}
+              selectedOrderId={selectedReceivableOrderId}
+              onSelect={setSelectedReceivableOrderId}
+              emptyDescription="Não há pedidos com contas a receber para exibir."
+            />
+            {selectedReceivableOrderRow ? (
+              <FinancialTitleCard
+                title={`Contas a receber — ${selectedReceivableOrderRow.order.number}`}
+                actionLabel="Gerar contas dos pedidos"
+                onGenerate={handleGenerateReceivables}
+                columns={receivableColumns}
+                titles={selectedReceivableOrderRow.titles}
+                emptyDescription="Este pedido ainda não possui contas a receber."
+                hideAction
+              />
+            ) : null}
+          </div>
         </TabsContent>
 
         <TabsContent value="payable">
-          <FinancialTitleCard
-            title="Contas a pagar"
-            actionLabel="Gerar contas a pagar"
-            onGenerate={handleGeneratePayables}
-            columns={payableColumns}
-            titles={visiblePayables}
-            emptyDescription="Não há contas a pagar para exibir."
-          />
+          <div className="space-y-4">
+            <FinancialOrderCard
+              title="Pedidos com contas a pagar"
+              description="Clique em um pedido para ver e baixar somente os pagamentos dele."
+              actionLabel="Gerar contas a pagar"
+              onGenerate={handleGeneratePayables}
+              columns={payableOrderColumns}
+              rows={payableOrderRows}
+              selectedOrderId={selectedPayableOrderId}
+              onSelect={setSelectedPayableOrderId}
+              emptyDescription="Não há pedidos com contas a pagar para exibir."
+            />
+            {selectedPayableOrderRow ? (
+              <FinancialTitleCard
+                title={`Contas a pagar — ${selectedPayableOrderRow.order.number}`}
+                actionLabel="Gerar contas a pagar"
+                onGenerate={handleGeneratePayables}
+                columns={payableColumns}
+                titles={selectedPayableOrderRow.titles}
+                emptyDescription="Este pedido ainda não possui contas a pagar."
+                hideAction
+              />
+            ) : null}
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -1526,6 +1589,106 @@ type NegotiationPaymentRow = {
   status: string;
 };
 
+type FinancialOrderRow = {
+  order: Order;
+  titles: FinancialTitle[];
+  amount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  openTitles: number;
+  status: string;
+};
+
+function buildFinancialOrderRows(orders: Order[], titles: FinancialTitle[]): FinancialOrderRow[] {
+  return orders
+    .map((order) => {
+      const orderTitles = titles.filter((title) => title.orderId === order.id);
+      const amount = roundCurrency(orderTitles.reduce((sum, title) => sum + title.amount, 0));
+      const paidAmount = roundCurrency(
+        orderTitles.reduce((sum, title) => sum + Math.min(title.paidAmount, title.amount), 0),
+      );
+      const remainingAmount = Math.max(0, roundCurrency(amount - paidAmount));
+      const openTitles = orderTitles.filter(
+        (title) => title.status !== "paid" && title.status !== "cancelled",
+      ).length;
+
+      return {
+        order,
+        titles: orderTitles,
+        amount,
+        paidAmount,
+        remainingAmount,
+        openTitles,
+        status: openTitles === 0 && orderTitles.length > 0 ? "Quitado" : "Em aberto",
+      };
+    })
+    .filter((row) => row.titles.length > 0);
+}
+
+function buildFinancialOrderColumns(
+  actionLabel: string,
+  onSelect: (orderId: string) => void,
+): DataColumn<FinancialOrderRow>[] {
+  return [
+    {
+      key: "order",
+      header: "Pedido",
+      cell: (row) => (
+        <div>
+          <p className="font-semibold text-foreground">{row.order.number}</p>
+          <p className="text-xs text-muted-foreground">{row.order.client}</p>
+        </div>
+      ),
+    },
+    { key: "owner", header: "Comercial", cell: (row) => row.order.owner },
+    {
+      key: "amount",
+      header: "Valor previsto",
+      className: "text-right",
+      cell: (row) => <span className="font-medium">{formatCurrency(row.amount)}</span>,
+    },
+    {
+      key: "paid",
+      header: "Baixado",
+      className: "text-right",
+      cell: (row) => formatCurrency(row.paidAmount),
+    },
+    {
+      key: "remaining",
+      header: "Saldo",
+      className: "text-right",
+      cell: (row) => <span className="font-medium">{formatCurrency(row.remainingAmount)}</span>,
+    },
+    {
+      key: "titles",
+      header: "Títulos",
+      cell: (row) => `${row.openTitles}/${row.titles.length} em aberto`,
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (row) => <StatusBadge status={row.status} />,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      cell: (row) => (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(row.order.id);
+          }}
+        >
+          {actionLabel}
+        </Button>
+      ),
+    },
+  ];
+}
+
 function buildNegotiationPaymentColumns(
   onGeneratePayment: (row: NegotiationPaymentRow) => void,
   onPay: (row: NegotiationPaymentRow) => void,
@@ -1742,6 +1905,7 @@ function FinancialTitleCard({
   columns,
   titles,
   emptyDescription,
+  hideAction = false,
 }: {
   title: string;
   actionLabel: string;
@@ -1749,15 +1913,18 @@ function FinancialTitleCard({
   columns: DataColumn<FinancialTitle>[];
   titles: FinancialTitle[];
   emptyDescription: string;
+  hideAction?: boolean;
 }) {
   return (
     <Card className="shadow-card">
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle>{title}</CardTitle>
-        <Button size="sm" variant="soft" onClick={onGenerate}>
-          <Plus />
-          {actionLabel}
-        </Button>
+        {hideAction ? null : (
+          <Button size="sm" variant="soft" onClick={onGenerate}>
+            <Plus />
+            {actionLabel}
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="all">
@@ -1800,6 +1967,59 @@ function FinancialTitleCard({
             />
           </TabsContent>
         </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FinancialOrderCard({
+  title,
+  description,
+  actionLabel,
+  onGenerate,
+  columns,
+  rows,
+  selectedOrderId,
+  onSelect,
+  emptyDescription,
+}: {
+  title: string;
+  description: string;
+  actionLabel: string;
+  onGenerate: () => void;
+  columns: DataColumn<FinancialOrderRow>[];
+  rows: FinancialOrderRow[];
+  selectedOrderId: string | null;
+  onSelect: (orderId: string) => void;
+  emptyDescription: string;
+}) {
+  const selectedOrder = rows.find((row) => row.order.id === selectedOrderId);
+
+  return (
+    <Card className="shadow-card">
+      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+        <div>
+          <CardTitle>{title}</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          {selectedOrder ? (
+            <p className="mt-2 text-xs font-medium text-primary">
+              Selecionado: {selectedOrder.order.number} • {selectedOrder.order.client}
+            </p>
+          ) : null}
+        </div>
+        <Button size="sm" variant="soft" onClick={onGenerate}>
+          <Plus />
+          {actionLabel}
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <DataTable
+          columns={columns}
+          data={rows}
+          onRowClick={(row) => onSelect(row.order.id)}
+          emptyTitle="Sem pedidos"
+          emptyDescription={emptyDescription}
+        />
       </CardContent>
     </Card>
   );

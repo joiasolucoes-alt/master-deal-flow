@@ -379,15 +379,6 @@ function ReportsPage() {
             return (
               <div className="flex flex-wrap justify-end gap-2">
                 <Button
-                  variant={commissionApproved ? "outline" : "default"}
-                  size="sm"
-                  disabled={!canCloseResults || commissionApproved}
-                  onClick={() => handleApproveCommission(result)}
-                >
-                  <CheckCircle2 />
-                  {commissionApproved ? "Aprovada" : "Aprovar comissão"}
-                </Button>
-                <Button
                   variant="outline"
                   size="sm"
                   disabled={!canCloseResults || closedResult?.commissionPaymentStatus === "paid"}
@@ -396,6 +387,9 @@ function ReportsPage() {
                   <RotateCcw />
                   Reabrir
                 </Button>
+                <span className="self-center text-xs text-muted-foreground">
+                  Aprovação e pagamento na fila de comissões
+                </span>
               </div>
             );
           }
