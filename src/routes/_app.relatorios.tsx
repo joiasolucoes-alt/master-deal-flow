@@ -408,13 +408,7 @@ function ReportsPage() {
         },
       },
     ],
-    [
-      canCloseResults,
-      closedResultByOrderId,
-      handleApproveCommission,
-      handleCloseResult,
-      handleReopenResult,
-    ],
+    [canCloseResults, closedResultByOrderId, handleCloseResult, handleReopenResult],
   );
   const commissionColumns = useMemo<DataColumn<CommissionQueueRow>[]>(
     () => [
@@ -485,21 +479,12 @@ function ReportsPage() {
                 <BadgeDollarSign />
                 {paid ? "Paga" : "Pagar"}
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!canCloseResults || !closed || closed.status !== "closed" || paid}
-                onClick={() => handleReopenResult(closed)}
-              >
-                <RotateCcw />
-                Reabrir
-              </Button>
             </div>
           );
         },
       },
     ],
-    [canCloseResults, handleApproveCommission, handlePayCommission, handleReopenResult],
+    [canCloseResults, handleApproveCommission, handlePayCommission],
   );
 
   function exportReports() {

@@ -15,6 +15,95 @@ function requireClient(): SupabaseClient {
   return client;
 }
 
+function getMissingSchemaColumn(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+  if (code !== "PGRST204") return null;
+  return message.match(/'([^']+)'/)?.[1] ?? null;
+}
+
+function isMissingOnConflictConstraint(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+  return (
+    code === "42P10" ||
+    message.includes("there is no unique or exclusion constraint matching the ON CONFLICT")
+  );
+}
+
+async function saveRealizedResultWithoutOnConflict(
+  client: SupabaseClient,
+  row: Record<string, unknown>,
+) {
+  const compatibleRow = { ...row };
+  const externalId = typeof row.external_id === "string" ? row.external_id : null;
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    let existingId: string | null = null;
+
+    if (externalId) {
+      const existing = await client
+        .from("realized_results")
+        .select("id")
+        .eq("external_id", externalId)
+        .maybeSingle();
+
+      if (existing.error) return existing;
+      existingId = existing.data?.id ?? null;
+    }
+
+    const result = existingId
+      ? await client
+          .from("realized_results")
+          .update(compatibleRow)
+          .eq("id", existingId)
+          .select("*")
+          .single()
+      : await client.from("realized_results").insert(compatibleRow).select("*").single();
+
+    const missingColumn = getMissingSchemaColumn(result.error);
+    if (!result.error || !missingColumn || !(missingColumn in compatibleRow)) return result;
+    delete compatibleRow[missingColumn];
+  }
+
+  return client.from("realized_results").insert(compatibleRow).select("*").single();
+}
+
+async function upsertRealizedResultWithSchemaFallback(
+  client: SupabaseClient,
+  row: Record<string, unknown>,
+) {
+  const compatibleRow = { ...row };
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const result = await client
+      .from("realized_results")
+      .upsert(compatibleRow, { onConflict: "external_id" })
+      .select("*")
+      .single();
+
+    const missingColumn = getMissingSchemaColumn(result.error);
+    if (missingColumn && missingColumn in compatibleRow) {
+      delete compatibleRow[missingColumn];
+      continue;
+    }
+
+    if (isMissingOnConflictConstraint(result.error)) {
+      return saveRealizedResultWithoutOnConflict(client, compatibleRow);
+    }
+
+    return result;
+  }
+
+  return client
+    .from("realized_results")
+    .upsert(compatibleRow, { onConflict: "external_id" })
+    .select("*")
+    .single();
+}
+
 export function createSupabaseRealizedResultRepository(): RealizedResultRepository {
   return {
     async list() {
@@ -33,11 +122,7 @@ export function createSupabaseRealizedResultRepository(): RealizedResultReposito
       await ensureSupabaseSession();
       const client = requireClient();
       const payload = realizedResultToRow(result);
-      const { data, error } = await client
-        .from("realized_results")
-        .upsert(payload, { onConflict: "external_id" })
-        .select("*")
-        .single();
+      const { data, error } = await upsertRealizedResultWithSchemaFallback(client, payload);
 
       if (error) {
         if (
