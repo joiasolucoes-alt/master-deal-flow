@@ -6,9 +6,40 @@ import type {
   RealizedResultRecord,
   Simulation,
 } from "@/data/types";
-import { getSimulationTotals } from "@/lib/calculations";
+import { getExpenseTotal, getSimulationTotals } from "@/lib/calculations";
 
 const DEFAULT_COMMISSION_PERCENT = 2.5;
+
+export interface RealizedFinancialEntry {
+  id: string;
+  titleNumber: string;
+  description: string;
+  amount: number;
+  paidAmount: number;
+  openAmount: number;
+  dueDate: string;
+  status: FinancialTitle["status"];
+  bankName: string;
+  proofFileName?: string;
+  notes: string;
+}
+
+export interface RealizedExpenseEntry {
+  id: string;
+  name: string;
+  calculation: string;
+  plannedAmount: number;
+}
+
+export interface RealizedFreightEntry {
+  id: string;
+  code: string;
+  carrier: string;
+  route: string;
+  contractedAmount: number;
+  paidAmount: number;
+  status: FreightRecord["status"];
+}
 
 export interface RealizedOrderResult {
   orderId: string;
@@ -22,6 +53,8 @@ export interface RealizedOrderResult {
   receivableOpenTotal: number;
   costBookedTotal: number;
   costPaidTotal: number;
+  freightContractedTotal: number;
+  freightPaidTotal: number;
   commissionPercent: number;
   commissionTotal: number;
   realizedProfit: number;
@@ -34,6 +67,10 @@ export interface RealizedOrderResult {
   deliveryCompleted: boolean;
   financialCompleted: boolean;
   closingStatus: "Em andamento" | "Em fechamento" | "Concluído";
+  receivables: RealizedFinancialEntry[];
+  payables: RealizedFinancialEntry[];
+  expenses: RealizedExpenseEntry[];
+  freightDetails: RealizedFreightEntry[];
 }
 
 export interface RealizedResultSummary {
@@ -46,6 +83,39 @@ export interface RealizedResultSummary {
   averagePredictedMarginPercent: number;
   averageRealizedMarginPercent: number;
   completedOrders: number;
+}
+
+export type OperationClosureStep = "Entrega" | "Financeiro" | "Comissão";
+
+export interface OperationClosureState {
+  isClosed: boolean;
+  completedSteps: number;
+  totalSteps: 3;
+  progress: number;
+  missingSteps: OperationClosureStep[];
+}
+
+export function getOperationClosureState(
+  result: Pick<RealizedOrderResult, "deliveryCompleted" | "financialCompleted" | "commissionTotal">,
+  closedResult?: Pick<RealizedResultRecord, "commissionPaymentStatus">,
+): OperationClosureState {
+  const steps = [
+    { label: "Entrega" as const, completed: result.deliveryCompleted },
+    { label: "Financeiro" as const, completed: result.financialCompleted },
+    {
+      label: "Comissão" as const,
+      completed: result.commissionTotal <= 0 || closedResult?.commissionPaymentStatus === "paid",
+    },
+  ];
+  const completedSteps = steps.filter((step) => step.completed).length;
+
+  return {
+    isClosed: completedSteps === steps.length,
+    completedSteps,
+    totalSteps: 3,
+    progress: Math.round((completedSteps / steps.length) * 100),
+    missingSteps: steps.filter((step) => !step.completed).map((step) => step.label),
+  };
 }
 
 export function buildRealizedResults({
@@ -207,8 +277,9 @@ function buildRealizedResult({
   freights: FreightRecord[];
   deliveries: DeliveryRecord[];
 }): RealizedOrderResult {
-  const receivables = financialTitles.filter((title) => title.type === "receivable");
-  const payables = financialTitles.filter((title) => title.type === "payable");
+  const activeFinancialTitles = financialTitles.filter((title) => title.status !== "cancelled");
+  const receivables = activeFinancialTitles.filter((title) => title.type === "receivable");
+  const payables = activeFinancialTitles.filter((title) => title.type === "payable");
   const receivableAmount = receivables.length
     ? sumBy(receivables, (title) => title.amount)
     : order.totalValue;
@@ -218,6 +289,10 @@ function buildRealizedResult({
   const receivableOpenTotal = Math.max(0, receivableAmount - realizedRevenueTotal);
   const goodsCostTotal = getOrderGoodsCost(order);
   const freightCostTotal = sumBy(freights, (freight) => freight.freightValue);
+  const freightPayables = payables.filter(isFreightPayableTitle);
+  const freightPaidTotal = sumBy(freightPayables, (title) =>
+    Math.min(title.paidAmount, title.amount),
+  );
   const payableBookedTotal = sumBy(payables, (title) => title.amount);
   const costBookedTotal =
     payableBookedTotal > 0 ? payableBookedTotal : goodsCostTotal + freightCostTotal;
@@ -244,6 +319,16 @@ function buildRealizedResult({
   const deliveryCompleted =
     order.status === "Entregue" || deliveries.some((delivery) => delivery.status === "delivered");
   const financialCompleted = billingProgress >= 99.99 && paymentProgress >= 99.99;
+  const expenseBases = simulation
+    ? (() => {
+        const totals = getSimulationTotals(simulation);
+        return {
+          revenue: totals.revenue,
+          purchaseTotal: totals.purchaseTotal,
+          grossProfit: totals.grossProfit,
+        };
+      })()
+    : undefined;
 
   return {
     orderId: order.id,
@@ -257,6 +342,8 @@ function buildRealizedResult({
     receivableOpenTotal: roundCurrency(receivableOpenTotal),
     costBookedTotal: roundCurrency(costBookedTotal),
     costPaidTotal: roundCurrency(costPaidTotal),
+    freightContractedTotal: roundCurrency(freightCostTotal),
+    freightPaidTotal: roundCurrency(freightPaidTotal),
     commissionPercent,
     commissionTotal,
     realizedProfit,
@@ -273,7 +360,62 @@ function buildRealizedResult({
       financialCompleted,
       realizedRevenueTotal,
     }),
+    receivables: receivables.map(toFinancialEntry),
+    payables: payables.map(toFinancialEntry),
+    expenses:
+      simulation && expenseBases
+        ? simulation.expenseItems.map((expense) => ({
+            id: expense.id,
+            name: expense.type,
+            calculation:
+              expense.calculationType === "percentage"
+                ? `${expense.value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`
+                : "Valor fixo",
+            plannedAmount: roundCurrency(getExpenseTotal(expense, expenseBases)),
+          }))
+        : [],
+    freightDetails: freights.map((freight) => ({
+      id: freight.id,
+      code: freight.code,
+      carrier: freight.carrierName || "Transportadora a definir",
+      route: freight.route,
+      contractedAmount: roundCurrency(freight.freightValue),
+      paidAmount: roundCurrency(getFreightPaidAmount(freight, freightPayables)),
+      status: freight.status,
+    })),
   };
+}
+
+function toFinancialEntry(title: FinancialTitle): RealizedFinancialEntry {
+  const paidAmount = Math.min(title.paidAmount, title.amount);
+  return {
+    id: title.id,
+    titleNumber: title.titleNumber,
+    description: title.client || title.notes || "Lançamento financeiro",
+    amount: roundCurrency(title.amount),
+    paidAmount: roundCurrency(paidAmount),
+    openAmount: roundCurrency(Math.max(0, title.amount - paidAmount)),
+    dueDate: title.dueDate,
+    status: title.status,
+    bankName: title.bankName,
+    proofFileName: title.proofFileName,
+    notes: title.notes,
+  };
+}
+
+function isFreightPayableTitle(title: FinancialTitle) {
+  return (
+    title.id.startsWith("pay-freight-") ||
+    title.titleNumber.toUpperCase().endsWith("-PAG-FRETE") ||
+    title.notes.toLocaleLowerCase("pt-BR").startsWith("frete ")
+  );
+}
+
+function getFreightPaidAmount(freight: FreightRecord, titles: FinancialTitle[]) {
+  const linkedTitle = titles.find(
+    (title) => title.id.includes(freight.id) || title.notes.includes(freight.code),
+  );
+  return linkedTitle ? Math.min(linkedTitle.paidAmount, linkedTitle.amount) : 0;
 }
 
 function getPredictedMarginPercent({

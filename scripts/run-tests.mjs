@@ -1961,4 +1961,64 @@ assert.equal(payload.p_longitude, null);
 
 console.log("Testes do fix do checklist/ocorrência do motorista passaram.");
 
+// Onda 6: encerramento definitivo exige entrega, financeiro e comissão pagos.
+function getOperationClosureState({
+  deliveryCompleted,
+  financialCompleted,
+  commissionRequired = true,
+  commissionPaid,
+}) {
+  const steps = [
+    ["Entrega", deliveryCompleted],
+    ["Financeiro", financialCompleted],
+    ["Comissão", !commissionRequired || commissionPaid],
+  ];
+  const completedSteps = steps.filter(([, completed]) => completed).length;
+  return {
+    isClosed: completedSteps === steps.length,
+    completedSteps,
+    missingSteps: steps.filter(([, completed]) => !completed).map(([label]) => label),
+  };
+}
+
+assert.deepEqual(
+  getOperationClosureState({
+    deliveryCompleted: true,
+    financialCompleted: true,
+    commissionPaid: true,
+  }),
+  { isClosed: true, completedSteps: 3, missingSteps: [] },
+  "operação encerra somente com as três etapas concluídas",
+);
+assert.deepEqual(
+  getOperationClosureState({
+    deliveryCompleted: true,
+    financialCompleted: false,
+    commissionPaid: false,
+  }).missingSteps,
+  ["Financeiro", "Comissão"],
+  "gestão enxerga exatamente quais etapas faltam",
+);
+assert.equal(
+  getOperationClosureState({
+    deliveryCompleted: true,
+    financialCompleted: true,
+    commissionPaid: false,
+  }).isClosed,
+  false,
+  "comissão apenas aprovada não encerra a operação",
+);
+assert.equal(
+  getOperationClosureState({
+    deliveryCompleted: true,
+    financialCompleted: true,
+    commissionRequired: false,
+    commissionPaid: false,
+  }).completedSteps,
+  3,
+  "pedido sem comissão é tratado como sem valor pendente na etapa",
+);
+
+console.log("Testes de encerramento definitivo da operação passaram.");
+
 console.log("Todos os testes passaram.");

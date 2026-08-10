@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Bar,
@@ -17,22 +17,39 @@ import {
 import {
   BadgeDollarSign,
   CheckCircle2,
+  CircleDashed,
+  CircleDollarSign,
   Download,
+  Eye,
   FileText,
+  Landmark,
   Percent,
+  ReceiptText,
   RotateCcw,
   Scale,
   Share2,
+  Truck,
   WalletCards,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable, type DataColumn } from "@/components/app/data-table";
+import { DetailDrawer } from "@/components/app/detail-drawer";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
 import { getStatusColor } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCompactCurrency, formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
+import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  formatCompactCurrency,
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatPercent,
+} from "@/lib/format";
 import { downloadTextFile, notifyActionUnavailable } from "@/lib/actions";
 import { useAppContext } from "@/features/app/app-context";
 import { useAppStore } from "@/store/useAppStore";
@@ -41,10 +58,12 @@ import {
   approveCommissionForRealizedResult,
   buildRealizedResults,
   createClosedRealizedResultRecord,
+  getOperationClosureState,
   payCommissionForRealizedResult,
   reopenRealizedResultRecord,
   summarizeRealizedResults,
   type RealizedOrderResult,
+  type RealizedFinancialEntry,
 } from "@/features/results/realizedResult";
 import {
   filterNegotiationsForUser,
@@ -81,6 +100,9 @@ const reports = [
 ];
 
 function ReportsPage() {
+  const [selectedResult, setSelectedResult] = useState<RealizedOrderResult | null>(null);
+  const [commissionStageFilter, setCommissionStageFilter] =
+    useState<CommissionStage>("awaiting_closing");
   const {
     auth,
     simulations,
@@ -156,6 +178,13 @@ function ReportsPage() {
     () => new Map(closedRealizedResults.map((result) => [result.orderId, result])),
     [closedRealizedResults],
   );
+  const operationClosureSummary = useMemo(() => {
+    const closed = realizedResults.filter(
+      (result) =>
+        getOperationClosureState(result, closedResultByOrderId.get(result.orderId)).isClosed,
+    ).length;
+    return { closed, pending: realizedResults.length - closed };
+  }, [closedResultByOrderId, realizedResults]);
   const canCloseResults = auth.user?.role === "Admin" || auth.user?.role === "Financeiro";
   const commissionRows = useMemo<CommissionQueueRow[]>(
     () =>
@@ -166,6 +195,26 @@ function ReportsPage() {
           closedResult: closedResultByOrderId.get(result.orderId),
         })),
     [closedResultByOrderId, realizedResults],
+  );
+  const commissionStageCounts = useMemo(
+    () =>
+      commissionRows.reduce<Record<CommissionStage, number>>(
+        (counts, row) => {
+          counts[getCommissionStage(row)] += 1;
+          return counts;
+        },
+        {
+          awaiting_closing: 0,
+          awaiting_approval: 0,
+          ready_for_payment: 0,
+          paid: 0,
+        },
+      ),
+    [commissionRows],
+  );
+  const filteredCommissionRows = useMemo(
+    () => commissionRows.filter((row) => getCommissionStage(row) === commissionStageFilter),
+    [commissionRows, commissionStageFilter],
   );
   const handleCloseResult = useCallback(
     (result: RealizedOrderResult) => {
@@ -180,7 +229,10 @@ function ReportsPage() {
       }
 
       upsertRealizedResult(createClosedRealizedResultRecord(result, auth.user?.name));
-      toast.success(`Resultado do pedido ${result.orderNumber} fechado.`);
+      setCommissionStageFilter("awaiting_approval");
+      toast.success(
+        `Resultado do pedido ${result.orderNumber} fechado. Comissão enviada para aprovação.`,
+      );
     },
     [auth.user?.name, canCloseResults, upsertRealizedResult],
   );
@@ -200,7 +252,8 @@ function ReportsPage() {
       if (closedResult.commissionApprovalStatus === "approved") return;
 
       upsertRealizedResult(approveCommissionForRealizedResult(closedResult, auth.user?.name));
-      toast.success(`Comissão do pedido ${result.orderNumber} aprovada.`);
+      setCommissionStageFilter("ready_for_payment");
+      toast.success(`Comissão do pedido ${result.orderNumber} liberada para pagamento.`);
     },
     [auth.user?.name, canCloseResults, closedResultByOrderId, upsertRealizedResult],
   );
@@ -232,6 +285,7 @@ function ReportsPage() {
       upsertRealizedResult(
         payCommissionForRealizedResult(closedResult, auth.user?.name, notes.trim()),
       );
+      setCommissionStageFilter("paid");
       toast.success(`Comissão do pedido ${row.orderNumber} marcada como paga.`);
     },
     [auth.user?.name, canCloseResults, upsertRealizedResult],
@@ -284,9 +338,24 @@ function ReportsPage() {
       },
       {
         key: "costPaidTotal",
-        header: "Custos pagos",
+        header: "Custos",
         className: "text-right",
         cell: (result) => formatCurrency(result.costPaidTotal),
+      },
+      {
+        key: "freight",
+        header: "Frete",
+        className: "text-right",
+        cell: (result) => (
+          <div>
+            <p className="font-semibold text-foreground">
+              {formatCurrency(result.freightContractedTotal)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {formatCurrency(result.freightPaidTotal)} pago
+            </p>
+          </div>
+        ),
       },
       {
         key: "commissionTotal",
@@ -325,44 +394,31 @@ function ReportsPage() {
       },
       {
         key: "status",
-        header: "Fechamento",
+        header: "Status",
         cell: (result) => {
           const closedResult = closedResultByOrderId.get(result.orderId);
-          if (closedResult?.status === "closed") {
+          const closure = getOperationClosureState(result, closedResult);
+          if (closure.isClosed) {
             return (
               <div className="space-y-1">
-                <p className="font-semibold text-success">Fechado</p>
-                {closedResult.closedAt ? (
+                <p className="font-semibold text-success">Operação encerrada</p>
+                {closedResult?.commissionPaidAt ? (
                   <p className="text-xs text-muted-foreground">
-                    {formatDateTime(closedResult.closedAt)}
+                    {formatDateTime(closedResult.commissionPaidAt)}
                   </p>
                 ) : null}
               </div>
             );
           }
 
-          return result.closingStatus;
-        },
-      },
-      {
-        key: "commissionApproval",
-        header: "Comissão",
-        cell: (result) => {
-          const closedResult = closedResultByOrderId.get(result.orderId);
-          if (!closedResult || closedResult.status !== "closed") return "Aguardando fechamento";
-          if (closedResult.commissionApprovalStatus === "approved") {
-            return (
-              <div className="space-y-1">
-                <p className="font-semibold text-success">Aprovada</p>
-                {closedResult.commissionApprovedAt ? (
-                  <p className="text-xs text-muted-foreground">
-                    {formatDateTime(closedResult.commissionApprovedAt)}
-                  </p>
-                ) : null}
-              </div>
-            );
-          }
-          return "Pendente";
+          return (
+            <div className="space-y-1">
+              <p className="font-semibold text-warning">Em encerramento</p>
+              <p className="text-xs text-muted-foreground">
+                Falta: {closure.missingSteps.join(", ")}
+              </p>
+            </div>
+          );
         },
       },
       {
@@ -372,12 +428,15 @@ function ReportsPage() {
         cell: (result) => {
           const closedResult = closedResultByOrderId.get(result.orderId);
           const alreadyClosed = closedResult?.status === "closed";
-          const commissionApproved = closedResult?.commissionApprovalStatus === "approved";
           const readyToClose = result.deliveryCompleted && result.financialCompleted;
 
           if (alreadyClosed) {
             return (
               <div className="flex flex-wrap justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setSelectedResult(result)}>
+                  <Eye />
+                  Conferir
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -395,15 +454,21 @@ function ReportsPage() {
           }
 
           return (
-            <Button
-              variant="default"
-              size="sm"
-              disabled={!canCloseResults || !readyToClose}
-              onClick={() => handleCloseResult(result)}
-            >
-              <CheckCircle2 />
-              Fechar
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSelectedResult(result)}>
+                <Eye />
+                Conferir
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                disabled={!canCloseResults || !readyToClose}
+                onClick={() => handleCloseResult(result)}
+              >
+                <CheckCircle2 />
+                Fechar
+              </Button>
+            </div>
           );
         },
       },
@@ -437,54 +502,67 @@ function ReportsPage() {
         ),
       },
       {
-        key: "closing",
-        header: "Fechamento",
-        cell: (row) => getCommissionClosingLabel(row),
-      },
-      {
-        key: "approval",
-        header: "Aprovação",
-        cell: (row) => getCommissionApprovalLabel(row.closedResult),
-      },
-      {
-        key: "payment",
-        header: "Pagamento",
-        cell: (row) => getCommissionPaymentLabel(row.closedResult),
+        key: "stage",
+        header: "Status atual",
+        cell: (row) => <CommissionStageStatus row={row} />,
       },
       {
         key: "actions",
-        header: "",
+        header: "Próxima ação",
         className: "text-right",
         cell: (row) => {
+          const stage = getCommissionStage(row);
           const closed = row.closedResult;
-          const approved = closed?.commissionApprovalStatus === "approved";
-          const paid = closed?.commissionPaymentStatus === "paid";
+          const readyToClose = row.deliveryCompleted && row.financialCompleted;
+
           return (
             <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                size="sm"
-                variant={approved ? "outline" : "default"}
-                disabled={!canCloseResults || !closed || closed.status !== "closed" || approved}
-                onClick={() => handleApproveCommission(row)}
-              >
-                <CheckCircle2 />
-                {approved ? "Aprovada" : "Aprovar"}
+              <Button variant="outline" size="sm" onClick={() => setSelectedResult(row)}>
+                <Eye />
+                Conferir
               </Button>
-              <Button
-                size="sm"
-                variant={paid ? "outline" : "default"}
-                disabled={!canCloseResults || !approved || paid}
-                onClick={() => handlePayCommission(row)}
-              >
-                <BadgeDollarSign />
-                {paid ? "Paga" : "Pagar"}
-              </Button>
+              {stage === "awaiting_closing" ? (
+                <Button
+                  size="sm"
+                  disabled={!canCloseResults || !readyToClose}
+                  onClick={() => handleCloseResult(row)}
+                >
+                  <CheckCircle2 />
+                  Fechar resultado
+                </Button>
+              ) : null}
+              {stage === "awaiting_approval" ? (
+                <Button
+                  size="sm"
+                  disabled={!canCloseResults || !closed || closed.status !== "closed"}
+                  onClick={() => handleApproveCommission(row)}
+                >
+                  <CheckCircle2 />
+                  Aprovar comissão
+                </Button>
+              ) : null}
+              {stage === "ready_for_payment" ? (
+                <Button
+                  size="sm"
+                  disabled={!canCloseResults}
+                  onClick={() => handlePayCommission(row)}
+                >
+                  <BadgeDollarSign />
+                  Pagar comissão
+                </Button>
+              ) : null}
+              {stage === "paid" ? (
+                <Button size="sm" variant="outline" disabled>
+                  <CheckCircle2 />
+                  Comissão paga
+                </Button>
+              ) : null}
             </div>
           );
         },
       },
     ],
-    [canCloseResults, handleApproveCommission, handlePayCommission],
+    [canCloseResults, handleApproveCommission, handleCloseResult, handlePayCommission],
   );
 
   function exportReports() {
@@ -514,11 +592,11 @@ function ReportsPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard
           label="Receita recebida"
           value={formatCompactCurrency(realizedSummary.realizedRevenueTotal)}
-          delta={`${realizedSummary.completedOrders} pedidos concluídos`}
+          delta={`${realizedSummary.completedOrders} entregues e quitados`}
           icon={WalletCards}
           tone="info"
         />
@@ -542,6 +620,13 @@ function ReportsPage() {
           delta={formatCompactCurrency(realizedSummary.costPaidTotal) + " custos pagos"}
           icon={Scale}
           tone={realizedSummary.receivableOpenTotal > 0 ? "warning" : "success"}
+        />
+        <StatCard
+          label="Operações encerradas"
+          value={String(operationClosureSummary.closed)}
+          delta={`${operationClosureSummary.pending} ainda em encerramento`}
+          icon={CheckCircle2}
+          tone={operationClosureSummary.pending > 0 ? "warning" : "success"}
         />
       </div>
 
@@ -720,16 +805,43 @@ function ReportsPage() {
         <CardHeader>
           <CardTitle>Fila de comissões</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Controle de comissão por pedido fechado, com aprovação, pagamento e reabertura
-            controlada.
+            Cada pedido avança por uma etapa de cada vez: fechamento, aprovação e pagamento.
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <Tabs
+            value={commissionStageFilter}
+            onValueChange={(value) => setCommissionStageFilter(value as CommissionStage)}
+          >
+            <TabsList className="grid h-auto w-full grid-cols-1 gap-2 bg-transparent p-0 sm:grid-cols-2 xl:grid-cols-4">
+              {COMMISSION_STAGES.map((stage) => (
+                <TabsTrigger
+                  key={stage.value}
+                  value={stage.value}
+                  className="min-h-20 justify-start border border-border px-3 py-3 text-left data-[state=active]:border-primary data-[state=active]:bg-primary-soft data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                >
+                  <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block whitespace-normal text-sm font-semibold">
+                        {stage.label}
+                      </span>
+                      <span className="mt-1 block whitespace-normal text-xs font-normal text-muted-foreground">
+                        {stage.description}
+                      </span>
+                    </span>
+                    <span className="grid h-8 min-w-8 shrink-0 place-items-center rounded-md bg-muted px-2 text-sm font-bold text-foreground">
+                      {commissionStageCounts[stage.value]}
+                    </span>
+                  </span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
           <DataTable
             columns={commissionColumns}
-            data={commissionRows}
-            emptyTitle="Nenhuma comissão em fila"
-            emptyDescription="Pedidos com comissão calculada aparecerão aqui para fechamento, aprovação e pagamento."
+            data={filteredCommissionRows}
+            emptyTitle={`Nenhuma comissão: ${getCommissionStageConfig(commissionStageFilter).label.toLowerCase()}`}
+            emptyDescription={getCommissionStageEmptyDescription(commissionStageFilter)}
           />
         </CardContent>
       </Card>
@@ -747,6 +859,16 @@ function ReportsPage() {
           />
         </CardContent>
       </Card>
+
+      <RealizedResultDetail
+        result={selectedResult}
+        closedResult={
+          selectedResult ? closedResultByOrderId.get(selectedResult.orderId) : undefined
+        }
+        onOpenChange={(open) => {
+          if (!open) setSelectedResult(null);
+        }}
+      />
     </div>
   );
 }
@@ -755,62 +877,569 @@ type CommissionQueueRow = RealizedOrderResult & {
   closedResult?: RealizedResultRecord;
 };
 
-function getCommissionClosingLabel(row: CommissionQueueRow) {
-  const closed = row.closedResult;
-  if (!closed) return row.closingStatus;
-  if (closed.status === "closed") {
+type CommissionStage = "awaiting_closing" | "awaiting_approval" | "ready_for_payment" | "paid";
+
+const COMMISSION_STAGES: Array<{
+  value: CommissionStage;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "awaiting_closing",
+    label: "Aguardando fechamento",
+    description: "Entrega e financeiro precisam estar concluídos.",
+  },
+  {
+    value: "awaiting_approval",
+    label: "Aguardando aprovação",
+    description: "Resultado fechado, comissão pendente de análise.",
+  },
+  {
+    value: "ready_for_payment",
+    label: "Liberada para pagamento",
+    description: "Comissão aprovada e pronta para pagar.",
+  },
+  {
+    value: "paid",
+    label: "Paga",
+    description: "Comissões com pagamento concluído.",
+  },
+];
+
+function RealizedResultDetail({
+  result,
+  closedResult,
+  onOpenChange,
+}: {
+  result: RealizedOrderResult | null;
+  closedResult?: RealizedResultRecord;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!result) {
     return (
-      <div>
-        <p className="font-semibold text-success">Resultado fechado</p>
-        {closed.closedAt ? (
-          <p className="text-xs text-muted-foreground">{formatDateTime(closed.closedAt)}</p>
-        ) : null}
-      </div>
+      <DetailDrawer open={false} onOpenChange={onOpenChange} title="Conferência do resultado">
+        <div />
+      </DetailDrawer>
     );
   }
-  if (closed.status === "in_progress") {
-    return (
-      <div>
-        <p className="font-semibold text-warning">Reaberto</p>
-        {closed.reopenReason ? (
-          <p className="text-xs text-muted-foreground">{closed.reopenReason}</p>
-        ) : null}
+
+  const resultStatus =
+    closedResult?.status === "closed" ? "Resultado fechado" : result.closingStatus;
+  const operationClosure = getOperationClosureState(result, closedResult);
+
+  return (
+    <DetailDrawer
+      open
+      onOpenChange={onOpenChange}
+      title={`Conferência ${result.orderNumber}`}
+      description={`${result.client} • ${result.owner}`}
+    >
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{resultStatus}</Badge>
+          <Badge variant="secondary">{result.status}</Badge>
+          <span className="text-xs text-muted-foreground">
+            Unidade: {result.unit || "Não informada"}
+          </span>
+        </div>
+
+        <OperationClosurePanel
+          result={result}
+          closedResult={closedResult}
+          closure={operationClosure}
+        />
+
+        <section aria-labelledby="resultado-final-title" className="space-y-3">
+          <div>
+            <h3 id="resultado-final-title" className="font-semibold text-foreground">
+              Resultado final
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Visão consolidada dos valores registrados no Financeiro.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ResultMetric label="Valor recebido" value={result.realizedRevenueTotal} />
+            <ResultMetric label="Custos pagos" value={result.costPaidTotal} />
+            <ResultMetric label="Comissão" value={result.commissionTotal} />
+            <ResultMetric
+              label="Lucro realizado"
+              value={result.realizedProfit}
+              tone={result.realizedProfit >= 0 ? "success" : "danger"}
+            />
+          </div>
+          <div className="grid gap-3 border-y border-border py-4 sm:grid-cols-3">
+            <ResultTextMetric
+              label="Margem realizada"
+              value={formatPercent(result.realizedMarginPercent, 2)}
+              tone={result.realizedMarginPercent >= 0 ? "success" : "danger"}
+            />
+            <ResultTextMetric
+              label="Margem prevista"
+              value={formatPercent(result.predictedMarginPercent, 2)}
+            />
+            <ResultTextMetric
+              label="Diferença"
+              value={formatPercent(result.marginDeltaPercent, 2)}
+              tone={result.marginDeltaPercent >= 0 ? "success" : "danger"}
+            />
+          </div>
+          <div className="rounded-md border border-border bg-muted/30 p-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Conta do lucro</p>
+            <p className="mt-2 text-sm font-medium text-foreground">
+              {formatCurrency(result.realizedRevenueTotal)} recebidos −{" "}
+              {formatCurrency(result.costPaidTotal)} em custos pagos −{" "}
+              {formatCurrency(result.commissionTotal)} de comissão ={" "}
+              {formatCurrency(result.realizedProfit)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              O frete pago aparece dentro dos custos financeiros; o contratado também é mostrado
+              separadamente abaixo para conferência.
+            </p>
+          </div>
+        </section>
+
+        <Separator />
+
+        <FinancialCompositionSection
+          id="recebimentos-title"
+          title="Recebimentos"
+          description={`${formatCurrency(result.realizedRevenueTotal)} recebido • ${formatCurrency(result.receivableOpenTotal)} em aberto`}
+          icon={Landmark}
+          entries={result.receivables}
+          emptyText="Nenhum título a receber vinculado a este pedido."
+        />
+
+        <Separator />
+
+        <FinancialCompositionSection
+          id="contas-pagas-title"
+          title="Contas pagas e a pagar"
+          description={`${formatCurrency(result.costPaidTotal)} já pago • ${formatCurrency(Math.max(0, result.costBookedTotal - result.costPaidTotal))} em aberto`}
+          icon={ReceiptText}
+          entries={result.payables}
+          emptyText="Nenhuma conta a pagar vinculada a este pedido."
+        />
+
+        <Separator />
+
+        <section aria-labelledby="despesas-title" className="space-y-3">
+          <SectionHeading
+            id="despesas-title"
+            icon={CircleDollarSign}
+            title="Despesas da simulação"
+            description="Valores previstos que deram origem à operação."
+          />
+          {result.expenses.length ? (
+            <div className="divide-y divide-border border-y border-border">
+              {result.expenses.map((expense) => (
+                <div key={expense.id} className="flex items-center justify-between gap-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{expense.name}</p>
+                    <p className="text-xs text-muted-foreground">{expense.calculation}</p>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {formatCurrency(expense.plannedAmount)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Sem despesas da simulação para exibir.</p>
+          )}
+        </section>
+
+        <Separator />
+
+        <section aria-labelledby="frete-title" className="space-y-3">
+          <SectionHeading
+            id="frete-title"
+            icon={Truck}
+            title="Frete"
+            description={`${formatCurrency(result.freightContractedTotal)} contratado • ${formatCurrency(result.freightPaidTotal)} pago`}
+          />
+          {result.freightDetails.length ? (
+            <div className="divide-y divide-border border-y border-border">
+              {result.freightDetails.map((freight) => (
+                <div key={freight.id} className="space-y-2 py-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {freight.code} • {freight.carrier}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{freight.route}</p>
+                    </div>
+                    <Badge variant="outline">{getFreightStatusLabel(freight.status)}</Badge>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Contratado / pago</span>
+                    <span className="font-semibold text-foreground">
+                      {formatCurrency(freight.contractedAmount)} /{" "}
+                      {formatCurrency(freight.paidAmount)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Nenhum frete vinculado ao pedido.</p>
+          )}
+        </section>
+
+        <Separator />
+
+        <section aria-labelledby="comissao-title" className="space-y-3">
+          <SectionHeading
+            id="comissao-title"
+            icon={BadgeDollarSign}
+            title="Comissão"
+            description={`${formatPercent(result.commissionPercent, 2)} sobre o valor recebido`}
+          />
+          <div className="grid gap-3 border-y border-border py-4 sm:grid-cols-3">
+            <ResultMetric label="Valor calculado" value={result.commissionTotal} />
+            <ResultTextMetric label="Aprovação" value={getCommissionApprovalText(closedResult)} />
+            <ResultTextMetric label="Pagamento" value={getCommissionPaymentText(closedResult)} />
+          </div>
+        </section>
       </div>
-    );
-  }
-  return closed.status;
+    </DetailDrawer>
+  );
 }
 
-function getCommissionApprovalLabel(result?: RealizedResultRecord) {
-  if (!result || result.status !== "closed") return "Aguardando fechamento";
-  if (result.commissionApprovalStatus === "approved") {
-    return (
-      <div>
-        <p className="font-semibold text-success">Aprovada</p>
-        {result.commissionApprovedBy ? (
-          <p className="text-xs text-muted-foreground">Por {result.commissionApprovedBy}</p>
-        ) : null}
+function OperationClosurePanel({
+  result,
+  closedResult,
+  closure,
+}: {
+  result: RealizedOrderResult;
+  closedResult?: RealizedResultRecord;
+  closure: ReturnType<typeof getOperationClosureState>;
+}) {
+  const steps = [
+    {
+      label: "Entrega concluída",
+      description: result.deliveryCompleted
+        ? "Mercadoria entregue e comprovada."
+        : "Aguardando a conclusão da entrega.",
+      completed: result.deliveryCompleted,
+    },
+    {
+      label: "Financeiro quitado",
+      description: result.financialCompleted
+        ? "Recebimentos e pagamentos concluídos."
+        : "Ainda existem valores financeiros pendentes.",
+      completed: result.financialCompleted,
+    },
+    {
+      label: result.commissionTotal > 0 ? "Comissão paga" : "Sem comissão",
+      description:
+        result.commissionTotal <= 0
+          ? "Este pedido não possui comissão prevista."
+          : closedResult?.commissionPaymentStatus === "paid"
+            ? `Pagamento concluído${closedResult.commissionPaidAt ? ` em ${formatDateTime(closedResult.commissionPaidAt)}` : ""}.`
+            : getCommissionStageDetail({ ...result, closedResult }),
+      completed: result.commissionTotal <= 0 || closedResult?.commissionPaymentStatus === "paid",
+    },
+  ];
+
+  return (
+    <section
+      aria-labelledby="encerramento-operacao-title"
+      className={`space-y-4 rounded-md border p-4 ${
+        closure.isClosed ? "border-success/40 bg-success/5" : "border-warning/40 bg-warning/5"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 id="encerramento-operacao-title" className="font-semibold text-foreground">
+            {closure.isClosed ? "Operação encerrada" : "Encerramento da operação"}
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            {closure.isClosed
+              ? "Entrega, financeiro e comissão estão concluídos."
+              : `Falta concluir: ${closure.missingSteps.join(", ")}.`}
+          </p>
+        </div>
+        <Badge variant={closure.isClosed ? "default" : "outline"}>
+          {closure.completedSteps} de {closure.totalSteps} etapas
+        </Badge>
       </div>
-    );
-  }
+      <Progress value={closure.progress} aria-label={`Encerramento em ${closure.progress}%`} />
+      <div className="grid gap-2 sm:grid-cols-3">
+        {steps.map((step) => {
+          const Icon = step.completed ? CheckCircle2 : CircleDashed;
+          return (
+            <div
+              key={step.label}
+              className="flex items-start gap-2 rounded-md border border-border p-3"
+            >
+              <Icon
+                className={`mt-0.5 h-4 w-4 shrink-0 ${step.completed ? "text-success" : "text-warning"}`}
+              />
+              <div>
+                <p className="text-sm font-semibold text-foreground">{step.label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{step.description}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ResultMetric({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: number;
+  tone?: "default" | "success" | "danger";
+}) {
+  const toneClass =
+    tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-foreground";
+  return (
+    <div className="rounded-md border border-border p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-lg font-semibold ${toneClass}`}>{formatCurrency(value)}</p>
+    </div>
+  );
+}
+
+function ResultTextMetric({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "danger";
+}) {
+  const toneClass =
+    tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-foreground";
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-sm font-semibold ${toneClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function SectionHeading({
+  id,
+  icon: Icon,
+  title,
+  description,
+}: {
+  id: string;
+  icon: typeof Landmark;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary-soft text-primary">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div>
+        <h3 id={id} className="font-semibold text-foreground">
+          {title}
+        </h3>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function FinancialCompositionSection({
+  id,
+  title,
+  description,
+  icon,
+  entries,
+  emptyText,
+}: {
+  id: string;
+  title: string;
+  description: string;
+  icon: typeof Landmark;
+  entries: RealizedFinancialEntry[];
+  emptyText: string;
+}) {
+  return (
+    <section aria-labelledby={id} className="space-y-3">
+      <SectionHeading id={id} icon={icon} title={title} description={description} />
+      {entries.length ? (
+        <div className="divide-y divide-border border-y border-border">
+          {entries.map((entry) => (
+            <div key={entry.id} className="space-y-2 py-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {entry.titleNumber}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">{entry.description}</p>
+                </div>
+                <Badge variant={entry.status === "paid" ? "secondary" : "outline"}>
+                  {getFinancialStatusLabel(entry.status)}
+                </Badge>
+              </div>
+              <div className="grid gap-2 text-xs sm:grid-cols-2">
+                <p className="text-muted-foreground">
+                  Previsto:{" "}
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(entry.amount)}
+                  </span>
+                </p>
+                <p className="text-muted-foreground sm:text-right">
+                  Pago:{" "}
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(entry.paidAmount)}
+                  </span>
+                </p>
+                <p className="text-muted-foreground">
+                  Vencimento: <span className="text-foreground">{formatDate(entry.dueDate)}</span>
+                </p>
+                <p className="text-muted-foreground sm:text-right">
+                  Saldo: <span className="text-foreground">{formatCurrency(entry.openAmount)}</span>
+                </p>
+              </div>
+              {entry.bankName || entry.proofFileName ? (
+                <p className="text-xs text-muted-foreground">
+                  {[
+                    entry.bankName ? `Banco: ${entry.bankName}` : "",
+                    entry.proofFileName ? `Comprovante: ${entry.proofFileName}` : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" • ")}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">{emptyText}</p>
+      )}
+    </section>
+  );
+}
+
+function getFinancialStatusLabel(status: RealizedFinancialEntry["status"]) {
+  const labels: Record<RealizedFinancialEntry["status"], string> = {
+    open: "Em aberto",
+    partial: "Parcial",
+    paid: "Pago",
+    overdue: "Vencido",
+    cancelled: "Cancelado",
+  };
+  return labels[status];
+}
+
+function getFreightStatusLabel(status: RealizedOrderResult["freightDetails"][number]["status"]) {
+  const labels = {
+    quoted: "Em contratação",
+    hired: "Contratado",
+    loading: "Em carregamento",
+    in_route: "Em rota",
+    at_destination: "No destino",
+    unloaded: "Descarregado",
+    delivered: "Entregue",
+    cancelled: "Cancelado",
+  } as const;
+  return labels[status];
+}
+
+function getCommissionApprovalText(result?: RealizedResultRecord) {
+  if (!result || result.status !== "closed") return "Aguardando fechamento";
+  if (result.commissionApprovalStatus === "approved") return "Aprovada";
   if (result.commissionApprovalStatus === "rejected") return "Reprovada";
   return "Pendente";
 }
 
-function getCommissionPaymentLabel(result?: RealizedResultRecord) {
+function getCommissionPaymentText(result?: RealizedResultRecord) {
   if (!result || result.status !== "closed") return "Bloqueado";
-  if (result.commissionPaymentStatus === "paid") {
-    return (
-      <div>
-        <p className="font-semibold text-success">Paga</p>
-        {result.commissionPaidAt ? (
-          <p className="text-xs text-muted-foreground">{formatDateTime(result.commissionPaidAt)}</p>
-        ) : null}
-      </div>
-    );
-  }
-  if (result.commissionApprovalStatus !== "approved") return "Aguardando aprovação";
-  if (!result.financialCompleted) return "Aguardando quitação";
+  if (result.commissionPaymentStatus === "paid") return "Paga";
   if (result.commissionPaymentStatus === "blocked") return "Bloqueado";
-  return "Liberado para pagamento";
+  return "Pendente";
+}
+
+function getCommissionStage(row: CommissionQueueRow): CommissionStage {
+  const closed = row.closedResult;
+  if (closed?.commissionPaymentStatus === "paid") return "paid";
+  if (!closed || closed.status !== "closed") return "awaiting_closing";
+  if (closed.commissionApprovalStatus !== "approved") return "awaiting_approval";
+  return "ready_for_payment";
+}
+
+function getCommissionStageConfig(stage: CommissionStage) {
+  return COMMISSION_STAGES.find((item) => item.value === stage) ?? COMMISSION_STAGES[0];
+}
+
+function getCommissionStageEmptyDescription(stage: CommissionStage) {
+  const descriptions: Record<CommissionStage, string> = {
+    awaiting_closing: "Nenhum pedido com comissão aguarda o fechamento do resultado.",
+    awaiting_approval: "Nenhuma comissão aguarda aprovação neste momento.",
+    ready_for_payment: "Nenhuma comissão está liberada para pagamento.",
+    paid: "Nenhuma comissão foi marcada como paga.",
+  };
+  return descriptions[stage];
+}
+
+function CommissionStageStatus({ row }: { row: CommissionQueueRow }) {
+  const stage = getCommissionStage(row);
+  const config = getCommissionStageConfig(stage);
+  const closed = row.closedResult;
+  const toneClass =
+    stage === "paid"
+      ? "text-success"
+      : stage === "ready_for_payment"
+        ? "text-info"
+        : stage === "awaiting_approval"
+          ? "text-warning"
+          : "text-foreground";
+
+  return (
+    <div className="max-w-xs space-y-1">
+      <p className={`font-semibold ${toneClass}`}>{config.label}</p>
+      <p className="text-xs text-muted-foreground">{getCommissionStageDetail(row)}</p>
+      {stage === "paid" && closed?.commissionPaidAt ? (
+        <p className="text-xs text-muted-foreground">
+          {formatDateTime(closed.commissionPaidAt)}
+          {closed.commissionPaidBy ? ` • ${closed.commissionPaidBy}` : ""}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function getCommissionStageDetail(row: CommissionQueueRow) {
+  const stage = getCommissionStage(row);
+  const closed = row.closedResult;
+
+  if (stage === "paid") return "Pagamento da comissão concluído.";
+  if (stage === "ready_for_payment") {
+    return closed?.commissionApprovedBy
+      ? `Aprovada por ${closed.commissionApprovedBy}.`
+      : "Aprovação concluída.";
+  }
+  if (stage === "awaiting_approval") {
+    if (closed?.commissionApprovalStatus === "rejected") {
+      return "Comissão reprovada e aguardando nova análise.";
+    }
+    return closed?.closedAt
+      ? `Resultado fechado em ${formatDateTime(closed.closedAt)}.`
+      : "Resultado fechado e pronto para análise.";
+  }
+  if (closed?.status === "in_progress") {
+    return closed.reopenReason
+      ? `Resultado reaberto: ${closed.reopenReason}`
+      : "Resultado reaberto para revisão.";
+  }
+  if (!row.deliveryCompleted && !row.financialCompleted) {
+    return "Aguardando entrega e quitação financeira.";
+  }
+  if (!row.deliveryCompleted) return "Aguardando a entrega do pedido.";
+  if (!row.financialCompleted) return "Aguardando a quitação financeira.";
+  return "Pronto para fechar o resultado.";
 }
