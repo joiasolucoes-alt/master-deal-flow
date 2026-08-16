@@ -64,11 +64,18 @@ export function getFreightBucket(
   order: Order | undefined,
   titles: FinancialTitle[],
 ): FreightBucket {
-  if (freight.status === "delivered" || freight.status === "cancelled") return "finished";
+  if (
+    freight.status === "delivered" ||
+    freight.status === "returned" ||
+    freight.status === "cancelled"
+  )
+    return "finished";
   if (
     freight.status === "loading" ||
     freight.status === "in_route" ||
     freight.status === "at_destination" ||
+    freight.status === "delivery_refused" ||
+    freight.status === "returning" ||
     freight.status === "unloaded"
   ) {
     return "in_progress";

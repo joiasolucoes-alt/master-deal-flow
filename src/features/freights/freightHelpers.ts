@@ -6,6 +6,9 @@ const FREIGHT_PROGRESS_BY_STATUS: Record<FreightStatus, number> = {
   loading: 35,
   in_route: 70,
   at_destination: 85,
+  delivery_refused: 85,
+  returning: 90,
+  returned: 100,
   unloaded: 95,
   delivered: 100,
   cancelled: 0,
@@ -87,6 +90,9 @@ export function getFreightStatusLabel(status: FreightStatus) {
     loading: "Em carregamento",
     in_route: "Em rota",
     at_destination: "No destino",
+    delivery_refused: "Entrega recusada",
+    returning: "Retorno em andamento",
+    returned: "Mercadoria devolvida",
     unloaded: "Mercadoria descarregada",
     delivered: "Entregue",
     cancelled: "Cancelado",
@@ -101,6 +107,9 @@ export function getNextFreightStatus(status: FreightStatus): FreightStatus {
     loading: "in_route",
     in_route: "at_destination",
     at_destination: "unloaded",
+    delivery_refused: "delivery_refused",
+    returning: "returning",
+    returned: "returned",
     unloaded: "delivered",
     delivered: "delivered",
     cancelled: "cancelled",
@@ -127,6 +136,9 @@ export function updateOrderFromFreight(order: Order, freight: FreightRecord): Or
 function getInitialFreightStatus(order: Order): FreightStatus {
   if (order.status === "Entregue") return "delivered";
   if (order.status === "Mercadoria descarregada") return "unloaded";
+  if (order.status === "Mercadoria devolvida") return "returned";
+  if (order.status === "Retorno em andamento") return "returning";
+  if (order.status === "Entrega recusada") return "delivery_refused";
   if (order.status === "No destino") return "at_destination";
   if (order.status === "Em rota") return "in_route";
   if (order.status === "Em carregamento") return "loading";
@@ -150,6 +162,15 @@ function getOrderLogisticsStatus(freight: FreightRecord) {
   if (freight.status === "unloaded") {
     return "Mercadoria descarregada. Aguardando envio do canhoto para finalizar o pedido.";
   }
+  if (freight.status === "returned") {
+    return "Mercadoria devolvida à origem. Operação de entrega não concluída.";
+  }
+  if (freight.status === "returning") {
+    return "Retorno da mercadoria à origem em andamento.";
+  }
+  if (freight.status === "delivery_refused") {
+    return "Cliente recusou a entrega. Aguardando decisão do time de Frete.";
+  }
   if (freight.status === "at_destination") return "Motorista chegou ao destino da entrega.";
   if (freight.status === "in_route") return "Frete em rota para entrega.";
   if (freight.status === "loading") return "Frete em carregamento.";
@@ -161,6 +182,9 @@ function getOrderLogisticsStatus(freight: FreightRecord) {
 function getOrderStatusFromFreight(order: Order, freight: FreightRecord): Order["status"] {
   if (freight.status === "delivered") return "Entregue";
   if (freight.status === "unloaded") return "Mercadoria descarregada";
+  if (freight.status === "returned") return "Mercadoria devolvida";
+  if (freight.status === "returning") return "Retorno em andamento";
+  if (freight.status === "delivery_refused") return "Entrega recusada";
   if (freight.status === "at_destination") return "No destino";
   if (freight.status === "in_route") return "Em rota";
   if (freight.status === "loading") return "Em carregamento";

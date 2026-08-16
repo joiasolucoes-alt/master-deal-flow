@@ -9,6 +9,7 @@ import {
   FileText,
   Link2,
   MapPin,
+  PackageX,
   Plus,
   RotateCw,
   Save,
@@ -37,6 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppContext } from "@/features/app/app-context";
 import type {
   FinancialTitle,
+  ExpenseAllocationCostOwner,
   FreightCargoType,
   FreightDriverEmploymentType,
   FreightRecord,
@@ -74,7 +76,10 @@ import {
   createDriverAccessLink,
   fetchDriverAccessSummary,
   getDeliveryProofSignedUrl,
+  resolveDeliveryRefusal,
   revokeDriverAccessLink,
+  type DeliveryRefusalDecision,
+  type DeliveryRefusalResolution,
   type DriverAccessSummary,
   type GeneratedDriverAccess,
 } from "@/lib/driverTracking";
@@ -469,6 +474,66 @@ function FreightsPage() {
     toast.success("Dados do frete salvos.");
   };
 
+  const handleResolveDeliveryRefusal = async (resolution: DeliveryRefusalResolution) => {
+    if (!selectedFreight || !selectedOrder) {
+      toast.error("Pedido vinculado ao frete não encontrado.");
+      return;
+    }
+    if (!canOperate) {
+      toast.error("Seu perfil pode acompanhar a recusa, mas não pode decidir o fluxo.");
+      return;
+    }
+
+    const result = await resolveDeliveryRefusal(selectedFreight, resolution);
+    const nextFreight: FreightRecord = {
+      ...selectedFreight,
+      status: result.freightStatus,
+      deliveredAt: undefined,
+    };
+    upsertFreight(nextFreight);
+    upsertOrder(updateOrderFromFreight(selectedOrder, nextFreight));
+
+    const additionalCost = Math.max(0, resolution.additionalCost ?? 0);
+    if (additionalCost > 0) {
+      const now = new Date().toISOString();
+      const suffix =
+        selectedOrder.number.replace(/\D/g, "").slice(-6) || selectedOrder.id.slice(-6);
+      upsertFinancialTitle({
+        id: result.financialTitleExternalId ?? `fin-refusal-${selectedFreight.id}-${Date.now()}`,
+        orderId: selectedOrder.id,
+        orderNumber: selectedOrder.number,
+        simulationId: selectedOrder.simulationId,
+        client: selectedOrder.client,
+        titleNumber: `RECUSA-${suffix}`,
+        type: "payable",
+        kind: resolution.decision === "reattempt" ? "expense" : "return",
+        status: "open",
+        dueDate: now,
+        amount: additionalCost,
+        paidAmount: 0,
+        costOwner: resolution.costOwner,
+        costReason: resolution.notes,
+        paymentMethod: "A definir",
+        bankName: "",
+        notes: `Custo adicional da recusa de entrega do ${selectedOrder.number}. ${resolution.notes}`,
+        owner: selectedOrder.owner,
+        unit: selectedOrder.unit,
+        createdAt: now,
+      });
+    }
+
+    await refreshDriverAccess(nextFreight);
+    toast.success(
+      resolution.decision === "reattempt"
+        ? "Nova tentativa de entrega liberada para o motorista."
+        : resolution.decision === "return"
+          ? "Retorno da mercadoria iniciado."
+          : resolution.decision === "returned"
+            ? "Devolução da mercadoria confirmada."
+            : "Operação cancelada.",
+    );
+  };
+
   const handleUploadFreightDocument = async ({
     type,
     file,
@@ -707,6 +772,7 @@ function FreightsPage() {
               onGenerateDriverAccess={handleGenerateDriverAccess}
               onRevokeDriverAccess={handleRevokeDriverAccess}
               onOpenDriverProof={handleOpenDriverProof}
+              onResolveRefusal={handleResolveDeliveryRefusal}
             />
           )}
         </div>
@@ -738,6 +804,7 @@ function FreightDetailPanel({
   onGenerateDriverAccess,
   onRevokeDriverAccess,
   onOpenDriverProof,
+  onResolveRefusal,
 }: {
   freight: FreightRecord;
   order?: Order;
@@ -765,6 +832,7 @@ function FreightDetailPanel({
   onGenerateDriverAccess: () => void;
   onRevokeDriverAccess: () => void;
   onOpenDriverProof: (filePath: string) => void;
+  onResolveRefusal: (resolution: DeliveryRefusalResolution) => Promise<void>;
 }) {
   const financiallyReleased = isOrderFinanciallyReleased(order, financialTitles);
   const paymentTitle = financialTitles.find(
@@ -857,6 +925,14 @@ function FreightDetailPanel({
           </div>
         ) : null}
       </Card>
+
+      <DeliveryRefusalCard
+        freight={freight}
+        access={driverAccess}
+        canOperate={canOperate}
+        onResolve={onResolveRefusal}
+        onOpenEvidence={onOpenDriverProof}
+      />
 
       {!canOperate ? (
         // Comercial/Financeiro: aba Fretes é SOMENTE ACOMPANHAMENTO — resumo da
@@ -1384,9 +1460,7 @@ function AttachmentPreview({
         {isImage && thumbUrl ? (
           <img src={thumbUrl} alt={doc.fileName} className="h-full w-full object-cover" />
         ) : (
-          <FileText
-            className={cn("h-5 w-5", isPdf ? "text-danger" : "text-muted-foreground")}
-          />
+          <FileText className={cn("h-5 w-5", isPdf ? "text-danger" : "text-muted-foreground")} />
         )}
       </div>
       <div className="min-w-0 flex-1">
@@ -1513,9 +1587,7 @@ function ChecklistRow({
             {item.helper ? (
               <p className="mt-0.5 text-xs text-muted-foreground">{item.helper}</p>
             ) : null}
-            <p className="mt-0.5 text-[10px] text-muted-foreground">
-              PDF, JPG ou PNG · até 10 MB
-            </p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">PDF, JPG ou PNG · até 10 MB</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1572,6 +1644,215 @@ function ChecklistRow({
       ) : null}
     </div>
   );
+}
+
+const REFUSAL_COST_OWNERS: ExpenseAllocationCostOwner[] = [
+  "Master",
+  "Comercial",
+  "Transportadora",
+  "Cliente",
+  "Fornecedor",
+  "Outro",
+];
+
+function DeliveryRefusalCard({
+  freight,
+  access,
+  canOperate,
+  onResolve,
+  onOpenEvidence,
+}: {
+  freight: FreightRecord;
+  access: DriverAccessSummary | null;
+  canOperate: boolean;
+  onResolve: (resolution: DeliveryRefusalResolution) => Promise<void>;
+  onOpenEvidence: (filePath: string) => void;
+}) {
+  const [notes, setNotes] = useState("");
+  const [additionalCost, setAdditionalCost] = useState("0");
+  const [costOwner, setCostOwner] = useState<ExpenseAllocationCostOwner>("Master");
+  const [submitting, setSubmitting] = useState<DeliveryRefusalDecision | null>(null);
+  const latestRefusal = [...(access?.events ?? [])]
+    .reverse()
+    .find(
+      (event) =>
+        event.occurrenceType === "Cliente recusou a entrega" ||
+        event.occurrenceType === "Descarga recusada",
+    );
+
+  const hasRefusalStatus =
+    (access?.freightStatus ?? freight.status) === "delivery_refused" ||
+    (access?.freightStatus ?? freight.status) === "returning" ||
+    (access?.freightStatus ?? freight.status) === "returned";
+  if (!latestRefusal && !hasRefusalStatus) return null;
+
+  const scope = metadataText(latestRefusal?.metadata, "refusal_scope");
+  const refusedItems = metadataText(latestRefusal?.metadata, "refused_items");
+  const evidencePath = metadataText(latestRefusal?.metadata, "evidence_path");
+  const evidenceFileName = metadataText(latestRefusal?.metadata, "evidence_file_name");
+  const costValue = Math.max(0, parseDecimalInput(additionalCost));
+  const currentStatus = access?.freightStatus ?? freight.status;
+
+  async function submit(decision: DeliveryRefusalDecision) {
+    if (decision !== "returned" && !notes.trim()) {
+      toast.error("Informe a orientação ou justificativa da decisão.");
+      return;
+    }
+    setSubmitting(decision);
+    try {
+      await onResolve({
+        decision,
+        notes: notes.trim() || "Mercadoria devolvida à origem e conferida.",
+        additionalCost: costValue,
+        costOwner: costValue > 0 ? costOwner : undefined,
+      });
+      setNotes("");
+      setAdditionalCost("0");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível resolver a recusa.");
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  return (
+    <Card className="border-danger/40 bg-danger-soft/20 shadow-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base text-danger">
+          <PackageX className="h-5 w-5" /> Entrega recusada pelo cliente
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <p className="text-xs uppercase text-muted-foreground">Ocorrência</p>
+            <p className="font-medium">
+              {latestRefusal?.occurredAt ? formatDateTime(latestRefusal.occurredAt) : "Registrada"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase text-muted-foreground">Recusa</p>
+            <p className="font-medium">{scope === "partial" ? "Parcial" : "Total"}</p>
+          </div>
+          <div className="md:col-span-2">
+            <p className="text-xs uppercase text-muted-foreground">Motivo</p>
+            <p className="font-medium">{latestRefusal?.notes || "Não informado"}</p>
+          </div>
+        </div>
+
+        {refusedItems ? (
+          <div className="rounded-xl border bg-background/80 p-3 text-sm">
+            <p className="text-xs uppercase text-muted-foreground">Produtos recusados</p>
+            <p className="mt-1 whitespace-pre-wrap font-medium">{refusedItems}</p>
+          </div>
+        ) : null}
+
+        {evidencePath ? (
+          <Button variant="outline" size="sm" onClick={() => onOpenEvidence(evidencePath)}>
+            <ExternalLink /> {evidenceFileName || "Abrir evidência da recusa"}
+          </Button>
+        ) : null}
+
+        {currentStatus === "delivery_refused" && canOperate ? (
+          <div className="space-y-3 rounded-xl border bg-background/90 p-4">
+            <div>
+              <Label>Orientação para o motorista</Label>
+              <Textarea
+                className="mt-1"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Ex.: retornar amanhã às 08h ou devolver a carga ao CD."
+              />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Custo adicional previsto (R$)">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={additionalCost}
+                  onChange={(event) => setAdditionalCost(event.target.value)}
+                />
+              </Field>
+              <Field label="Responsável pelo custo">
+                <Select
+                  value={costOwner}
+                  disabled={costValue <= 0}
+                  onValueChange={(value) => setCostOwner(value as ExpenseAllocationCostOwner)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REFUSAL_COST_OWNERS.map((owner) => (
+                      <SelectItem key={owner} value={owner}>
+                        {owner}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Se houver custo, será criada uma conta a pagar ligada ao pedido para o Financeiro.
+            </p>
+            <div className="grid gap-2 md:grid-cols-3">
+              <Button disabled={Boolean(submitting)} onClick={() => void submit("reattempt")}>
+                <RotateCw /> Nova tentativa
+              </Button>
+              <Button
+                variant="soft"
+                disabled={Boolean(submitting)}
+                onClick={() => void submit("return")}
+              >
+                <ArrowRight /> Iniciar retorno
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={Boolean(submitting)}
+                onClick={() => void submit("cancel")}
+              >
+                <XCircle /> Cancelar operação
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {currentStatus === "returning" ? (
+          <div className="flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-semibold text-warning">Retorno em andamento</p>
+              <p className="text-muted-foreground">
+                Confirme somente quando a mercadoria chegar e for conferida na origem.
+              </p>
+            </div>
+            {canOperate ? (
+              <Button disabled={Boolean(submitting)} onClick={() => void submit("returned")}>
+                <CheckCircle2 /> Confirmar devolução
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {currentStatus === "returned" ? (
+          <p className="rounded-xl border border-danger/30 bg-background/80 p-4 text-sm font-medium text-danger">
+            Mercadoria devolvida à origem. O pedido não foi marcado como entregue.
+          </p>
+        ) : null}
+
+        {!canOperate && currentStatus === "delivery_refused" ? (
+          <p className="rounded-xl border border-warning/30 bg-warning-soft p-3 text-sm text-warning">
+            Aguardando o time de Frete definir nova tentativa, retorno ou cancelamento.
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function metadataText(metadata: Record<string, unknown> | undefined, key: string) {
+  const value = metadata?.[key];
+  return typeof value === "string" ? value : "";
 }
 
 function DriverAccessCard({

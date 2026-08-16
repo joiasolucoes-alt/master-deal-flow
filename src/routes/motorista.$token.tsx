@@ -10,7 +10,7 @@ import {
   ShieldAlert,
   Truck,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,8 +25,10 @@ import {
   getNextDriverEvent,
   registerDriverEvent,
   registerDriverOccurrence,
+  registerDriverRefusal,
   uploadDeliveryProof,
   type DriverEventType,
+  type DriverRefusalScope,
   type DriverTrip,
 } from "@/lib/driverTracking";
 
@@ -90,12 +92,33 @@ function DriverTrackingPage() {
   const [occurrenceType, setOccurrenceType] = useState<string>(DRIVER_OCCURRENCE_TYPES[0]);
   const [occurrenceNotes, setOccurrenceNotes] = useState("");
   const [occurrenceSubmitting, setOccurrenceSubmitting] = useState(false);
+  const [refusalScope, setRefusalScope] = useState<DriverRefusalScope>("total");
+  const [refusedItems, setRefusedItems] = useState("");
+  const [refusalEvidence, setRefusalEvidence] = useState<File | null>(null);
+  const [refusalPreviewUrl, setRefusalPreviewUrl] = useState<string | null>(null);
 
   const nextEvent = useMemo(() => (trip ? getNextDriverEvent(trip) : null), [trip]);
   const proofStep = nextEvent?.type === "proof_uploaded";
   const deliveryStep = nextEvent?.type === "unloaded";
   const needsReceiver = proofStep || deliveryStep;
   const completed = trip?.linkState === "completed" || trip?.nextEvent === "completed";
+  const refusalSelected = isDeliveryRefusal(occurrenceType);
+  const pausedByRefusal =
+    trip?.status === "delivery_refused" ||
+    trip?.status === "returning" ||
+    trip?.status === "returned";
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (refusalPreviewUrl) URL.revokeObjectURL(refusalPreviewUrl);
+    };
+  }, [refusalPreviewUrl]);
 
   async function submitPin() {
     if (pin.trim().length < 4) {
@@ -138,6 +161,24 @@ function DriverTrackingPage() {
     }
     setSelectedFile(file);
     setPreviewUrl(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
+  }
+
+  function handleSelectRefusalEvidence(file?: File) {
+    if (!file) {
+      setRefusalEvidence(null);
+      setRefusalPreviewUrl(null);
+      return;
+    }
+    if (!ALLOWED_TYPES.has(file.type)) {
+      toast.error("Formato inválido. Envie JPG, PNG ou PDF.");
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("Arquivo muito grande (máx. 10 MB).");
+      return;
+    }
+    setRefusalEvidence(file);
+    setRefusalPreviewUrl(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
   }
 
   async function submitNextEvent() {
@@ -189,20 +230,50 @@ function DriverTrackingPage() {
       toast.error("Descreva a ocorrência.");
       return;
     }
+    if (refusalSelected && refusalScope === "partial" && !refusedItems.trim()) {
+      toast.error("Informe quais produtos e quantidades foram recusados.");
+      return;
+    }
+    if (refusalSelected && trip.status !== "in_route" && trip.status !== "at_destination") {
+      toast.error("A recusa só pode ser registrada durante a entrega ou no destino.");
+      return;
+    }
+    if (refusalSelected && !refusalEvidence) {
+      toast.error("Anexe uma foto ou documento que comprove a recusa.");
+      return;
+    }
     setOccurrenceSubmitting(true);
     try {
-      const updated = await registerDriverOccurrence(
-        token,
-        pin.trim(),
-        occurrenceType,
-        occurrenceNotes.trim(),
-        undefined,
-        undefined,
-      );
+      const updated =
+        refusalSelected && refusalEvidence
+          ? await registerDriverRefusal(
+              token,
+              pin.trim(),
+              refusalScope,
+              occurrenceNotes.trim(),
+              refusedItems.trim(),
+              refusalEvidence,
+            )
+          : await registerDriverOccurrence(
+              token,
+              pin.trim(),
+              occurrenceType,
+              occurrenceNotes.trim(),
+              undefined,
+              undefined,
+            );
       setTrip(updated);
       setOccurrenceOpen(false);
       setOccurrenceNotes("");
-      toast.success("Ocorrência registrada. A equipe foi avisada.");
+      setRefusedItems("");
+      setRefusalScope("total");
+      setRefusalEvidence(null);
+      setRefusalPreviewUrl(null);
+      toast.success(
+        refusalSelected
+          ? "Recusa registrada. Aguarde a orientação da equipe de frete."
+          : "Ocorrência registrada. A equipe foi avisada.",
+      );
     } catch (err) {
       toast.error(friendlyDriverError(err, "occurrence"));
     } finally {
@@ -309,7 +380,7 @@ function DriverTrackingPage() {
             <h2 className="text-2xl font-bold text-slate-950">
               {completed
                 ? "Entrega finalizada com sucesso"
-                : (nextEvent?.label ?? getLockedMessage(trip.linkState))}
+                : (nextEvent?.label ?? getLockedMessage(trip.linkState, trip.status))}
             </h2>
 
             {needsReceiver && !completed ? (
@@ -385,7 +456,7 @@ function DriverTrackingPage() {
         </Card>
 
         {/* Ocorrência */}
-        {!completed && trip.linkState === "active" ? (
+        {!completed && trip.linkState === "active" && !pausedByRefusal ? (
           <Card className="border-amber-200 bg-white shadow-sm">
             <CardContent className="space-y-3 pt-6">
               {occurrenceOpen ? (
@@ -410,6 +481,66 @@ function DriverTrackingPage() {
                     onChange={(event) => setOccurrenceNotes(event.target.value)}
                     className="bg-white text-slate-950 placeholder:text-slate-500"
                   />
+                  {refusalSelected ? (
+                    <div className="space-y-3 rounded-2xl border border-red-200 bg-red-50 p-3">
+                      <div>
+                        <p className="text-sm font-semibold text-red-800">Tipo de recusa</p>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            variant={refusalScope === "total" ? "default" : "outline"}
+                            onClick={() => setRefusalScope("total")}
+                          >
+                            Total
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={refusalScope === "partial" ? "default" : "outline"}
+                            onClick={() => setRefusalScope("partial")}
+                          >
+                            Parcial
+                          </Button>
+                        </div>
+                      </div>
+                      {refusalScope === "partial" ? (
+                        <Textarea
+                          placeholder="Produtos e quantidades recusados"
+                          value={refusedItems}
+                          onChange={(event) => setRefusedItems(event.target.value)}
+                          className="bg-white text-slate-950 placeholder:text-slate-500"
+                        />
+                      ) : null}
+                      <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-red-300 bg-white p-4 text-center text-slate-900">
+                        <Camera className="mb-2 h-7 w-7 text-red-600" />
+                        <span className="font-semibold">Foto ou documento da recusa</span>
+                        <span className="mt-1 text-xs text-slate-500">
+                          Obrigatório. JPG, PNG ou PDF até 10 MB.
+                        </span>
+                        <input
+                          className="sr-only"
+                          type="file"
+                          accept="image/jpeg,image/png,application/pdf"
+                          capture="environment"
+                          onChange={(event) => handleSelectRefusalEvidence(event.target.files?.[0])}
+                        />
+                      </label>
+                      {refusalEvidence ? (
+                        <div className="rounded-xl border border-red-200 bg-white p-3">
+                          {refusalPreviewUrl ? (
+                            <img
+                              src={refusalPreviewUrl}
+                              alt="Evidência da recusa"
+                              className="max-h-48 w-full rounded-lg object-contain"
+                            />
+                          ) : (
+                            <p className="flex items-center gap-2 text-sm text-slate-800">
+                              <FileText className="h-4 w-4" /> {refusalEvidence.name}
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -536,6 +667,9 @@ function statusLabel(status: string, linkState: DriverTrip["linkState"]) {
         loading: "Carregando",
         in_route: "Em rota",
         at_destination: "No destino",
+        delivery_refused: "Entrega recusada",
+        returning: "Retorno em andamento",
+        returned: "Mercadoria devolvida",
         unloaded: "Mercadoria descarregada",
         arrived_loading: "Carregando",
         in_transit: "Em trânsito",
@@ -558,11 +692,18 @@ function getAuthErrorMessage(reason?: string) {
   return "Senha incorreta. Confira o PIN recebido e tente novamente.";
 }
 
-function getLockedMessage(linkState: DriverTrip["linkState"]) {
+function getLockedMessage(linkState: DriverTrip["linkState"], status: DriverTrip["status"]) {
+  if (status === "delivery_refused") return "Entrega recusada. Aguarde orientação do Frete";
+  if (status === "returning") return "Retorno da mercadoria em andamento";
+  if (status === "returned") return "Mercadoria devolvida à origem";
   if (linkState === "expired") return "Link expirado";
   if (linkState === "revoked") return "Link revogado";
   if (linkState === "locked") return "Acesso bloqueado temporariamente";
   return "Entrega finalizada";
+}
+
+function isDeliveryRefusal(type: string) {
+  return type === "Cliente recusou a entrega" || type === "Descarga recusada";
 }
 
 function formatCity(city: string, state: string) {

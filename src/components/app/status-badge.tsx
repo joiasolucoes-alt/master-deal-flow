@@ -46,6 +46,9 @@ const statusTone: Record<string, string> = {
   Pendente: "border-transparent bg-info-soft text-info",
   Carregado: "border-transparent bg-warning-soft text-warning",
   "No destino": "border-transparent bg-primary-soft text-primary",
+  "Entrega recusada": "border-transparent bg-danger-soft text-danger",
+  "Retorno em andamento": "border-transparent bg-warning-soft text-warning",
+  "Mercadoria devolvida": "border-transparent bg-danger-soft text-danger",
   Ocorrência: "border-transparent bg-danger-soft text-danger",
 };
 

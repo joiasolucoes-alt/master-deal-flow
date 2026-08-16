@@ -56,6 +56,8 @@ Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 | 031 | `freight_notifications_and_driver_statuses` | ⚠️ **RODAR após 030** — separa frete previsto/contratado, amplia os status logísticos, sincroniza os quatro marcos do motorista com o pedido e conclui a entrega somente após canhoto válido. Notifica Frete, Comercial, Financeiro e Admin.                                   |
 | 032 | `wave_1_2_3_finance_simulation_extensions`  | ⚠️ **RODAR após 031** — adiciona tipo de carga/veículo previsto na simulação, checklist obrigatório configurável, rateio de Comissão/Outros e campos financeiros para boleto, antecipação, prorrogação, devolução/falta e responsável pelo custo.                              |
 | 033 | `commission_payment_and_result_reopen`      | ⚠️ **RODAR após 032** — adiciona pagamento de comissão, bloqueio/liberação da fila de comissões e reabertura controlada do resultado fechado.                                                                                                                                  |
+| 034 | `fix_realized_results_schema_and_upsert`    | ✅ Corrige a persistência do fechamento, aprovação e pagamento das comissões.                                                                                                                                                                                                  |
+| 035 | `delivery_refusal_workflow`                 | ⚠️ **RODAR após 034** — registra recusa total/parcial com evidência, pausa o motorista, permite nova tentativa/retorno/cancelamento, cria custo adicional ligado ao pedido e impede que devolução seja tratada como entrega concluída.                                         |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 

@@ -1,4 +1,4 @@
-import type { FreightRecord, FreightStatus } from "@/data/types";
+import type { ExpenseAllocationCostOwner, FreightRecord, FreightStatus } from "@/data/types";
 import {
   ensureSupabaseSession,
   getSupabaseClient,
@@ -26,7 +26,7 @@ export const DRIVER_OCCURRENCE_TYPES = [
   "Falta de documento",
   "Problema com veículo",
   "Acidente ou sinistro",
-  "Descarga recusada",
+  "Cliente recusou a entrega",
   "Outro motivo",
 ] as const;
 export type FreightTrackingStatus = FreightStatus | DriverEventType;
@@ -45,6 +45,23 @@ export interface DriverTrackingEvent {
   occurrenceType?: string | null;
   notes?: string | null;
   estimatedArrivalAt?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export type DriverRefusalScope = "total" | "partial";
+export type DeliveryRefusalDecision = "reattempt" | "return" | "returned" | "cancel";
+
+export interface DeliveryRefusalResolution {
+  decision: DeliveryRefusalDecision;
+  notes: string;
+  additionalCost?: number;
+  costOwner?: ExpenseAllocationCostOwner;
+}
+
+export interface DeliveryRefusalResolutionResult {
+  freightStatus: FreightStatus;
+  orderStatus: string;
+  financialTitleExternalId?: string;
 }
 
 export interface DriverReceiverInfo {
@@ -91,6 +108,7 @@ export interface DriverTrip {
 export interface DriverAccessSummary {
   id: string;
   freightId: string;
+  freightStatus?: FreightStatus;
   status: "active" | "expired" | "revoked" | "locked" | "completed";
   expiresAt?: string | null;
   revokedAt?: string | null;
@@ -143,8 +161,18 @@ export const DRIVER_EVENT_FLOW: Array<{
 
 const labels = Object.fromEntries(DRIVER_EVENT_FLOW.map((event) => [event.type, event.label]));
 
-export function getNextDriverEvent(trip: Pick<DriverTrip, "events" | "linkState" | "nextEvent">) {
+export function getNextDriverEvent(
+  trip: Pick<DriverTrip, "events" | "linkState" | "nextEvent" | "status">,
+) {
   if (trip.linkState !== "active") return null;
+  if (
+    trip.status === "delivery_refused" ||
+    trip.status === "returning" ||
+    trip.status === "returned" ||
+    trip.status === "cancelled"
+  ) {
+    return null;
+  }
   if (trip.nextEvent && trip.nextEvent !== "completed") {
     return DRIVER_EVENT_FLOW.find((event) => event.type === trip.nextEvent) ?? null;
   }
@@ -224,6 +252,10 @@ function toDriverEvent(event: Record<string, unknown>): DriverTrackingEvent {
     occurrenceType: nullableText(event.occurrence_type),
     notes: nullableText(event.notes),
     estimatedArrivalAt: nullableText(event.estimated_arrival_at),
+    metadata:
+      event.metadata && typeof event.metadata === "object"
+        ? (event.metadata as Record<string, unknown>)
+        : undefined,
   };
 }
 
@@ -277,9 +309,11 @@ function toDriverTrip(payload: unknown): DriverTrip {
 function toAccessSummary(payload: unknown): DriverAccessSummary | null {
   if (!payload || typeof payload !== "object") return null;
   const row = payload as Record<string, unknown>;
+  const freightStatus = nullableText(row.freight_status);
   return {
     id: text(row.id),
     freightId: text(row.freight_id),
+    freightStatus: freightStatus ? (freightStatus as FreightStatus) : undefined,
     status: text(row.status) as DriverAccessSummary["status"],
     expiresAt: nullableText(row.expires_at),
     revokedAt: nullableText(row.revoked_at),
@@ -297,6 +331,7 @@ type FreightAccessRow = {
   external_id?: string | null;
   organization_id?: string | null;
   order_id?: string | null;
+  status?: string | null;
 };
 
 type DriverAccessLinkRow = {
@@ -329,7 +364,7 @@ async function hashDriverSecret(value: string) {
 
 async function findFreightAccessRow(freight: FreightRecord) {
   const client = getClientOrThrow();
-  const select = "id, external_id, organization_id, order_id";
+  const select = "id, external_id, organization_id, order_id, status";
 
   const byExternal = await client
     .from("freights")
@@ -391,6 +426,11 @@ async function rpcJson(functionName: string, args: Record<string, unknown>) {
       text.includes("could not find the function") ||
       (text.includes("function") && text.includes(functionName.toLowerCase()))
     ) {
+      if (functionName === "driver_trip_refusal" || functionName === "resolve_delivery_refusal") {
+        throw new Error(
+          "Fluxo de recusa ainda não está aplicado no Supabase. Rode o SQL 035 e tente novamente.",
+        );
+      }
       throw new Error(
         "Portal do motorista ainda não está aplicado no Supabase. Rode a migration 202607070003_driver_portal.sql e tente gerar o link novamente.",
       );
@@ -499,7 +539,7 @@ export async function fetchDriverAccessSummary(freight: FreightRecord) {
   const { data: events, error: eventsError } = await client
     .from("freight_events")
     .select(
-      "id, freight_id, order_id, event_type, event_label, occurred_at, latitude, longitude, receiver_name, receiver_document, occurrence_type, notes, estimated_arrival_at",
+      "id, freight_id, order_id, event_type, event_label, occurred_at, latitude, longitude, receiver_name, receiver_document, occurrence_type, notes, estimated_arrival_at, metadata",
     )
     .eq("freight_id", freightRow.id)
     .order("occurred_at", { ascending: true });
@@ -515,9 +555,11 @@ export async function fetchDriverAccessSummary(freight: FreightRecord) {
   if (proofsError) throw proofsError;
 
   const row = link as DriverAccessLinkRow;
+  const freightStatus = nullableText(freightRow.status);
   return {
     id: row.id,
     freightId: freight.id,
+    freightStatus: freightStatus ? (freightStatus as FreightStatus) : undefined,
     status: getAccessStatus(row),
     expiresAt: row.expires_at ?? null,
     revokedAt: row.revoked_at ?? null,
@@ -652,6 +694,105 @@ export async function registerDriverOccurrence(
   })) as { ok: boolean; trip?: unknown };
   if (!payload.ok) throw new Error("Ocorrência recusada.");
   return toDriverTrip(payload.trip);
+}
+
+export async function registerDriverRefusal(
+  token: string,
+  pin: string,
+  scope: DriverRefusalScope,
+  reason: string,
+  refusedItems: string,
+  evidence: File,
+  coords?: { latitude: number; longitude: number },
+) {
+  if (!getSupabaseConfigStatus().configured) {
+    const occurredAt = new Date().toISOString();
+    mockTrip.events.push({
+      id: crypto.randomUUID(),
+      freightId: mockTrip.freightId,
+      eventType: "occurrence",
+      eventLabel: "Cliente recusou a entrega",
+      occurredAt,
+      occurrenceType: "Cliente recusou a entrega",
+      notes: reason,
+      latitude: coords?.latitude,
+      longitude: coords?.longitude,
+      metadata: {
+        refusal_scope: scope,
+        refused_items: refusedItems,
+        evidence_file_name: evidence.name,
+        evidence_path: `mock/recusas/${evidence.name}`,
+      },
+    });
+    mockTrip.status = "delivery_refused";
+    mockTrip.nextEvent = null;
+    return mockTrip;
+  }
+
+  const client = getClientOrThrow();
+  const safeName = (evidence.name || "evidencia-recusa").replace(/[^\w.-]+/g, "_").slice(-80);
+  const path = `driver-refusals/${token.slice(0, 16)}/${Date.now()}-${safeName}`;
+  const { error: uploadError } = await client.storage
+    .from("delivery-proofs")
+    .upload(path, evidence, {
+      contentType: evidence.type || "application/octet-stream",
+      upsert: false,
+    });
+  if (uploadError) throw new Error(`Falha ao enviar a evidência: ${uploadError.message}`);
+
+  const payload = (await rpcJson("driver_trip_refusal", {
+    p_token: token,
+    p_pin: pin,
+    p_refusal_scope: scope,
+    p_reason: reason,
+    p_refused_items: refusedItems || null,
+    p_evidence_path: path,
+    p_evidence_file_name: evidence.name,
+    p_evidence_mime_type: evidence.type || "application/octet-stream",
+    p_evidence_file_size: evidence.size,
+    p_latitude: coords?.latitude ?? null,
+    p_longitude: coords?.longitude ?? null,
+  })) as { ok: boolean; trip?: unknown };
+  if (!payload.ok) throw new Error("Recusa não registrada.");
+  return toDriverTrip(payload.trip);
+}
+
+export async function resolveDeliveryRefusal(
+  freight: FreightRecord,
+  resolution: DeliveryRefusalResolution,
+): Promise<DeliveryRefusalResolutionResult> {
+  if (!getSupabaseConfigStatus().configured) {
+    const statusByDecision: Record<DeliveryRefusalDecision, DeliveryRefusalResolutionResult> = {
+      reattempt: { freightStatus: "at_destination", orderStatus: "No destino" },
+      return: { freightStatus: "returning", orderStatus: "Retorno em andamento" },
+      returned: { freightStatus: "returned", orderStatus: "Mercadoria devolvida" },
+      cancel: { freightStatus: "cancelled", orderStatus: "Cancelada" },
+    };
+    return statusByDecision[resolution.decision];
+  }
+
+  const session = await ensureSupabaseSession();
+  if (!session) throw new Error("Sessão Supabase ausente. Faça login novamente.");
+  const payload = (await rpcJson("resolve_delivery_refusal", {
+    p_freight_external_id: freight.id,
+    p_decision: resolution.decision,
+    p_notes: resolution.notes,
+    p_additional_cost: resolution.additionalCost ?? 0,
+    p_cost_owner: resolution.costOwner ?? null,
+  })) as {
+    ok: boolean;
+    freight_status?: FreightStatus;
+    order_status?: string;
+    financial_title_external_id?: string | null;
+  };
+  if (!payload.ok || !payload.freight_status || !payload.order_status) {
+    throw new Error("Não foi possível registrar a decisão da recusa.");
+  }
+  return {
+    freightStatus: payload.freight_status,
+    orderStatus: payload.order_status,
+    financialTitleExternalId: payload.financial_title_external_id ?? undefined,
+  };
 }
 
 export async function uploadDeliveryProof(

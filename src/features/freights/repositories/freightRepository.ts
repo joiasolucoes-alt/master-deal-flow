@@ -60,6 +60,9 @@ function normalizeStatus(status?: string | null): FreightStatus {
     status === "loading" ||
     status === "in_route" ||
     status === "at_destination" ||
+    status === "delivery_refused" ||
+    status === "returning" ||
+    status === "returned" ||
     status === "unloaded" ||
     status === "delivered" ||
     status === "cancelled"

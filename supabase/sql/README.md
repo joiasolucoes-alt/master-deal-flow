@@ -1,10 +1,9 @@
 # Master Flow — Onda 1 multiempresa/multiunidade
 
-> Fluxo operacional atual: os scripts manuais `027`, `028`, `030` e `031`, nesta ordem,
-> completam o portal do motorista. A SQL 031 separa o orçamento previsto do valor
-> contratado, registra `No destino` e `Mercadoria descarregada` e só marca o pedido como
-> `Entregue` depois do envio válido do canhoto. Consulte `docs/manual-sql-order.md` antes
-> de executar qualquer script no banco.
+> Fluxo operacional atual: a SQL 031 controla os marcos normais do motorista e a SQL 035
+> trata a recusa do cliente. Uma recusa pausa a entrega e exige decisão de nova tentativa,
+> retorno ou cancelamento; mercadoria devolvida não é marcada como `Entregue`. Consulte
+> `docs/manual-sql-order.md` antes de executar qualquer script no banco.
 
 Este diretório contém os scripts SQL preparados nesta rodada. A ferramenta
 oficial de migration **não foi exposta** nesta sessão do agente, por isso

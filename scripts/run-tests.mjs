@@ -1272,6 +1272,9 @@ function driverAuth(link, pin) {
   return { ok: true };
 }
 function driverNextEvent(trip) {
+  if (["delivery_refused", "returning", "returned", "cancelled"].includes(trip.freightStatus)) {
+    return null;
+  }
   const done = new Set(trip.events.filter((e) => e.type !== "occurrence").map((e) => e.type));
   return DRIVER_MILESTONES.find((m) => !done.has(m)) ?? null;
 }
@@ -1299,6 +1302,52 @@ function driverRegisterOccurrence(trip, occurrenceType, notes) {
   trip.events.push({ type: "occurrence", occurrenceType, notes, at: Date.now() });
   for (const targetRole of ["Frete", "Comercial", "Financeiro", "Admin"]) {
     trip.notifications.push({ targetRole, title: "Ocorrência", type: "warning" });
+  }
+  return trip;
+}
+function driverRegisterRefusal(trip, { scope, reason, refusedItems, evidence }) {
+  if (!["in_route", "at_destination"].includes(trip.freightStatus)) {
+    throw new Error("refusal out of stage");
+  }
+  if (!reason || !evidence) throw new Error("refusal evidence required");
+  if (scope === "partial" && !refusedItems) throw new Error("refused items required");
+  trip.events.push({
+    type: "occurrence",
+    occurrenceType: "Cliente recusou a entrega",
+    notes: reason,
+    metadata: { scope, refusedItems, evidence: evidence.name },
+    at: Date.now(),
+  });
+  trip.freightStatus = "delivery_refused";
+  trip.orderStatus = "Entrega recusada";
+  trip.orderDeliveryProgress = Math.max(trip.orderDeliveryProgress, 85);
+  for (const targetRole of ["Frete", "Comercial", "Financeiro", "Admin"]) {
+    trip.notifications.push({ targetRole, title: "Cliente recusou a entrega", type: "warning" });
+  }
+  return trip;
+}
+function resolveDriverRefusal(trip, decision, additionalCost = 0, costOwner = "Master") {
+  const result = {
+    reattempt: ["at_destination", "No destino", 85],
+    return: ["returning", "Retorno em andamento", 90],
+    returned: ["returned", "Mercadoria devolvida", 100],
+    cancel: ["cancelled", "Cancelada", trip.orderDeliveryProgress],
+  }[decision];
+  if (!result) throw new Error("invalid refusal decision");
+  if (decision === "returned" && trip.freightStatus !== "returning") {
+    throw new Error("return not started");
+  }
+  trip.freightStatus = result[0];
+  trip.orderStatus = result[1];
+  trip.orderDeliveryProgress = result[2];
+  if (additionalCost > 0) {
+    trip.financialTitles.push({
+      orderId: trip.orderId,
+      type: "payable",
+      kind: decision === "reattempt" ? "expense" : "return",
+      amount: additionalCost,
+      costOwner,
+    });
   }
   return trip;
 }
@@ -1338,6 +1387,8 @@ function newTrip() {
     freightStatus: "hired",
     orderStatus: "Frete liberado",
     orderDeliveryProgress: 0,
+    orderId: "order-driver-test",
+    financialTitles: [],
     linkState: "active",
   };
 }
@@ -1405,7 +1456,58 @@ assert.ok(trip.notifications.some((n) => n.targetRole === "Financeiro" && n.type
 assert.ok(trip.notifications.some((n) => n.targetRole === "Admin" && n.type === "success"));
 assert.ok(trip.notifications.some((n) => n.targetRole === "Comercial" && n.type === "success"));
 
-// 21-22: provider local/supabase resolvem sem quebrar
+// 21: recusa pausa a entrega, exige evidencia e nunca conclui o pedido.
+const refusedTrip = newTrip();
+driverRegisterEvent(refusedTrip, "arrived_loading");
+driverRegisterEvent(refusedTrip, "in_transit");
+driverRegisterEvent(refusedTrip, "arrived_delivery_location");
+assert.throws(
+  () =>
+    driverRegisterRefusal(refusedTrip, {
+      scope: "total",
+      reason: "Cliente sem espaço para receber",
+      evidence: null,
+    }),
+  /evidence required/,
+);
+driverRegisterRefusal(refusedTrip, {
+  scope: "partial",
+  reason: "Cliente recusou dois itens",
+  refusedItems: "Produto A - 2 caixas",
+  evidence: { name: "recusa.jpg" },
+});
+assert.equal(refusedTrip.freightStatus, "delivery_refused");
+assert.equal(refusedTrip.orderStatus, "Entrega recusada");
+assert.equal(driverNextEvent(refusedTrip), null, "recusa bloqueia o checklist do motorista");
+assert.throws(
+  () => driverFinalize(refusedTrip, { name: "canhoto.jpg" }, { receiverName: "Cliente" }),
+  /out of order/,
+);
+assert.equal(
+  refusedTrip.notifications.filter((n) => n.title === "Cliente recusou a entrega").length,
+  4,
+);
+
+// 22: nova tentativa retoma a descarga; retorno concluido nao vira Entregue.
+resolveDriverRefusal(refusedTrip, "reattempt", 150, "Transportadora");
+assert.equal(refusedTrip.freightStatus, "at_destination");
+assert.equal(driverNextEvent(refusedTrip), "unloaded");
+assert.equal(refusedTrip.financialTitles[0].orderId, refusedTrip.orderId);
+assert.equal(refusedTrip.financialTitles[0].costOwner, "Transportadora");
+driverRegisterRefusal(refusedTrip, {
+  scope: "total",
+  reason: "Cliente manteve a recusa",
+  refusedItems: "",
+  evidence: { name: "recusa-2.pdf" },
+});
+resolveDriverRefusal(refusedTrip, "return");
+assert.equal(refusedTrip.orderStatus, "Retorno em andamento");
+resolveDriverRefusal(refusedTrip, "returned");
+assert.equal(refusedTrip.freightStatus, "returned");
+assert.equal(refusedTrip.orderStatus, "Mercadoria devolvida");
+assert.notEqual(refusedTrip.orderStatus, "Entregue");
+
+// 23-24: provider local/supabase resolvem sem quebrar
 assert.equal(getDataProvider("supabase"), "supabase");
 assert.equal(getDataProvider("qualquer-coisa"), "local");
 
@@ -1451,8 +1553,13 @@ function canGenerateDriverLink(freight, order, titles = []) {
 }
 
 function getFreightBucket(freight, order, titles = []) {
-  if (freight.status === "delivered" || freight.status === "cancelled") return "finished";
-  if (freight.status === "loading" || freight.status === "in_route") return "in_progress";
+  if (["delivered", "returned", "cancelled"].includes(freight.status)) return "finished";
+  if (
+    ["loading", "in_route", "at_destination", "delivery_refused", "returning", "unloaded"].includes(
+      freight.status,
+    )
+  )
+    return "in_progress";
   if (canExecuteFreight(freight, order, titles)) return "released";
   return "preparation";
 }
