@@ -60,6 +60,10 @@ direta das tabelas.
 7. **Transferência para o pool** — somente carteira encerrada, positiva e aprovada para o
    Pool pode ser transferida (`transferred`). A SQL 037 executa Carteira e Pool na mesma
    transação e usa uma identificação única para impedir crédito duplicado.
+8. **Cobertura de prejuízo** — quando o resultado final é negativo, o Admin registra quem
+   absorve o prejuízo. Se a responsabilidade for da Master, a SQL 038 permite usar o saldo
+   acumulado do Pool para uma compensação parcial ou total. O lucro realizado continua
+   negativo no histórico; a cobertura informa de onde veio o recurso para absorvê-lo.
 
 ## Onde vive no código
 
@@ -92,4 +96,4 @@ conciliação, o saldo da carteira deve ser igual ao `realized_profit` do result
 
 Na rota `/pool-oportunidades`, Admin, Gestor e Financeiro enxergam as carteiras encerradas,
 o resultado positivo/negativo e a decisão registrada. Apenas o Admin abre a carteira para
-decidir o destino e efetivar uma transferência.
+decidir o destino, efetivar uma transferência ou cobrir um prejuízo assumido pela Master.

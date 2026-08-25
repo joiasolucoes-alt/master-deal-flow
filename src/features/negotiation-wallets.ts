@@ -76,6 +76,10 @@ export interface NegotiationWallet {
   managementDecidedBy?: string;
   managementDecidedAt?: string;
   lossOwner?: WalletLossOwner;
+  poolCoverageAmount?: number;
+  poolCoverageReason?: string;
+  poolCoveredBy?: string;
+  poolCoveredAt?: string;
   createdAt: string;
   updatedAt: string;
   entries: NegotiationWalletEntry[];
@@ -98,6 +102,13 @@ export interface WalletManagementState {
   decision: WalletManagementDecision;
   isDecided: boolean;
   canTransfer: boolean;
+}
+
+export interface WalletLossCoverageState {
+  lossAmount: number;
+  coveredAmount: number;
+  remainingAmount: number;
+  canUsePool: boolean;
 }
 
 export interface OpportunityPoolEntry {
@@ -184,6 +195,102 @@ export function getWalletManagementState(wallet: NegotiationWallet): WalletManag
     decision,
     isDecided: wallet.status === "transferred" || validDecision,
     canTransfer: wallet.status === "closed" && finalBalance > 0 && decision === "approved_for_pool",
+  };
+}
+
+export function getWalletLossCoverage(wallet: NegotiationWallet): WalletLossCoverageState {
+  const finalBalance = roundCurrency(wallet.finalBalance ?? getWalletTotals(wallet).balance);
+  const lossAmount = roundCurrency(Math.max(0, -finalBalance));
+  const coveredAmount = roundCurrency(
+    Math.min(lossAmount, Math.max(0, wallet.poolCoverageAmount ?? 0)),
+  );
+  const remainingAmount = roundCurrency(Math.max(0, lossAmount - coveredAmount));
+
+  return {
+    lossAmount,
+    coveredAmount,
+    remainingAmount,
+    canUsePool:
+      wallet.status === "closed" &&
+      wallet.managementDecision === "loss_acknowledged" &&
+      wallet.lossOwner === "Master" &&
+      remainingAmount > 0,
+  };
+}
+
+export function prepareWalletLossCoverage({
+  wallet,
+  pool,
+  amount,
+  reason,
+  user,
+  requestId,
+}: {
+  wallet: NegotiationWallet;
+  pool: OpportunityPool;
+  amount: number;
+  reason: string;
+  user?: User | null;
+  requestId: string;
+}) {
+  const coverage = getWalletLossCoverage(wallet);
+  const normalizedAmount = roundCurrency(amount);
+  if (!coverage.canUsePool) {
+    throw new Error("Somente prejuízo assumido pela Master pode ser coberto pelo Pool.");
+  }
+  if (!reason.trim()) throw new Error("Informe o motivo da compensação.");
+  if (normalizedAmount <= 0) throw new Error("Informe um valor maior que zero.");
+  if (normalizedAmount > coverage.remainingAmount) {
+    throw new Error("O valor não pode ser maior que o prejuízo restante.");
+  }
+  if (normalizedAmount > pool.balance) {
+    throw new Error("O Pool não possui saldo suficiente para esta compensação.");
+  }
+  if (!requestId.trim()) throw new Error("A compensação precisa de uma identificação única.");
+
+  const now = new Date().toISOString();
+  const entryId = `pool-loss-coverage-${requestId}`;
+  if (pool.entries.some((entry) => entry.id === entryId)) {
+    throw new Error("Esta compensação já foi registrada.");
+  }
+
+  const entry: OpportunityPoolEntry = {
+    id: entryId,
+    poolId: pool.id,
+    walletId: wallet.id,
+    organizationId: wallet.organizationId,
+    amount: normalizedAmount,
+    direction: "debit",
+    description: `Compensação do prejuízo da carteira do pedido ${wallet.orderId}.`,
+    createdBy: user?.name ?? user?.email ?? "Admin",
+    createdAt: now,
+    metadata: {
+      orderId: wallet.orderId,
+      reason: reason.trim(),
+      requestId,
+      coverageBefore: coverage.coveredAmount,
+      coverageAfter: roundCurrency(coverage.coveredAmount + normalizedAmount),
+    },
+  };
+  const entries = [entry, ...pool.entries];
+  const balance = roundCurrency(
+    entries.reduce(
+      (sum, item) => sum + (item.direction === "credit" ? item.amount : -item.amount),
+      0,
+    ),
+  );
+
+  return {
+    wallet: {
+      ...wallet,
+      poolCoverageAmount: roundCurrency(coverage.coveredAmount + normalizedAmount),
+      poolCoverageReason: reason.trim(),
+      poolCoveredBy: user?.name ?? user?.email ?? "Admin",
+      poolCoveredAt: now,
+      updatedAt: now,
+    },
+    pool: { ...pool, entries, balance, updatedAt: now },
+    entry,
   };
 }
 

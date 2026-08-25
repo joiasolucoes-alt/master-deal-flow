@@ -1,8 +1,8 @@
 # Master Flow — Onda 1 multiempresa/multiunidade
 
 > Fluxo operacional atual: a SQL 031 controla os marcos normais do motorista, a SQL 035
-> trata a recusa do cliente e as SQLs 036/037 protegem e formalizam a decisão sobre Carteiras
-> e Pool de Oportunidades. Consulte `docs/manual-sql-order.md` antes de executar qualquer
+> trata a recusa do cliente e as SQLs 036/037/038 protegem, formalizam a decisão e registram
+> a cobertura de prejuízo com o Pool. Consulte `docs/manual-sql-order.md` antes de executar qualquer
 > script no banco.
 
 Este diretório contém os scripts SQL preparados nesta rodada. A ferramenta

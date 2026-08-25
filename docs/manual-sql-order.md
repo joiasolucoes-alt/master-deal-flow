@@ -60,6 +60,7 @@ Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 | 035 | `delivery_refusal_workflow`                    | ⚠️ **RODAR após 034** — registra recusa total/parcial com evidência, pausa o motorista, permite nova tentativa/retorno/cancelamento, cria custo adicional ligado ao pedido e impede que devolução seja tratada como entrega concluída.                                         |
 | 036 | `wallet_and_opportunity_pool_permissions`      | ⚠️ **RODAR após 035** — protege os valores da carteira e do Pool: Gestor/Financeiro consultam, somente Admin encerra/transfere e movimenta créditos, e o Comercial abre a carteira via função segura sem visualizar os saldos.                                                 |
 | 037 | `wallet_management_decision_and_pool_transfer` | ⚠️ **RODAR após 036** — registra a decisão do Admin sobre saldo positivo, saldo zero ou prejuízo, exige responsável pelo prejuízo e transfere Carteira + Pool na mesma transação sem duplicar créditos.                                                                        |
+| 038 | `pool_loss_coverage`                           | ⚠️ **RODAR após 037** — permite ao Admin cobrir, com saldo do Pool, prejuízo encerrado e assumido pela Master. O débito do Pool e a atualização da carteira acontecem juntos e sem duplicidade.                                                                                |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 

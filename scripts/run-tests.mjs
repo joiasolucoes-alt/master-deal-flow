@@ -2153,6 +2153,10 @@ const walletDecisionSql = readFileSync(
   ),
   "utf8",
 );
+const walletCoverageSql = readFileSync(
+  new URL("../supabase/manual-sql/038_pool_loss_coverage.sql", import.meta.url),
+  "utf8",
+);
 const sidebarSource = readFileSync(
   new URL("../src/components/app/app-sidebar.tsx", import.meta.url),
   "utf8",
@@ -2245,7 +2249,37 @@ assert.match(
   /create or replace function public\.transfer_negotiation_wallet_to_pool/,
   "SQL 037 cria a operação atômica entre carteira e Pool",
 );
+assert.match(
+  walletSource,
+  /wallet\.lossOwner === "Master"/,
+  "somente prejuízo assumido pela Master pode usar saldo do Pool",
+);
+assert.match(
+  walletSource,
+  /normalizedAmount > coverage\.remainingAmount/,
+  "a cobertura não pode ultrapassar o prejuízo restante",
+);
+assert.match(
+  walletSource,
+  /normalizedAmount > pool\.balance/,
+  "a cobertura não pode ultrapassar o saldo do Pool",
+);
+assert.match(
+  walletRepositorySource,
+  /cover_wallet_loss_with_opportunity_pool/,
+  "frontend usa a compensação transacional do Supabase",
+);
+assert.match(
+  walletCoverageSql,
+  /create or replace function public\.cover_wallet_loss_with_opportunity_pool/,
+  "SQL 038 cria a cobertura atômica do prejuízo",
+);
+assert.match(
+  walletCoverageSql,
+  /v_entry_external_id := 'pool-loss-coverage-' \|\| trim\(p_request_external_id\)/,
+  "SQL 038 usa identificação única para não duplicar débito",
+);
 
-console.log("Testes de permissões, conciliação e decisão da carteira passaram.");
+console.log("Testes de permissões, conciliação, decisão e cobertura da carteira passaram.");
 
 console.log("Todos os testes passaram.");

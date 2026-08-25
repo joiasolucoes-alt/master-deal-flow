@@ -38,6 +38,7 @@ import type {
 import {
   canTransferWalletToPool,
   createWalletEntry,
+  getWalletLossCoverage,
   getWalletManagementState,
   getWalletReconciliation,
   getWalletTotals,
@@ -115,6 +116,7 @@ export function NegotiationWalletSection({
   const totals = getWalletTotals(wallet);
   const reconciliation = getWalletReconciliation(wallet, realizedResult);
   const management = getWalletManagementState(wallet);
+  const lossCoverage = getWalletLossCoverage(wallet);
   const canManage = canManageNegotiationWallet(user);
   const canChange = canManage && wallet.status !== "transferred" && wallet.status !== "cancelled";
 
@@ -431,6 +433,29 @@ export function NegotiationWalletSection({
               Carteira conferida e pronta para encerramento.
             </p>
           )}
+          {management.outcome === "negative" && management.isDecided ? (
+            <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
+              <Metric label="Prejuízo apurado" value={formatCurrency(lossCoverage.lossAmount)} />
+              <Metric
+                label="Coberto pelo Pool"
+                value={formatCurrency(lossCoverage.coveredAmount)}
+                tone={lossCoverage.coveredAmount > 0 ? "text-success" : ""}
+              />
+              <Metric
+                label="Prejuízo restante"
+                value={formatCurrency(lossCoverage.remainingAmount)}
+                tone={lossCoverage.remainingAmount > 0 ? "text-destructive" : "text-success"}
+              />
+              {wallet.poolCoverageReason ? (
+                <p className="text-sm sm:col-span-3">
+                  <span className="text-muted-foreground">Última compensação: </span>
+                  {wallet.poolCoverageReason}
+                  {wallet.poolCoveredBy ? ` • ${wallet.poolCoveredBy}` : ""}
+                  {wallet.poolCoveredAt ? ` • ${formatDateTime(wallet.poolCoveredAt)}` : ""}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="rounded-lg border p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">

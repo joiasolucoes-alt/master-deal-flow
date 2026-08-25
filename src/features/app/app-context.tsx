@@ -47,7 +47,10 @@ import { createSupabaseFreightRepository } from "@/features/freights/repositorie
 import { createSupabaseDeliveryRepository } from "@/features/deliveries/repositories/supabaseDeliveryRepository";
 import { createSupabaseRealizedResultRepository } from "@/features/results/repositories/supabaseRealizedResultRepository";
 import { createSupabaseNegotiationWalletRepository } from "@/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository";
-import { prepareWalletTransferToPool } from "@/features/negotiation-wallets";
+import {
+  prepareWalletLossCoverage,
+  prepareWalletTransferToPool,
+} from "@/features/negotiation-wallets";
 import { createSupabaseNegotiationRepository } from "@/features/negotiations/repositories/supabaseNegotiationRepository";
 import { persistNotification } from "@/features/notifications/notificationRepository";
 import { toast } from "sonner";
@@ -145,6 +148,12 @@ interface AppContextValue {
   transferNegotiationWalletToPool: (
     wallet: NegotiationWallet,
     pool?: OpportunityPool,
+  ) => Promise<{ ok: boolean; message?: string }>;
+  coverNegotiationWalletLossWithPool: (
+    wallet: NegotiationWallet,
+    pool: OpportunityPool,
+    amount: number,
+    reason: string,
   ) => Promise<{ ok: boolean; message?: string }>;
   upsertFreight: (freight: FreightRecord) => void;
   upsertDelivery: (delivery: DeliveryRecord) => void;
@@ -1522,6 +1531,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const coverNegotiationWalletLossWithPool = async (
+    wallet: NegotiationWallet,
+    pool: OpportunityPool,
+    amount: number,
+    reason: string,
+  ) => {
+    try {
+      const requestId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const prepared = prepareWalletLossCoverage({
+        wallet,
+        pool,
+        amount,
+        reason,
+        user: auth.user,
+        requestId,
+      });
+      if (isSupabaseProvider()) {
+        const config = getSupabaseConfigStatus();
+        if (!config.configured) {
+          return { ok: false, message: "Supabase não configurado para compensar o prejuízo." };
+        }
+        const repository = createSupabaseNegotiationWalletRepository();
+        await repository.coverWalletLossWithPool({
+          walletExternalId: wallet.id,
+          poolExternalId: pool.id,
+          amount,
+          reason,
+          requestExternalId: requestId,
+          decidedBy: auth.user?.name ?? auth.user?.email,
+        });
+      }
+      upsertOpportunityPoolStore(prepared.pool);
+      upsertNegotiationWalletStore(prepared.wallet);
+      return { ok: true };
+    } catch (error) {
+      console.error("Falha ao compensar prejuízo com o Pool no Supabase.", error);
+      const message =
+        error instanceof Error ? error.message : "Não foi possível compensar o prejuízo.";
+      setLastDataError(message);
+      return { ok: false, message };
+    }
+  };
+
   const upsertFinancialTitle = (title: FinancialTitle) => {
     upsertFinancialTitleStore(title);
     if (!isSupabaseProvider()) return;
@@ -1685,6 +1740,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertNegotiationWallet,
       upsertOpportunityPool,
       transferNegotiationWalletToPool,
+      coverNegotiationWalletLossWithPool,
       upsertFreight,
       upsertDelivery,
       upsertClient,
@@ -1721,6 +1777,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertNegotiationWallet,
       upsertOpportunityPool,
       transferNegotiationWalletToPool,
+      coverNegotiationWalletLossWithPool,
       upsertFreight,
       upsertDelivery,
       upsertClient,

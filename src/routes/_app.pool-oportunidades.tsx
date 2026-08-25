@@ -1,9 +1,21 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageHeader } from "@/components/app/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, CircleDollarSign, TriangleAlert, WalletCards } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { ArrowRight, CircleDollarSign, HandCoins, TriangleAlert, WalletCards } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -15,14 +27,24 @@ import {
 import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { canManageOpportunityPool } from "@/lib/permissions";
-import { getWalletManagementState } from "@/features/negotiation-wallets";
+import {
+  getWalletLossCoverage,
+  getWalletManagementState,
+  roundCurrency,
+} from "@/features/negotiation-wallets";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/pool-oportunidades")({
   component: OpportunityPoolPage,
 });
 
 function OpportunityPoolPage() {
-  const { auth, opportunityPools, negotiationWallets, orders } = useAppContext();
+  const { auth, opportunityPools, negotiationWallets, orders, coverNegotiationWalletLossWithPool } =
+    useAppContext();
+  const [coverageWalletId, setCoverageWalletId] = useState<string | null>(null);
+  const [coverageAmount, setCoverageAmount] = useState("");
+  const [coverageReason, setCoverageReason] = useState("");
+  const [submittingCoverage, setSubmittingCoverage] = useState(false);
   const canManage = canManageOpportunityPool(auth.user);
   const pools = opportunityPools.length
     ? opportunityPools
@@ -37,8 +59,101 @@ function OpportunityPoolPage() {
   const pendingLosses = pendingWallets.filter(
     (wallet) => getWalletManagementState(wallet).outcome === "negative",
   );
+  const coverageWallet = negotiationWallets.find((wallet) => wallet.id === coverageWalletId);
+  const coverageState = coverageWallet ? getWalletLossCoverage(coverageWallet) : null;
+  const eligibleLosses = closedWallets.filter((wallet) => getWalletLossCoverage(wallet).canUsePool);
+
+  const openCoverageDialog = (walletId: string) => {
+    const wallet = negotiationWallets.find((item) => item.id === walletId);
+    if (!wallet) return;
+    const state = getWalletLossCoverage(wallet);
+    setCoverageWalletId(walletId);
+    setCoverageAmount(String(Math.min(state.remainingAmount, pool.balance)).replace(".", ","));
+    setCoverageReason("");
+  };
+
+  const submitCoverage = async () => {
+    if (!coverageWallet || !coverageState || submittingCoverage) return;
+    const amount = parseCurrency(coverageAmount);
+    setSubmittingCoverage(true);
+    const result = await coverNegotiationWalletLossWithPool(
+      coverageWallet,
+      pool,
+      amount,
+      coverageReason,
+    );
+    setSubmittingCoverage(false);
+    if (!result.ok) {
+      toast.error(result.message ?? "Não foi possível compensar o prejuízo.");
+      return;
+    }
+    toast.success("Compensação registrada no Pool de Oportunidades.");
+    setCoverageWalletId(null);
+  };
   return (
     <div className="space-y-6">
+      <Dialog
+        open={Boolean(coverageWallet)}
+        onOpenChange={(open) => !open && setCoverageWalletId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cobrir prejuízo com o Pool</DialogTitle>
+            <DialogDescription>
+              O resultado realizado continuará registrado. Esta ação informa como a Master cobriu o
+              prejuízo usando o saldo acumulado.
+            </DialogDescription>
+          </DialogHeader>
+          {coverageWallet && coverageState ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <PoolMetric label="Saldo do Pool" value={formatCurrency(pool.balance)} />
+                <PoolMetric
+                  label="Prejuízo restante"
+                  value={formatCurrency(coverageState.remainingAmount)}
+                />
+                <PoolMetric
+                  label="Já coberto"
+                  value={formatCurrency(coverageState.coveredAmount)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="coverage-amount">Valor da compensação</Label>
+                <Input
+                  id="coverage-amount"
+                  inputMode="decimal"
+                  value={coverageAmount}
+                  onChange={(event) => setCoverageAmount(event.target.value)}
+                  placeholder="0,00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="coverage-reason">Motivo da compensação</Label>
+                <Textarea
+                  id="coverage-reason"
+                  value={coverageReason}
+                  onChange={(event) => setCoverageReason(event.target.value)}
+                  placeholder="Explique por que o saldo do Pool será utilizado."
+                />
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCoverageWalletId(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={submitCoverage}
+              disabled={
+                submittingCoverage || !coverageReason.trim() || parseCurrency(coverageAmount) <= 0
+              }
+            >
+              <HandCoins />
+              {submittingCoverage ? "Registrando..." : "Confirmar compensação"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <PageHeader
         title="Pool de Oportunidades"
         description="Resultado acumulado de carteiras encerradas e transferidas."
@@ -96,7 +211,9 @@ function OpportunityPoolPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{pendingWallets.length}</p>
-            <p className="text-sm text-muted-foreground">{pendingLosses.length} com prejuízo</p>
+            <p className="text-sm text-muted-foreground">
+              {pendingLosses.length} com prejuízo • {eligibleLosses.length} para compensar
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -115,6 +232,7 @@ function OpportunityPoolPage() {
                 <TableHead>Resultado</TableHead>
                 <TableHead className="text-right">Saldo final</TableHead>
                 <TableHead>Decisão</TableHead>
+                <TableHead>Cobertura do Pool</TableHead>
                 <TableHead>Responsável</TableHead>
                 <TableHead />
               </TableRow>
@@ -123,6 +241,7 @@ function OpportunityPoolPage() {
               {closedWallets.map((wallet) => {
                 const state = getWalletManagementState(wallet);
                 const order = orders.find((item) => item.id === wallet.orderId);
+                const coverage = getWalletLossCoverage(wallet);
                 return (
                   <TableRow key={wallet.id}>
                     <TableCell className="font-medium">{order?.number ?? wallet.orderId}</TableCell>
@@ -146,20 +265,43 @@ function OpportunityPoolPage() {
                       {formatCurrency(state.finalBalance)}
                     </TableCell>
                     <TableCell>{getDecisionLabel(wallet)}</TableCell>
+                    <TableCell>
+                      {coverage.lossAmount > 0 ? (
+                        <div className="space-y-1 text-sm">
+                          <p>{formatCurrency(coverage.coveredAmount)} coberto</p>
+                          <p className="text-muted-foreground">
+                            {formatCurrency(coverage.remainingAmount)} restante
+                          </p>
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
                     <TableCell>{wallet.managementDecidedBy ?? "—"}</TableCell>
                     <TableCell className="text-right">
-                      <Button asChild size="sm" variant="outline">
-                        <Link to="/pedidos/$id" params={{ id: wallet.orderId }}>
-                          Abrir carteira <ArrowRight />
-                        </Link>
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        {canManage && coverage.canUsePool ? (
+                          <Button
+                            size="sm"
+                            onClick={() => openCoverageDialog(wallet.id)}
+                            disabled={pool.balance <= 0}
+                          >
+                            <HandCoins /> Cobrir com Pool
+                          </Button>
+                        ) : null}
+                        <Button asChild size="sm" variant="outline">
+                          <Link to="/pedidos/$id" params={{ id: wallet.orderId }}>
+                            Abrir carteira <ArrowRight />
+                          </Link>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
               })}
               {closedWallets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     Nenhuma carteira encerrada para decisão.
                   </TableCell>
                 </TableRow>
@@ -210,6 +352,19 @@ function OpportunityPoolPage() {
       </Card>
     </div>
   );
+}
+
+function PoolMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function parseCurrency(value: string) {
+  return roundCurrency(Number(value.replace(/\./g, "").replace(",", ".")) || 0);
 }
 
 function getDecisionLabel(wallet: ReturnType<typeof useAppContext>["negotiationWallets"][number]) {

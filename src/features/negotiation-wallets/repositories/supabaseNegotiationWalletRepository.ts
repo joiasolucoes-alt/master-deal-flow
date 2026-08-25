@@ -25,6 +25,10 @@ type WalletRow = {
   management_decided_by_text: string | null;
   management_decided_at: string | null;
   loss_owner: NegotiationWallet["lossOwner"] | null;
+  pool_coverage_amount: number | string | null;
+  pool_coverage_reason: string | null;
+  pool_covered_by_text: string | null;
+  pool_covered_at: string | null;
   created_at: string;
   updated_at: string;
   negotiation_wallet_entries?: WalletEntryRow[];
@@ -124,6 +128,10 @@ function walletRowToDomain(row: WalletRow): NegotiationWallet {
     managementDecidedBy: row.management_decided_by_text ?? undefined,
     managementDecidedAt: row.management_decided_at ?? undefined,
     lossOwner: row.loss_owner ?? undefined,
+    poolCoverageAmount: numberValue(row.pool_coverage_amount),
+    poolCoverageReason: row.pool_coverage_reason ?? undefined,
+    poolCoveredBy: row.pool_covered_by_text ?? undefined,
+    poolCoveredAt: row.pool_covered_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     entries: (row.negotiation_wallet_entries ?? [])
@@ -205,6 +213,10 @@ function walletToRow(wallet: NegotiationWallet) {
     management_decided_by_text: wallet.managementDecidedBy ?? null,
     management_decided_at: wallet.managementDecidedAt ?? null,
     loss_owner: wallet.lossOwner ?? null,
+    pool_coverage_amount: wallet.poolCoverageAmount ?? 0,
+    pool_coverage_reason: wallet.poolCoverageReason ?? null,
+    pool_covered_by_text: wallet.poolCoveredBy ?? null,
+    pool_covered_at: wallet.poolCoveredAt ?? null,
     created_at: wallet.createdAt,
     updated_at: wallet.updatedAt,
   };
@@ -486,6 +498,34 @@ export function createSupabaseNegotiationWalletRepository() {
       const { error } = await client.rpc("transfer_negotiation_wallet_to_pool", {
         p_wallet_external_id: walletExternalId,
         p_pool_external_id: poolExternalId,
+        p_decided_by: decidedBy ?? null,
+      });
+      if (error) throw error;
+    },
+
+    async coverWalletLossWithPool({
+      walletExternalId,
+      poolExternalId,
+      amount,
+      reason,
+      requestExternalId,
+      decidedBy,
+    }: {
+      walletExternalId: string;
+      poolExternalId: string;
+      amount: number;
+      reason: string;
+      requestExternalId: string;
+      decidedBy?: string;
+    }) {
+      await ensureSupabaseSession();
+      const client = requireClient();
+      const { error } = await client.rpc("cover_wallet_loss_with_opportunity_pool", {
+        p_wallet_external_id: walletExternalId,
+        p_pool_external_id: poolExternalId,
+        p_amount: amount,
+        p_reason: reason,
+        p_request_external_id: requestExternalId,
         p_decided_by: decidedBy ?? null,
       });
       if (error) throw error;
