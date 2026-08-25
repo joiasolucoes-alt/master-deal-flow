@@ -22,6 +22,10 @@ export type Permission =
   | "freights:view"
   | "freights:operate"
   | "deliveries:view"
+  | "negotiation-wallets:view"
+  | "negotiation-wallets:manage"
+  | "opportunity-pool:view"
+  | "opportunity-pool:manage"
   | "reports:view"
   | "settings:manage";
 
@@ -46,6 +50,10 @@ const allPermissions: Permission[] = [
   "freights:view",
   "freights:operate",
   "deliveries:view",
+  "negotiation-wallets:view",
+  "negotiation-wallets:manage",
+  "opportunity-pool:view",
+  "opportunity-pool:manage",
   "reports:view",
   "settings:manage",
 ];
@@ -76,6 +84,8 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "approvals:view",
     "approvals:decide",
     "orders:view",
+    "negotiation-wallets:view",
+    "opportunity-pool:view",
     "reports:view",
   ],
   Faturista: [
@@ -114,6 +124,8 @@ const permissionsByRole: Record<UserRole, Permission[]> = {
     "finance:billing",
     "finance:operate",
     "freights:view",
+    "negotiation-wallets:view",
+    "opportunity-pool:view",
     "reports:view",
   ],
   Frete: ["dashboard:view", "orders:view", "freights:view", "freights:operate", "deliveries:view"],
@@ -131,6 +143,7 @@ const routePermissions: Array<{ prefix: string; permission: Permission }> = [
   { prefix: "/financeiro", permission: "finance:view" },
   { prefix: "/fretes", permission: "freights:view" },
   { prefix: "/entregas", permission: "deliveries:view" },
+  { prefix: "/pool-oportunidades", permission: "opportunity-pool:view" },
   { prefix: "/relatorios", permission: "reports:view" },
   { prefix: "/configuracoes", permission: "settings:manage" },
 ];
@@ -239,4 +252,20 @@ export function canOperateFinance(user: User | null | undefined) {
 
 export function canOperateBilling(user: User | null | undefined) {
   return hasPermission(user, "finance:billing") || canRegisterInvoice(user);
+}
+
+export function canViewNegotiationWallet(user: User | null | undefined) {
+  return hasPermission(user, "negotiation-wallets:view");
+}
+
+export function canManageNegotiationWallet(user: User | null | undefined) {
+  return hasPermission(user, "negotiation-wallets:manage");
+}
+
+export function canViewOpportunityPool(user: User | null | undefined) {
+  return hasPermission(user, "opportunity-pool:view");
+}
+
+export function canManageOpportunityPool(user: User | null | undefined) {
+  return hasPermission(user, "opportunity-pool:manage");
 }

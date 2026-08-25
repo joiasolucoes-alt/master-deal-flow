@@ -21,18 +21,18 @@ negociações num só lugar para acompanhamento e uso posterior.
 
 ## Modelo de dados
 
-| Tabela | Papel |
-| --- | --- |
-| `negotiation_wallets` | Cabeçalho da carteira: `initial_expected_profit`, `current_balance`, `final_balance`, `status` (`open` / `locked` / `closed` / `transferred` / `cancelled`), vínculo com `simulation_id` / `order_id`. Há `unique (organization_id, order_id)` — uma carteira por pedido. |
-| `negotiation_wallet_entries` | Lançamentos: `direction` (`credit` / `debit`), `amount` (> 0), `category`, `source_module`, `description`, `reference_id` (idempotência por origem), `entry_type` (`automatic` / manual). Suporta estorno via `reversed_at` / `reversed_by` / `reversal_reason`. |
-| `opportunity_pools` | Pool agregador: `name`, `balance`, `status` (`active` / `archived`). |
-| `opportunity_pool_entries` | Lançamentos do pool, opcionalmente ligados à `wallet_id` de origem. |
+| Tabela                       | Papel                                                                                                                                                                                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `negotiation_wallets`        | Cabeçalho da carteira: `initial_expected_profit`, `current_balance`, `final_balance`, `status` (`open` / `locked` / `closed` / `transferred` / `cancelled`), vínculo com `simulation_id` / `order_id`. Há `unique (organization_id, order_id)` — uma carteira por pedido. |
+| `negotiation_wallet_entries` | Lançamentos: `direction` (`credit` / `debit`), `amount` (> 0), `category`, `source_module`, `description`, `reference_id` (idempotência por origem), `entry_type` (`automatic` / manual). Suporta estorno via `reversed_at` / `reversed_by` / `reversal_reason`.          |
+| `opportunity_pools`          | Pool agregador: `name`, `balance`, `status` (`active` / `archived`).                                                                                                                                                                                                      |
+| `opportunity_pool_entries`   | Lançamentos do pool, opcionalmente ligados à `wallet_id` de origem.                                                                                                                                                                                                       |
 
-RLS: diferentemente das tabelas do fluxo comercial (que ainda usam políticas abertas
-`true`), estas quatro tabelas **já nascem com RLS por papel** via `organization_members`:
-leitura para qualquer membro da organização; escrita/estorno restritos a `admin`, `gestor`,
-`financeiro` (e `frota` pode inserir lançamentos de frete). É o padrão de referência para o
-refinamento de RLS das demais tabelas — ver `docs/schema-consolidation.md`.
+Após a SQL 036, a RLS separa consulta e gestão. Admin, Gestor e Financeiro consultam os
+valores gerenciais; somente o Admin encerra/transfere carteiras e movimenta o pool. Frete
+mantém apenas o acesso técnico necessário aos lançamentos automáticos de frete. Comercial
+abre a carteira por uma função segura, mas não recebe os saldos na interface nem por leitura
+direta das tabelas.
 
 ## Fluxo ponta a ponta
 
@@ -45,12 +45,13 @@ refinamento de RLS das demais tabelas — ver `docs/schema-consolidation.md`.
      (estouro).
    - **Faturamento/desconto** (tela de Financeiro / Pedido): descontos concedidos no
      faturamento entram como débito.
-3. **Ajustes manuais** — usuários `Admin` / `Financeiro` / `Negociações` podem adicionar um
-   lançamento manual (`createWalletEntry` / `upsertWalletEntry`) com justificativa, ou
-   **estornar** um lançamento existente (`reverseEntriesByReference`), preenchendo o motivo.
-4. **Encerramento** — a carteira é fechada (`closed`), congelando o `final_balance`.
-5. **Transferência para o pool** — o saldo final pode ser transferido para um
-   `opportunity_pool` (`transferred`), somando ao `balance` do pool.
+3. **Ajustes manuais** — somente o Admin pode adicionar, estornar ou justificar lançamentos
+   manuais pela interface. Financeiro e Frete continuam gerando lançamentos automáticos dos
+   seus próprios módulos.
+4. **Encerramento** — somente o Admin fecha a carteira (`closed`), congelando o
+   `final_balance`.
+5. **Transferência para o pool** — somente carteira encerrada com saldo final positivo pode
+   ser transferida (`transferred`), e somente o Admin realiza a ação.
 
 ## Onde vive no código
 
@@ -63,10 +64,17 @@ refinamento de RLS das demais tabelas — ver `docs/schema-consolidation.md`.
 - Rota do pool consolidado: `/pool-oportunidades`
   (`src/routes/_app.pool-oportunidades.tsx`).
 
+## Matriz de acesso
+
+| Perfil             | Carteira           | Pool     | Movimentação                                        |
+| ------------------ | ------------------ | -------- | --------------------------------------------------- |
+| Admin              | Consulta           | Consulta | Total                                               |
+| Gestor             | Consulta           | Consulta | Não                                                 |
+| Financeiro         | Consulta           | Consulta | Apenas lançamentos automáticos do módulo financeiro |
+| Frete              | Sem tela gerencial | Sem tela | Apenas lançamentos automáticos de frete             |
+| Comercial e demais | Não                | Não      | Não                                                 |
+
 ## Pendências conhecidas
 
-- A rota `/pool-oportunidades` hoje usa a permissão `reports:view` na sidebar, mas **não está
-  listada em `routePermissions`** (`src/lib/permissions.ts`), então o guard de rota a libera
-  por padrão para qualquer usuário autenticado. Considerar adicioná-la ao mapa de rotas.
 - Não há relatório de reconciliação entre o `final_balance` das carteiras e os
   `realized_results` por pedido — os dois números vêm de origens diferentes e podem divergir.

@@ -113,6 +113,23 @@ export function recalculateWallet(wallet: NegotiationWallet): NegotiationWallet 
   return { ...wallet, currentBalance: totals.balance, updatedAt: new Date().toISOString() };
 }
 
+export function canTransferWalletToPool(wallet: NegotiationWallet) {
+  const finalBalance = wallet.finalBalance ?? getWalletTotals(wallet).balance;
+  return wallet.status === "closed" && finalBalance > 0;
+}
+
+export function transferWalletToPool(wallet: NegotiationWallet): NegotiationWallet {
+  if (!canTransferWalletToPool(wallet)) {
+    throw new Error("Somente carteiras encerradas com saldo positivo podem ir para o pool.");
+  }
+
+  return recalculateWallet({
+    ...wallet,
+    status: "transferred",
+    finalBalance: wallet.finalBalance ?? getWalletTotals(wallet).balance,
+  });
+}
+
 export function createWalletFromSimulationOrder({
   simulation,
   order,

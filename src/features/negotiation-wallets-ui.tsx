@@ -16,14 +16,17 @@ import type {
   WalletEntryDirection,
 } from "@/features/negotiation-wallets";
 import {
+  canTransferWalletToPool,
   createWalletEntry,
   getWalletTotals,
   recalculateWallet,
   roundCurrency,
+  transferWalletToPool,
   upsertWalletEntry,
 } from "@/features/negotiation-wallets";
 import type { User } from "@/data/types";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { canManageNegotiationWallet, canViewNegotiationWallet } from "@/lib/permissions";
 
 const CATEGORY_LABELS: Record<WalletEntryCategory, string> = {
   freight_saving: "Economia de frete",
@@ -52,6 +55,8 @@ export function NegotiationWalletSection({
   user?: User | null;
   onChange: (wallet: NegotiationWallet) => void;
 }) {
+  if (!canViewNegotiationWallet(user)) return null;
+
   if (!wallet) {
     return (
       <Card>
@@ -65,10 +70,8 @@ export function NegotiationWalletSection({
     );
   }
   const totals = getWalletTotals(wallet);
-  const canChange =
-    ["Admin", "Financeiro", "Negociações"].includes(user?.role ?? "") &&
-    wallet.status !== "transferred" &&
-    wallet.status !== "cancelled";
+  const canManage = canManageNegotiationWallet(user);
+  const canChange = canManage && wallet.status !== "transferred" && wallet.status !== "cancelled";
 
   const addManual = () => {
     if (!canChange || wallet.status === "closed") return;
@@ -114,9 +117,8 @@ export function NegotiationWalletSection({
   };
 
   const transferToPool = () => {
-    if (!canChange || wallet.status !== "closed" || (wallet.finalBalance ?? totals.balance) <= 0)
-      return;
-    onChange(recalculateWallet({ ...wallet, status: "transferred" }));
+    if (!canChange || !canTransferWalletToPool(wallet)) return;
+    onChange(transferWalletToPool(wallet));
   };
 
   const reverseEntry = (entryId: string) => {
@@ -149,32 +151,32 @@ export function NegotiationWalletSection({
             Resultado operacional gerencial calculado por extrato imutável.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={addManual}
-            disabled={!canChange || wallet.status === "closed"}
-          >
-            Adicionar ajuste
-          </Button>
-          <Button
-            onClick={closeWallet}
-            disabled={!canChange || wallet.status === "closed" || wallet.status === "transferred"}
-          >
-            Encerrar carteira
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={transferToPool}
-            disabled={
-              !canChange ||
-              wallet.status !== "closed" ||
-              (wallet.finalBalance ?? totals.balance) <= 0
-            }
-          >
-            Transferir para pool
-          </Button>
-        </div>
+        {canManage ? (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={addManual}
+              disabled={!canChange || wallet.status === "closed"}
+            >
+              Adicionar ajuste
+            </Button>
+            <Button
+              onClick={closeWallet}
+              disabled={!canChange || wallet.status === "closed" || wallet.status === "transferred"}
+            >
+              Encerrar carteira
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={transferToPool}
+              disabled={!canChange || !canTransferWalletToPool(wallet)}
+            >
+              Transferir para pool
+            </Button>
+          </div>
+        ) : (
+          <Badge variant="outline">Somente consulta</Badge>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-5">

@@ -291,6 +291,22 @@ function isMissingOnConflictConstraint(error: unknown) {
   return code === "42P10";
 }
 
+function isPermissionDenied(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String(error.code) : "";
+  return code === "42501";
+}
+
+async function createInitialWalletThroughRpc(client: SupabaseClient, wallet: NegotiationWallet) {
+  const { error } = await client.rpc("create_negotiation_wallet_for_order", {
+    p_wallet_external_id: wallet.id,
+    p_simulation_external_id: wallet.simulationId ?? null,
+    p_order_external_id: wallet.orderId,
+    p_opened_at: wallet.openedAt,
+  });
+  if (error) throw error;
+}
+
 async function saveRowByExternalId(
   client: SupabaseClient,
   table: "negotiation_wallets" | "opportunity_pools",
@@ -382,13 +398,23 @@ export function createSupabaseNegotiationWalletRepository() {
         organizationId,
         entries: wallet.entries.map((entry) => ({ ...entry, organizationId })),
       };
-      const data = await saveRowByExternalId(
-        client,
-        "negotiation_wallets",
-        walletToRow(normalizedWallet),
-        normalizedWallet.id,
-        "Carteira",
-      );
+      let data: Record<string, unknown> | null;
+      try {
+        data = await saveRowByExternalId(
+          client,
+          "negotiation_wallets",
+          walletToRow(normalizedWallet),
+          normalizedWallet.id,
+          "Carteira",
+        );
+      } catch (error) {
+        const isInitialWallet =
+          normalizedWallet.status === "open" && normalizedWallet.entries.length === 0;
+        if (!isInitialWallet || !isPermissionDenied(error)) throw error;
+
+        await createInitialWalletThroughRpc(client, normalizedWallet);
+        return normalizedWallet;
+      }
 
       if (!data?.id) throw new Error("Carteira não retornou identificador no Supabase.");
 

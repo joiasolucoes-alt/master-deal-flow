@@ -12,13 +12,15 @@ import {
 } from "@/components/ui/table";
 import { useAppContext } from "@/features/app/app-context";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { canManageOpportunityPool } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/pool-oportunidades")({
   component: OpportunityPoolPage,
 });
 
 function OpportunityPoolPage() {
-  const { opportunityPools, negotiationWallets } = useAppContext();
+  const { auth, opportunityPools, negotiationWallets } = useAppContext();
+  const canManage = canManageOpportunityPool(auth.user);
   const pools = opportunityPools.length
     ? opportunityPools
     : [createVirtualPool(negotiationWallets)];
@@ -29,6 +31,14 @@ function OpportunityPoolPage() {
         title="Pool de Oportunidades"
         description="Resultado acumulado de carteiras encerradas e transferidas."
       />
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Badge variant="outline">{canManage ? "Gestão do Admin" : "Somente consulta"}</Badge>
+        <span>
+          {canManage
+            ? "Você pode administrar os créditos acumulados."
+            : "Somente o Admin pode movimentar os créditos."}
+        </span>
+      </div>
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>

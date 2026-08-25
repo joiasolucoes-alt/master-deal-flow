@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 const MINIMUM_MARGIN_TARGET = 3.5;
 const ATTENTION_MARGIN_TARGET = 0;
@@ -2127,5 +2128,53 @@ assert.equal(
 );
 
 console.log("Testes de encerramento definitivo da operação passaram.");
+
+// Onda 1 da carteira/pool: valida as permissões e a regra de transferência no
+// código real para evitar que a tela volte a usar a permissão genérica de relatórios.
+const permissionsSource = readFileSync(
+  new URL("../src/lib/permissions.ts", import.meta.url),
+  "utf8",
+);
+const walletSource = readFileSync(
+  new URL("../src/features/negotiation-wallets.ts", import.meta.url),
+  "utf8",
+);
+const sidebarSource = readFileSync(
+  new URL("../src/components/app/app-sidebar.tsx", import.meta.url),
+  "utf8",
+);
+
+assert.match(
+  permissionsSource,
+  /prefix: "\/pool-oportunidades", permission: "opportunity-pool:view"/,
+  "rota do pool exige permissão específica",
+);
+assert.match(
+  sidebarSource,
+  /to: "\/pool-oportunidades"[\s\S]*?permission: "opportunity-pool:view"/,
+  "menu do pool não usa mais a permissão genérica de relatórios",
+);
+assert.match(
+  permissionsSource,
+  /Gestor:[\s\S]*?"negotiation-wallets:view"[\s\S]*?"opportunity-pool:view"/,
+  "Gestor pode consultar carteira e pool",
+);
+assert.match(
+  permissionsSource,
+  /Financeiro:[\s\S]*?"negotiation-wallets:view"[\s\S]*?"opportunity-pool:view"/,
+  "Financeiro pode consultar carteira e pool",
+);
+assert.doesNotMatch(
+  permissionsSource.match(/Comercial:\s*\[([\s\S]*?)\],\s*Gestor:/)?.[1] ?? "",
+  /negotiation-wallets|opportunity-pool/,
+  "Comercial não recebe acesso aos valores acumulados",
+);
+assert.match(
+  walletSource,
+  /wallet\.status === "closed" && finalBalance > 0/,
+  "somente carteira encerrada e positiva pode ser transferida",
+);
+
+console.log("Testes de permissões da carteira e do pool passaram.");
 
 console.log("Todos os testes passaram.");

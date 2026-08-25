@@ -58,6 +58,7 @@ Ordem numérica = ordem de aplicação. Cada wave depende das anteriores.
 | 033 | `commission_payment_and_result_reopen`      | ⚠️ **RODAR após 032** — adiciona pagamento de comissão, bloqueio/liberação da fila de comissões e reabertura controlada do resultado fechado.                                                                                                                                  |
 | 034 | `fix_realized_results_schema_and_upsert`    | ✅ Corrige a persistência do fechamento, aprovação e pagamento das comissões.                                                                                                                                                                                                  |
 | 035 | `delivery_refusal_workflow`                 | ⚠️ **RODAR após 034** — registra recusa total/parcial com evidência, pausa o motorista, permite nova tentativa/retorno/cancelamento, cria custo adicional ligado ao pedido e impede que devolução seja tratada como entrega concluída.                                         |
+| 036 | `wallet_and_opportunity_pool_permissions`   | ⚠️ **RODAR após 035** — protege os valores da carteira e do Pool: Gestor/Financeiro consultam, somente Admin encerra/transfere e movimenta créditos, e o Comercial abre a carteira via função segura sem visualizar os saldos.                                                 |
 
 ## 3. NÃO aplicar (histórico / trilha alternativa)
 
