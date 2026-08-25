@@ -2139,6 +2139,20 @@ const walletSource = readFileSync(
   new URL("../src/features/negotiation-wallets.ts", import.meta.url),
   "utf8",
 );
+const walletRepositorySource = readFileSync(
+  new URL(
+    "../src/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const walletDecisionSql = readFileSync(
+  new URL(
+    "../supabase/manual-sql/037_wallet_management_decision_and_pool_transfer.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const sidebarSource = readFileSync(
   new URL("../src/components/app/app-sidebar.tsx", import.meta.url),
   "utf8",
@@ -2206,6 +2220,32 @@ assert.equal(
   "diferença positiva aumenta a carteira até o lucro efetivamente realizado",
 );
 
-console.log("Testes de permissões e conciliação da carteira passaram.");
+assert.match(
+  walletSource,
+  /wallet\.managementDecision === "approved_for_pool"/,
+  "saldo positivo exige aprovação explícita antes de ir para o Pool",
+);
+assert.match(
+  walletSource,
+  /outcome === "negative" && !lossOwner/,
+  "prejuízo exige indicação do responsável",
+);
+assert.match(
+  walletSource,
+  /const entryId = `pool-transfer-\$\{wallet\.id\}`/,
+  "transferência usa identificação estável para não duplicar crédito",
+);
+assert.match(
+  walletRepositorySource,
+  /transfer_negotiation_wallet_to_pool/,
+  "frontend usa a transferência transacional do Supabase",
+);
+assert.match(
+  walletDecisionSql,
+  /create or replace function public\.transfer_negotiation_wallet_to_pool/,
+  "SQL 037 cria a operação atômica entre carteira e Pool",
+);
+
+console.log("Testes de permissões, conciliação e decisão da carteira passaram.");
 
 console.log("Todos os testes passaram.");

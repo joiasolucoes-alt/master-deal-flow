@@ -71,9 +71,33 @@ export interface NegotiationWallet {
   status: NegotiationWalletStatus;
   openedAt: string;
   closedAt?: string;
+  managementDecision?: WalletManagementDecision;
+  managementDecisionReason?: string;
+  managementDecidedBy?: string;
+  managementDecidedAt?: string;
+  lossOwner?: WalletLossOwner;
   createdAt: string;
   updatedAt: string;
   entries: NegotiationWalletEntry[];
+}
+
+export type WalletManagementDecision =
+  | "pending"
+  | "approved_for_pool"
+  | "retained"
+  | "loss_acknowledged"
+  | "zero_acknowledged";
+
+export type WalletLossOwner = "Master" | "Comercial" | "Transportadora" | "Fornecedor" | "Outro";
+
+export type WalletBalanceOutcome = "positive" | "negative" | "zero";
+
+export interface WalletManagementState {
+  outcome: WalletBalanceOutcome;
+  finalBalance: number;
+  decision: WalletManagementDecision;
+  isDecided: boolean;
+  canTransfer: boolean;
 }
 
 export interface OpportunityPoolEntry {
@@ -137,7 +161,70 @@ export function recalculateWallet(wallet: NegotiationWallet): NegotiationWallet 
 
 export function canTransferWalletToPool(wallet: NegotiationWallet) {
   const finalBalance = wallet.finalBalance ?? getWalletTotals(wallet).balance;
-  return wallet.status === "closed" && finalBalance > 0;
+  return (
+    wallet.status === "closed" &&
+    finalBalance > 0 &&
+    wallet.managementDecision === "approved_for_pool"
+  );
+}
+
+export function getWalletManagementState(wallet: NegotiationWallet): WalletManagementState {
+  const finalBalance = roundCurrency(wallet.finalBalance ?? getWalletTotals(wallet).balance);
+  const outcome: WalletBalanceOutcome =
+    finalBalance > 0.01 ? "positive" : finalBalance < -0.01 ? "negative" : "zero";
+  const decision = wallet.managementDecision ?? "pending";
+  const validDecision =
+    (outcome === "positive" && (decision === "approved_for_pool" || decision === "retained")) ||
+    (outcome === "negative" && decision === "loss_acknowledged") ||
+    (outcome === "zero" && decision === "zero_acknowledged");
+
+  return {
+    outcome,
+    finalBalance,
+    decision,
+    isDecided: wallet.status === "transferred" || validDecision,
+    canTransfer: wallet.status === "closed" && finalBalance > 0 && decision === "approved_for_pool",
+  };
+}
+
+export function recordWalletManagementDecision({
+  wallet,
+  decision,
+  reason,
+  lossOwner,
+  user,
+}: {
+  wallet: NegotiationWallet;
+  decision: Exclude<WalletManagementDecision, "pending">;
+  reason: string;
+  lossOwner?: WalletLossOwner;
+  user?: User | null;
+}) {
+  if (wallet.status !== "closed") {
+    throw new Error("A carteira precisa estar encerrada antes da decisão gerencial.");
+  }
+  if (!reason.trim()) throw new Error("Informe o motivo da decisão gerencial.");
+
+  const { outcome } = getWalletManagementState(wallet);
+  const validDecision =
+    (outcome === "positive" && (decision === "approved_for_pool" || decision === "retained")) ||
+    (outcome === "negative" && decision === "loss_acknowledged") ||
+    (outcome === "zero" && decision === "zero_acknowledged");
+  if (!validDecision) throw new Error("A decisão não corresponde ao saldo final da carteira.");
+  if (outcome === "negative" && !lossOwner) {
+    throw new Error("Informe quem será responsável pelo prejuízo.");
+  }
+
+  const now = new Date().toISOString();
+  return {
+    ...wallet,
+    managementDecision: decision,
+    managementDecisionReason: reason.trim(),
+    managementDecidedBy: user?.name ?? user?.email ?? "Admin",
+    managementDecidedAt: now,
+    lossOwner: outcome === "negative" ? lossOwner : undefined,
+    updatedAt: now,
+  };
 }
 
 export function getWalletReconciliation(
@@ -231,6 +318,66 @@ export function transferWalletToPool(wallet: NegotiationWallet): NegotiationWall
   });
 }
 
+export function prepareWalletTransferToPool({
+  wallet,
+  pool,
+  user,
+}: {
+  wallet: NegotiationWallet;
+  pool?: OpportunityPool;
+  user?: User | null;
+}) {
+  if (!canTransferWalletToPool(wallet)) {
+    throw new Error("O saldo positivo precisa ser aprovado pelo Admin antes da transferência.");
+  }
+
+  const now = new Date().toISOString();
+  const amount = roundCurrency(wallet.finalBalance ?? getWalletTotals(wallet).balance);
+  const targetPool: OpportunityPool = pool ?? {
+    id: "pool-geral",
+    organizationId: wallet.organizationId,
+    name: "Resultado Acumulado",
+    description: "Saldos positivos aprovados das carteiras de negociação.",
+    balance: 0,
+    status: "active",
+    createdAt: now,
+    updatedAt: now,
+    entries: [],
+  };
+  const entryId = `pool-transfer-${wallet.id}`;
+  const entry: OpportunityPoolEntry = {
+    id: entryId,
+    poolId: targetPool.id,
+    walletId: wallet.id,
+    organizationId: wallet.organizationId,
+    amount,
+    direction: "credit",
+    description: `Saldo aprovado da carteira do pedido ${wallet.orderId}.`,
+    createdBy: user?.name ?? user?.email,
+    createdAt: now,
+    metadata: {
+      orderId: wallet.orderId,
+      decisionReason: wallet.managementDecisionReason,
+      decidedBy: wallet.managementDecidedBy,
+      decidedAt: wallet.managementDecidedAt,
+    },
+  };
+  const entries = targetPool.entries.some((item) => item.id === entryId)
+    ? targetPool.entries.map((item) => (item.id === entryId ? entry : item))
+    : [entry, ...targetPool.entries];
+  const balance = roundCurrency(
+    entries.reduce(
+      (sum, item) => sum + (item.direction === "credit" ? item.amount : -item.amount),
+      0,
+    ),
+  );
+
+  return {
+    wallet: transferWalletToPool(wallet),
+    pool: { ...targetPool, entries, balance, updatedAt: now },
+  };
+}
+
 export function createWalletFromSimulationOrder({
   simulation,
   order,
@@ -250,6 +397,7 @@ export function createWalletFromSimulationOrder({
     initialExpectedProfit,
     currentBalance: initialExpectedProfit,
     status: "open",
+    managementDecision: "pending",
     openedAt: now,
     createdAt: now,
     updatedAt: now,

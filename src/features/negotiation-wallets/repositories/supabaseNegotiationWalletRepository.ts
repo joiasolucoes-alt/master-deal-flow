@@ -20,6 +20,11 @@ type WalletRow = {
   status: NegotiationWallet["status"];
   opened_at: string;
   closed_at: string | null;
+  management_decision: NegotiationWallet["managementDecision"] | null;
+  management_decision_reason: string | null;
+  management_decided_by_text: string | null;
+  management_decided_at: string | null;
+  loss_owner: NegotiationWallet["lossOwner"] | null;
   created_at: string;
   updated_at: string;
   negotiation_wallet_entries?: WalletEntryRow[];
@@ -114,6 +119,11 @@ function walletRowToDomain(row: WalletRow): NegotiationWallet {
     status: row.status,
     openedAt: row.opened_at,
     closedAt: row.closed_at ?? undefined,
+    managementDecision: row.management_decision ?? "pending",
+    managementDecisionReason: row.management_decision_reason ?? undefined,
+    managementDecidedBy: row.management_decided_by_text ?? undefined,
+    managementDecidedAt: row.management_decided_at ?? undefined,
+    lossOwner: row.loss_owner ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     entries: (row.negotiation_wallet_entries ?? [])
@@ -190,6 +200,11 @@ function walletToRow(wallet: NegotiationWallet) {
     status: wallet.status,
     opened_at: wallet.openedAt,
     closed_at: wallet.closedAt ?? null,
+    management_decision: wallet.managementDecision ?? "pending",
+    management_decision_reason: wallet.managementDecisionReason ?? null,
+    management_decided_by_text: wallet.managementDecidedBy ?? null,
+    management_decided_at: wallet.managementDecidedAt ?? null,
+    loss_owner: wallet.lossOwner ?? null,
     created_at: wallet.createdAt,
     updated_at: wallet.updatedAt,
   };
@@ -455,6 +470,25 @@ export function createSupabaseNegotiationWalletRepository() {
 
       await replacePoolEntries(client, data.id as string, normalizedPool.entries);
       return normalizedPool;
+    },
+
+    async transferWalletToPool({
+      walletExternalId,
+      poolExternalId,
+      decidedBy,
+    }: {
+      walletExternalId: string;
+      poolExternalId: string;
+      decidedBy?: string;
+    }) {
+      await ensureSupabaseSession();
+      const client = requireClient();
+      const { error } = await client.rpc("transfer_negotiation_wallet_to_pool", {
+        p_wallet_external_id: walletExternalId,
+        p_pool_external_id: poolExternalId,
+        p_decided_by: decidedBy ?? null,
+      });
+      if (error) throw error;
     },
   };
 }

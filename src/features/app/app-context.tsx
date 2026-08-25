@@ -47,6 +47,7 @@ import { createSupabaseFreightRepository } from "@/features/freights/repositorie
 import { createSupabaseDeliveryRepository } from "@/features/deliveries/repositories/supabaseDeliveryRepository";
 import { createSupabaseRealizedResultRepository } from "@/features/results/repositories/supabaseRealizedResultRepository";
 import { createSupabaseNegotiationWalletRepository } from "@/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository";
+import { prepareWalletTransferToPool } from "@/features/negotiation-wallets";
 import { createSupabaseNegotiationRepository } from "@/features/negotiations/repositories/supabaseNegotiationRepository";
 import { persistNotification } from "@/features/notifications/notificationRepository";
 import { toast } from "sonner";
@@ -141,6 +142,10 @@ interface AppContextValue {
   upsertRealizedResult: (result: RealizedResultRecord) => void;
   upsertNegotiationWallet: (wallet: NegotiationWallet) => void;
   upsertOpportunityPool: (pool: OpportunityPool) => void;
+  transferNegotiationWalletToPool: (
+    wallet: NegotiationWallet,
+    pool?: OpportunityPool,
+  ) => Promise<{ ok: boolean; message?: string }>;
   upsertFreight: (freight: FreightRecord) => void;
   upsertDelivery: (delivery: DeliveryRecord) => void;
   upsertClient: (client: Client) => void;
@@ -1487,6 +1492,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const transferNegotiationWalletToPool = async (
+    wallet: NegotiationWallet,
+    pool?: OpportunityPool,
+  ) => {
+    try {
+      const prepared = prepareWalletTransferToPool({ wallet, pool, user: auth.user });
+      if (isSupabaseProvider()) {
+        const config = getSupabaseConfigStatus();
+        if (!config.configured) {
+          return { ok: false, message: "Supabase não configurado para transferir a carteira." };
+        }
+        const repository = createSupabaseNegotiationWalletRepository();
+        await repository.transferWalletToPool({
+          walletExternalId: prepared.wallet.id,
+          poolExternalId: prepared.pool.id,
+          decidedBy: auth.user?.name ?? auth.user?.email,
+        });
+      }
+      upsertOpportunityPoolStore(prepared.pool);
+      upsertNegotiationWalletStore(prepared.wallet);
+      return { ok: true };
+    } catch (error) {
+      console.error("Falha ao transferir carteira para o Pool no Supabase.", error);
+      const message =
+        error instanceof Error ? error.message : "Não foi possível transferir a carteira.";
+      setLastDataError(message);
+      return { ok: false, message };
+    }
+  };
+
   const upsertFinancialTitle = (title: FinancialTitle) => {
     upsertFinancialTitleStore(title);
     if (!isSupabaseProvider()) return;
@@ -1649,6 +1684,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertRealizedResult,
       upsertNegotiationWallet,
       upsertOpportunityPool,
+      transferNegotiationWalletToPool,
       upsertFreight,
       upsertDelivery,
       upsertClient,
@@ -1684,6 +1720,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       upsertRealizedResult,
       upsertNegotiationWallet,
       upsertOpportunityPool,
+      transferNegotiationWalletToPool,
       upsertFreight,
       upsertDelivery,
       upsertClient,

@@ -54,15 +54,20 @@ direta das tabelas.
 5. **Encerramento** — somente o Admin fecha a carteira (`closed`), congelando o
    `final_balance`. O botão permanece bloqueado enquanto o Resultado Realizado não estiver
    fechado ou enquanto existir diferença sem conciliação.
-6. **Transferência para o pool** — somente carteira encerrada com saldo final positivo pode
-   ser transferida (`transferred`), e somente o Admin realiza a ação.
+6. **Decisão gerencial** — somente o Admin registra o destino do saldo final. Saldo positivo
+   pode ser aprovado para o Pool ou mantido na carteira; prejuízo exige motivo e indicação de
+   quem o absorve; saldo zero também recebe confirmação formal.
+7. **Transferência para o pool** — somente carteira encerrada, positiva e aprovada para o
+   Pool pode ser transferida (`transferred`). A SQL 037 executa Carteira e Pool na mesma
+   transação e usa uma identificação única para impedir crédito duplicado.
 
 ## Onde vive no código
 
 - Domínio: `src/features/negotiation-wallets.ts` (tipos, `getWalletTotals`,
   `recalculateWallet`, `createWalletFromSimulationOrder`, `createWalletEntry`,
   `upsertWalletEntry`, `createFreightWalletEntry`, `getWalletReconciliation`,
-  `reconcileWalletWithRealizedResult`, `reverseEntriesByReference`).
+  `reconcileWalletWithRealizedResult`, `recordWalletManagementDecision`,
+  `prepareWalletTransferToPool`, `reverseEntriesByReference`).
 - UI: `src/features/negotiation-wallets-ui.tsx` (`NegotiationWalletSection`,
   `OpportunityPoolSection`), reutilizada em Simulações, Fretes, Financeiro e Pedidos.
 - Persistência: `src/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository.ts`.
@@ -84,3 +89,7 @@ direta das tabelas.
 No detalhe do pedido, o bloco **Conferência do resultado** apresenta lado a lado o lucro
 previsto, o saldo formado pelo extrato da carteira e o lucro realizado congelado. Após a
 conciliação, o saldo da carteira deve ser igual ao `realized_profit` do resultado fechado.
+
+Na rota `/pool-oportunidades`, Admin, Gestor e Financeiro enxergam as carteiras encerradas,
+o resultado positivo/negativo e a decisão registrada. Apenas o Admin abre a carteira para
+decidir o destino e efetivar uma transferência.

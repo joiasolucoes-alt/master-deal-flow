@@ -63,10 +63,12 @@ function OrderDetailPage() {
     financialTitles,
     realizedResults,
     negotiationWallets,
+    opportunityPools,
     upsertFinancialTitle,
     upsertOrder,
     upsertFreight,
     upsertNegotiationWallet,
+    transferNegotiationWalletToPool,
     addNotification,
   } = useAppContext();
   const [billingOpen, setBillingOpen] = useState(false);
@@ -124,6 +126,9 @@ function OrderDetailPage() {
   const canBillOrder = canRegisterBilling && orderIsInBillingStage;
   const wallet = negotiationWallets.find((item) => item.orderId === order.id);
   const realizedResult = realizedResults.find((item) => item.orderId === order.id);
+  const opportunityPool =
+    opportunityPools.find((item) => item.organizationId === wallet?.organizationId) ??
+    opportunityPools[0];
 
   const handleOpenBilling = () => {
     if (!canBillOrder || order.billingProgress >= 100) {
@@ -430,8 +435,10 @@ function OrderDetailPage() {
       <NegotiationWalletSection
         wallet={wallet}
         realizedResult={realizedResult}
+        pool={opportunityPool}
         user={auth.user}
         onChange={upsertNegotiationWallet}
+        onTransfer={transferNegotiationWalletToPool}
       />
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">

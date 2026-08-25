@@ -1,7 +1,24 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, Scale } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { CheckCircle2, Scale, ShieldCheck, TriangleAlert, WalletCards } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -13,23 +30,27 @@ import {
 import type {
   NegotiationWallet,
   OpportunityPool,
+  WalletLossOwner,
+  WalletManagementDecision,
   WalletEntryCategory,
   WalletEntryDirection,
 } from "@/features/negotiation-wallets";
 import {
   canTransferWalletToPool,
   createWalletEntry,
+  getWalletManagementState,
   getWalletReconciliation,
   getWalletTotals,
   recalculateWallet,
   reconcileWalletWithRealizedResult,
   roundCurrency,
-  transferWalletToPool,
+  recordWalletManagementDecision,
   upsertWalletEntry,
 } from "@/features/negotiation-wallets";
 import type { RealizedResultRecord, User } from "@/data/types";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { canManageNegotiationWallet, canViewNegotiationWallet } from "@/lib/permissions";
+import { toast } from "sonner";
 
 const CATEGORY_LABELS: Record<WalletEntryCategory, string> = {
   freight_saving: "Economia de frete",
@@ -53,14 +74,30 @@ const CATEGORY_LABELS: Record<WalletEntryCategory, string> = {
 export function NegotiationWalletSection({
   wallet,
   realizedResult,
+  pool,
   user,
   onChange,
+  onTransfer,
 }: {
   wallet?: NegotiationWallet;
   realizedResult?: RealizedResultRecord;
+  pool?: OpportunityPool;
   user?: User | null;
   onChange: (wallet: NegotiationWallet) => void;
+  onTransfer: (
+    wallet: NegotiationWallet,
+    pool?: OpportunityPool,
+  ) => Promise<{
+    ok: boolean;
+    message?: string;
+  }>;
 }) {
+  const [decisionOpen, setDecisionOpen] = useState(false);
+  const [decision, setDecision] =
+    useState<Exclude<WalletManagementDecision, "pending">>("approved_for_pool");
+  const [decisionReason, setDecisionReason] = useState("");
+  const [lossOwner, setLossOwner] = useState<WalletLossOwner>("Master");
+  const [transferring, setTransferring] = useState(false);
   if (!canViewNegotiationWallet(user)) return null;
 
   if (!wallet) {
@@ -77,6 +114,7 @@ export function NegotiationWalletSection({
   }
   const totals = getWalletTotals(wallet);
   const reconciliation = getWalletReconciliation(wallet, realizedResult);
+  const management = getWalletManagementState(wallet);
   const canManage = canManageNegotiationWallet(user);
   const canChange = canManage && wallet.status !== "transferred" && wallet.status !== "cancelled";
 
@@ -129,9 +167,49 @@ export function NegotiationWalletSection({
     onChange(reconcileWalletWithRealizedResult({ wallet, realizedResult, user }));
   };
 
-  const transferToPool = () => {
+  const openDecision = () => {
+    const defaultDecision =
+      management.outcome === "positive"
+        ? wallet.managementDecision === "retained"
+          ? "retained"
+          : "approved_for_pool"
+        : management.outcome === "negative"
+          ? "loss_acknowledged"
+          : "zero_acknowledged";
+    setDecision(defaultDecision);
+    setDecisionReason(wallet.managementDecisionReason ?? "");
+    setLossOwner(wallet.lossOwner ?? "Master");
+    setDecisionOpen(true);
+  };
+
+  const saveManagementDecision = () => {
+    try {
+      onChange(
+        recordWalletManagementDecision({
+          wallet,
+          decision,
+          reason: decisionReason,
+          lossOwner,
+          user,
+        }),
+      );
+      setDecisionOpen(false);
+      toast.success("Decisão gerencial registrada na carteira.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar a decisão.");
+    }
+  };
+
+  const transferToPool = async () => {
     if (!canChange || !canTransferWalletToPool(wallet)) return;
-    onChange(transferWalletToPool(wallet));
+    setTransferring(true);
+    const result = await onTransfer(wallet, pool);
+    setTransferring(false);
+    if (!result.ok) {
+      toast.error(result.message ?? "Não foi possível transferir o saldo para o Pool.");
+      return;
+    }
+    toast.success("Saldo positivo transferido para o Pool de Oportunidades.");
   };
 
   const reverseEntry = (entryId: string) => {
@@ -165,7 +243,7 @@ export function NegotiationWalletSection({
           </p>
         </div>
         {canManage ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               onClick={addManual}
@@ -199,11 +277,20 @@ export function NegotiationWalletSection({
               Encerrar carteira
             </Button>
             <Button
+              variant="outline"
+              onClick={openDecision}
+              disabled={!canChange || wallet.status !== "closed"}
+            >
+              <ShieldCheck />
+              {management.isDecided ? "Revisar decisão" : "Decidir destino"}
+            </Button>
+            <Button
               variant="secondary"
               onClick={transferToPool}
-              disabled={!canChange || !canTransferWalletToPool(wallet)}
+              disabled={!canChange || !canTransferWalletToPool(wallet) || transferring}
             >
-              Transferir para pool
+              <WalletCards />
+              {transferring ? "Transferindo..." : "Transferir para pool"}
             </Button>
           </div>
         ) : (
@@ -211,6 +298,84 @@ export function NegotiationWalletSection({
         )}
       </CardHeader>
       <CardContent className="space-y-4">
+        <Dialog open={decisionOpen} onOpenChange={setDecisionOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Decisão sobre o saldo final</DialogTitle>
+              <DialogDescription>
+                Registre o destino do resultado antes de concluir a gestão desta carteira.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Saldo final conferido</p>
+                <p
+                  className={`text-xl font-semibold ${management.finalBalance >= 0 ? "text-success" : "text-destructive"}`}
+                >
+                  {formatCurrency(management.finalBalance)}
+                </p>
+              </div>
+              {management.outcome === "positive" ? (
+                <label className="block space-y-1 text-sm font-medium">
+                  <span>Destino do saldo positivo</span>
+                  <Select
+                    value={decision}
+                    onValueChange={(value) =>
+                      setDecision(value as Exclude<WalletManagementDecision, "pending">)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="approved_for_pool">Aprovar para o Pool</SelectItem>
+                      <SelectItem value="retained">Manter na carteira</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+              ) : null}
+              {management.outcome === "negative" ? (
+                <label className="block space-y-1 text-sm font-medium">
+                  <span>Responsável pelo prejuízo</span>
+                  <Select
+                    value={lossOwner}
+                    onValueChange={(value) => setLossOwner(value as WalletLossOwner)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(
+                        ["Master", "Comercial", "Transportadora", "Fornecedor", "Outro"] as const
+                      ).map((owner) => (
+                        <SelectItem key={owner} value={owner}>
+                          {owner}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+              ) : null}
+              <label className="block space-y-1 text-sm font-medium">
+                <span>Motivo da decisão</span>
+                <Textarea
+                  value={decisionReason}
+                  onChange={(event) => setDecisionReason(event.target.value)}
+                  placeholder="Explique por que este destino foi aprovado."
+                />
+              </label>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDecisionOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={saveManagementDecision} disabled={!decisionReason.trim()}>
+                <ShieldCheck />
+                Registrar decisão
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <div className="rounded-lg border p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -264,6 +429,56 @@ export function NegotiationWalletSection({
             <p className="mt-3 flex items-center gap-2 text-sm text-success">
               <CheckCircle2 className="size-4" />
               Carteira conferida e pronta para encerramento.
+            </p>
+          )}
+        </div>
+        <div className="rounded-lg border p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-medium">Destino do saldo final</p>
+              <p className="text-sm text-muted-foreground">
+                O Admin decide se o saldo positivo vai para o Pool ou registra quem absorve o
+                prejuízo.
+              </p>
+            </div>
+            <ManagementDecisionBadge wallet={wallet} />
+          </div>
+          {wallet.status !== "closed" && wallet.status !== "transferred" ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Esta decisão será liberada depois do encerramento da carteira.
+            </p>
+          ) : management.isDecided ? (
+            <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+              <p>
+                <span className="text-muted-foreground">Decisão: </span>
+                {getManagementDecisionLabel(management.decision)}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Responsável: </span>
+                {wallet.managementDecidedBy ?? "Admin"}
+              </p>
+              {wallet.lossOwner ? (
+                <p>
+                  <span className="text-muted-foreground">Prejuízo assumido por: </span>
+                  {wallet.lossOwner}
+                </p>
+              ) : null}
+              <p>
+                <span className="text-muted-foreground">Data: </span>
+                {wallet.managementDecidedAt
+                  ? formatDateTime(wallet.managementDecidedAt)
+                  : "Registro anterior"}
+              </p>
+              <p className="md:col-span-2">
+                <span className="text-muted-foreground">Motivo: </span>
+                {wallet.managementDecisionReason ?? "Decisão registrada anteriormente."}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 flex items-center gap-2 text-sm text-warning">
+              <TriangleAlert className="size-4" />
+              Aguardando decisão do Admin sobre o saldo de {formatCurrency(management.finalBalance)}
+              .
             </p>
           )}
         </div>
@@ -398,6 +613,27 @@ function ReconciliationBadge({
     reconciled: "Conferido",
   }[status];
   return <Badge variant="outline">{label}</Badge>;
+}
+function ManagementDecisionBadge({ wallet }: { wallet: NegotiationWallet }) {
+  const state = getWalletManagementState(wallet);
+  const label =
+    wallet.status === "transferred"
+      ? "Transferido ao Pool"
+      : state.isDecided
+        ? getManagementDecisionLabel(state.decision)
+        : wallet.status === "closed"
+          ? "Aguardando decisão"
+          : "Aguardando encerramento";
+  return <Badge variant="outline">{label}</Badge>;
+}
+function getManagementDecisionLabel(decision: WalletManagementDecision) {
+  return {
+    pending: "Aguardando decisão",
+    approved_for_pool: "Aprovado para o Pool",
+    retained: "Mantido na carteira",
+    loss_acknowledged: "Prejuízo reconhecido",
+    zero_acknowledged: "Saldo zero reconhecido",
+  }[decision];
 }
 function parseCurrency(value: string) {
   return roundCurrency(Number(value.replace(/\./g, "").replace(",", ".")) || 0);

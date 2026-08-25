@@ -1,9 +1,9 @@
 # Master Flow — Onda 1 multiempresa/multiunidade
 
-> Fluxo operacional atual: a SQL 031 controla os marcos normais do motorista e a SQL 035
-> trata a recusa do cliente. Uma recusa pausa a entrega e exige decisão de nova tentativa,
-> retorno ou cancelamento; mercadoria devolvida não é marcada como `Entregue`. Consulte
-> `docs/manual-sql-order.md` antes de executar qualquer script no banco.
+> Fluxo operacional atual: a SQL 031 controla os marcos normais do motorista, a SQL 035
+> trata a recusa do cliente e as SQLs 036/037 protegem e formalizam a decisão sobre Carteiras
+> e Pool de Oportunidades. Consulte `docs/manual-sql-order.md` antes de executar qualquer
+> script no banco.
 
 Este diretório contém os scripts SQL preparados nesta rodada. A ferramenta
 oficial de migration **não foi exposta** nesta sessão do agente, por isso
