@@ -61,6 +61,7 @@ function OrderDetailPage() {
     orders,
     freights,
     financialTitles,
+    realizedResults,
     negotiationWallets,
     upsertFinancialTitle,
     upsertOrder,
@@ -122,6 +123,7 @@ function OrderDetailPage() {
     order.status === "Em faturamento";
   const canBillOrder = canRegisterBilling && orderIsInBillingStage;
   const wallet = negotiationWallets.find((item) => item.orderId === order.id);
+  const realizedResult = realizedResults.find((item) => item.orderId === order.id);
 
   const handleOpenBilling = () => {
     if (!canBillOrder || order.billingProgress >= 100) {
@@ -427,6 +429,7 @@ function OrderDetailPage() {
 
       <NegotiationWalletSection
         wallet={wallet}
+        realizedResult={realizedResult}
         user={auth.user}
         onChange={upsertNegotiationWallet}
       />

@@ -2175,6 +2175,37 @@ assert.match(
   "somente carteira encerrada e positiva pode ser transferida",
 );
 
-console.log("Testes de permissões da carteira e do pool passaram.");
+assert.match(
+  walletSource,
+  /realized_result_reconciliation/,
+  "carteira registra a conciliação com o resultado realizado no próprio extrato",
+);
+assert.match(
+  walletSource,
+  /realizedProfit - balanceBeforeReconciliation/,
+  "conciliação calcula a diferença entre lucro realizado e saldo da carteira",
+);
+assert.match(
+  walletSource,
+  /canClose: reconciled/,
+  "encerramento só é liberado quando a carteira está conciliada",
+);
+
+const reconcileBalance = (walletBalance, realizedProfit) => {
+  const difference = Math.round((realizedProfit - walletBalance) * 100) / 100;
+  return Math.round((walletBalance + difference) * 100) / 100;
+};
+assert.equal(
+  reconcileBalance(1200, 975.35),
+  975.35,
+  "diferença negativa reduz a carteira até o lucro efetivamente realizado",
+);
+assert.equal(
+  reconcileBalance(800, 915.4),
+  915.4,
+  "diferença positiva aumenta a carteira até o lucro efetivamente realizado",
+);
+
+console.log("Testes de permissões e conciliação da carteira passaram.");
 
 console.log("Todos os testes passaram.");

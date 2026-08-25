@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CheckCircle2, Scale } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -18,13 +19,15 @@ import type {
 import {
   canTransferWalletToPool,
   createWalletEntry,
+  getWalletReconciliation,
   getWalletTotals,
   recalculateWallet,
+  reconcileWalletWithRealizedResult,
   roundCurrency,
   transferWalletToPool,
   upsertWalletEntry,
 } from "@/features/negotiation-wallets";
-import type { User } from "@/data/types";
+import type { RealizedResultRecord, User } from "@/data/types";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { canManageNegotiationWallet, canViewNegotiationWallet } from "@/lib/permissions";
 
@@ -43,15 +46,18 @@ const CATEGORY_LABELS: Record<WalletEntryCategory, string> = {
   supplier_cost_change: "Custo fornecedor",
   customer_payment_adjustment: "Ajuste recebimento",
   manual_adjustment: "Ajuste manual",
+  realized_result_reconciliation: "Conciliação do resultado",
   closing_transfer: "Transferência",
 };
 
 export function NegotiationWalletSection({
   wallet,
+  realizedResult,
   user,
   onChange,
 }: {
   wallet?: NegotiationWallet;
+  realizedResult?: RealizedResultRecord;
   user?: User | null;
   onChange: (wallet: NegotiationWallet) => void;
 }) {
@@ -70,6 +76,7 @@ export function NegotiationWalletSection({
     );
   }
   const totals = getWalletTotals(wallet);
+  const reconciliation = getWalletReconciliation(wallet, realizedResult);
   const canManage = canManageNegotiationWallet(user);
   const canChange = canManage && wallet.status !== "transferred" && wallet.status !== "cancelled";
 
@@ -107,6 +114,7 @@ export function NegotiationWalletSection({
 
   const closeWallet = () => {
     if (!canChange || wallet.status === "closed" || wallet.status === "transferred") return;
+    if (!reconciliation.canClose) return;
     const next = recalculateWallet({
       ...wallet,
       status: "closed",
@@ -114,6 +122,11 @@ export function NegotiationWalletSection({
       closedAt: new Date().toISOString(),
     });
     onChange(next);
+  };
+
+  const reconcileResult = () => {
+    if (!canChange || !realizedResult || realizedResult.status !== "closed") return;
+    onChange(reconcileWalletWithRealizedResult({ wallet, realizedResult, user }));
   };
 
   const transferToPool = () => {
@@ -161,8 +174,27 @@ export function NegotiationWalletSection({
               Adicionar ajuste
             </Button>
             <Button
+              variant="outline"
+              onClick={reconcileResult}
+              disabled={
+                !canChange ||
+                wallet.status === "closed" ||
+                !realizedResult ||
+                realizedResult.status !== "closed" ||
+                reconciliation.status === "reconciled"
+              }
+            >
+              <Scale />
+              Conferir resultado
+            </Button>
+            <Button
               onClick={closeWallet}
-              disabled={!canChange || wallet.status === "closed" || wallet.status === "transferred"}
+              disabled={
+                !canChange ||
+                wallet.status === "closed" ||
+                wallet.status === "transferred" ||
+                !reconciliation.canClose
+              }
             >
               Encerrar carteira
             </Button>
@@ -179,6 +211,62 @@ export function NegotiationWalletSection({
         )}
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="rounded-lg border p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-medium">Conferência do resultado</p>
+              <p className="text-sm text-muted-foreground">
+                Compara o saldo gerencial da carteira com o lucro efetivamente apurado.
+              </p>
+            </div>
+            <ReconciliationBadge status={reconciliation.status} />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric label="Lucro previsto" value={formatCurrency(reconciliation.expectedProfit)} />
+            <Metric
+              label="Saldo da carteira"
+              value={formatCurrency(reconciliation.walletBalance)}
+            />
+            <Metric
+              label="Lucro realizado"
+              value={
+                reconciliation.realizedProfit == null
+                  ? "Aguardando fechamento"
+                  : formatCurrency(reconciliation.realizedProfit)
+              }
+            />
+            <Metric
+              label="Diferença a conciliar"
+              value={
+                reconciliation.realizedProfit == null
+                  ? "—"
+                  : formatCurrency(reconciliation.difference)
+              }
+              tone={
+                reconciliation.status === "requires_adjustment"
+                  ? "text-warning"
+                  : reconciliation.status === "reconciled"
+                    ? "text-success"
+                    : ""
+              }
+            />
+          </div>
+          {reconciliation.status === "awaiting_realized_result" ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Feche o Resultado Realizado do pedido em Relatórios para liberar esta conferência.
+            </p>
+          ) : reconciliation.status === "requires_adjustment" ? (
+            <p className="mt-3 text-sm text-warning">
+              Existe diferença entre o saldo da carteira e o lucro realizado. Use Conferir resultado
+              antes de encerrar.
+            </p>
+          ) : (
+            <p className="mt-3 flex items-center gap-2 text-sm text-success">
+              <CheckCircle2 className="size-4" />
+              Carteira conferida e pronta para encerramento.
+            </p>
+          )}
+        </div>
         <div className="grid gap-3 md:grid-cols-5">
           <Metric label="Lucro previsto" value={formatCurrency(wallet.initialExpectedProfit)} />
           <Metric
@@ -298,6 +386,18 @@ function DirectionBadge({ direction }: { direction: WalletEntryDirection }) {
       {direction === "credit" ? "Crédito" : "Débito"}
     </Badge>
   );
+}
+function ReconciliationBadge({
+  status,
+}: {
+  status: ReturnType<typeof getWalletReconciliation>["status"];
+}) {
+  const label = {
+    awaiting_realized_result: "Aguardando resultado",
+    requires_adjustment: "Conferência necessária",
+    reconciled: "Conferido",
+  }[status];
+  return <Badge variant="outline">{label}</Badge>;
 }
 function parseCurrency(value: string) {
   return roundCurrency(Number(value.replace(/\./g, "").replace(",", ".")) || 0);

@@ -1,4 +1,11 @@
-import type { ExpenseItem, FreightRecord, Order, Simulation, User } from "@/data/types";
+import type {
+  ExpenseItem,
+  FreightRecord,
+  Order,
+  RealizedResultRecord,
+  Simulation,
+  User,
+} from "@/data/types";
 import { getExpenseTotal, getSimulationTotals } from "@/lib/calculations";
 
 export type NegotiationWalletStatus = "open" | "locked" | "closed" | "transferred" | "cancelled";
@@ -18,6 +25,7 @@ export type WalletEntryCategory =
   | "supplier_cost_change"
   | "customer_payment_adjustment"
   | "manual_adjustment"
+  | "realized_result_reconciliation"
   | "closing_transfer";
 export type WalletSourceModule =
   | "simulation"
@@ -93,6 +101,20 @@ export interface OpportunityPool {
   entries: OpportunityPoolEntry[];
 }
 
+export type WalletReconciliationStatus =
+  | "awaiting_realized_result"
+  | "requires_adjustment"
+  | "reconciled";
+
+export interface WalletReconciliation {
+  status: WalletReconciliationStatus;
+  expectedProfit: number;
+  walletBalance: number;
+  realizedProfit?: number;
+  difference: number;
+  canClose: boolean;
+}
+
 export function getWalletTotals(wallet: NegotiationWallet) {
   const activeEntries = wallet.entries.filter((entry) => !entry.reversedAt);
   const credits = activeEntries
@@ -116,6 +138,85 @@ export function recalculateWallet(wallet: NegotiationWallet): NegotiationWallet 
 export function canTransferWalletToPool(wallet: NegotiationWallet) {
   const finalBalance = wallet.finalBalance ?? getWalletTotals(wallet).balance;
   return wallet.status === "closed" && finalBalance > 0;
+}
+
+export function getWalletReconciliation(
+  wallet: NegotiationWallet,
+  realizedResult?: RealizedResultRecord,
+): WalletReconciliation {
+  const walletBalance = getWalletTotals(wallet).balance;
+  if (!realizedResult || realizedResult.status !== "closed") {
+    return {
+      status: "awaiting_realized_result",
+      expectedProfit: wallet.initialExpectedProfit,
+      walletBalance,
+      difference: 0,
+      canClose: false,
+    };
+  }
+
+  const realizedProfit = roundCurrency(realizedResult.realizedProfit);
+  const difference = roundCurrency(realizedProfit - walletBalance);
+  const reconciled = Math.abs(difference) <= 0.01;
+  return {
+    status: reconciled ? "reconciled" : "requires_adjustment",
+    expectedProfit: wallet.initialExpectedProfit,
+    walletBalance,
+    realizedProfit,
+    difference,
+    canClose: reconciled,
+  };
+}
+
+export function reconcileWalletWithRealizedResult({
+  wallet,
+  realizedResult,
+  user,
+}: {
+  wallet: NegotiationWallet;
+  realizedResult: RealizedResultRecord;
+  user?: User | null;
+}) {
+  if (realizedResult.status !== "closed") {
+    throw new Error("O resultado realizado precisa estar fechado antes da conferência.");
+  }
+  if (wallet.status === "transferred" || wallet.status === "cancelled") {
+    throw new Error("Esta carteira não pode mais ser conciliada.");
+  }
+
+  const reconciliationEntryId = `wallet-reconciliation-${wallet.id}`;
+  const walletWithoutPreviousReconciliation = recalculateWallet({
+    ...wallet,
+    entries: wallet.entries.filter((entry) => entry.id !== reconciliationEntryId),
+  });
+  const balanceBeforeReconciliation = getWalletTotals(walletWithoutPreviousReconciliation).balance;
+  const realizedProfit = roundCurrency(realizedResult.realizedProfit);
+  const difference = roundCurrency(realizedProfit - balanceBeforeReconciliation);
+
+  if (Math.abs(difference) <= 0.01) return walletWithoutPreviousReconciliation;
+
+  return upsertWalletEntry(walletWithoutPreviousReconciliation, {
+    id: reconciliationEntryId,
+    walletId: wallet.id,
+    organizationId: wallet.organizationId,
+    simulationId: wallet.simulationId,
+    orderId: wallet.orderId,
+    entryType: "closing",
+    category: "realized_result_reconciliation",
+    sourceModule: "closing",
+    amount: Math.abs(difference),
+    direction: difference > 0 ? "credit" : "debit",
+    description: "Conciliação entre a carteira e o resultado realizado do pedido",
+    referenceId: realizedResult.id,
+    metadata: {
+      expectedProfit: wallet.initialExpectedProfit,
+      balanceBeforeReconciliation,
+      realizedProfit,
+      resultClosedAt: realizedResult.closedAt,
+    },
+    createdBy: user?.id ?? user?.email,
+    createdAt: new Date().toISOString(),
+  });
 }
 
 export function transferWalletToPool(wallet: NegotiationWallet): NegotiationWallet {

@@ -48,16 +48,21 @@ direta das tabelas.
 3. **Ajustes manuais** — somente o Admin pode adicionar, estornar ou justificar lançamentos
    manuais pela interface. Financeiro e Frete continuam gerando lançamentos automáticos dos
    seus próprios módulos.
-4. **Encerramento** — somente o Admin fecha a carteira (`closed`), congelando o
-   `final_balance`.
-5. **Transferência para o pool** — somente carteira encerrada com saldo final positivo pode
+4. **Conferência do resultado** — depois que o Resultado Realizado do pedido é fechado, a
+   carteira compara seu saldo com o lucro efetivamente apurado. Se houver diferença, o Admin
+   registra uma conciliação automática no extrato, sem apagar os lançamentos anteriores.
+5. **Encerramento** — somente o Admin fecha a carteira (`closed`), congelando o
+   `final_balance`. O botão permanece bloqueado enquanto o Resultado Realizado não estiver
+   fechado ou enquanto existir diferença sem conciliação.
+6. **Transferência para o pool** — somente carteira encerrada com saldo final positivo pode
    ser transferida (`transferred`), e somente o Admin realiza a ação.
 
 ## Onde vive no código
 
 - Domínio: `src/features/negotiation-wallets.ts` (tipos, `getWalletTotals`,
   `recalculateWallet`, `createWalletFromSimulationOrder`, `createWalletEntry`,
-  `upsertWalletEntry`, `createFreightWalletEntry`, `reverseEntriesByReference`).
+  `upsertWalletEntry`, `createFreightWalletEntry`, `getWalletReconciliation`,
+  `reconcileWalletWithRealizedResult`, `reverseEntriesByReference`).
 - UI: `src/features/negotiation-wallets-ui.tsx` (`NegotiationWalletSection`,
   `OpportunityPoolSection`), reutilizada em Simulações, Fretes, Financeiro e Pedidos.
 - Persistência: `src/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository.ts`.
@@ -74,7 +79,8 @@ direta das tabelas.
 | Frete              | Sem tela gerencial | Sem tela | Apenas lançamentos automáticos de frete             |
 | Comercial e demais | Não                | Não      | Não                                                 |
 
-## Pendências conhecidas
+## Conferência esperada
 
-- Não há relatório de reconciliação entre o `final_balance` das carteiras e os
-  `realized_results` por pedido — os dois números vêm de origens diferentes e podem divergir.
+No detalhe do pedido, o bloco **Conferência do resultado** apresenta lado a lado o lucro
+previsto, o saldo formado pelo extrato da carteira e o lucro realizado congelado. Após a
+conciliação, o saldo da carteira deve ser igual ao `realized_profit` do resultado fechado.
