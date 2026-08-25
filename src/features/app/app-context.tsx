@@ -48,6 +48,7 @@ import { createSupabaseDeliveryRepository } from "@/features/deliveries/reposito
 import { createSupabaseRealizedResultRepository } from "@/features/results/repositories/supabaseRealizedResultRepository";
 import { createSupabaseNegotiationWalletRepository } from "@/features/negotiation-wallets/repositories/supabaseNegotiationWalletRepository";
 import {
+  getWalletLossCoverage,
   prepareWalletLossCoverage,
   prepareWalletTransferToPool,
 } from "@/features/negotiation-wallets";
@@ -1441,6 +1442,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [addNotificationStore],
   );
 
+  const notifyPoolAudience = useCallback(
+    ({
+      eventId,
+      title,
+      description,
+      orderId,
+      type,
+    }: {
+      eventId: string;
+      title: string;
+      description: string;
+      orderId: string;
+      type: NotificationItem["type"];
+    }) => {
+      (["Admin", "Gestor", "Financeiro"] as UserRole[]).forEach((targetRole) => {
+        addNotification({
+          id: `ntf-pool-${eventId}-${targetRole.toLowerCase()}`,
+          title,
+          description,
+          type,
+          entityType: "order",
+          entityId: orderId,
+          href: `/pedidos/${orderId}`,
+          targetRole,
+          source: "opportunity-pool",
+        });
+      });
+    },
+    [addNotification],
+  );
+
   const upsertOrder = (order: Order) => {
     upsertOrderStore(order);
     if (!isSupabaseProvider()) return;
@@ -1521,6 +1553,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       upsertOpportunityPoolStore(prepared.pool);
       upsertNegotiationWalletStore(prepared.wallet);
+      const orderReference =
+        orders.find((order) => order.id === wallet.orderId)?.number ?? wallet.orderId;
+      notifyPoolAudience({
+        eventId: `credit-${wallet.id}`,
+        title: "Crédito enviado ao Pool",
+        description: `${orderReference}: ${formatPoolNotificationCurrency(
+          prepared.wallet.finalBalance ?? prepared.wallet.currentBalance,
+        )} transferidos para o Pool por ${auth.user?.name ?? "Admin"}. Saldo disponível: ${formatPoolNotificationCurrency(
+          prepared.pool.balance,
+        )}.`,
+        orderId: wallet.orderId,
+        type: "success",
+      });
       return { ok: true };
     } catch (error) {
       console.error("Falha ao transferir carteira para o Pool no Supabase.", error);
@@ -1567,6 +1612,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       upsertOpportunityPoolStore(prepared.pool);
       upsertNegotiationWalletStore(prepared.wallet);
+      const orderReference =
+        orders.find((order) => order.id === wallet.orderId)?.number ?? wallet.orderId;
+      const remainingLoss = getWalletLossCoverage(prepared.wallet).remainingAmount;
+      notifyPoolAudience({
+        eventId: `coverage-${requestId}`,
+        title: "Prejuízo coberto pelo Pool",
+        description: `${orderReference}: ${formatPoolNotificationCurrency(
+          amount,
+        )} utilizados por ${auth.user?.name ?? "Admin"}. Prejuízo restante: ${formatPoolNotificationCurrency(
+          remainingLoss,
+        )}. Motivo: ${reason.trim()}.`,
+        orderId: wallet.orderId,
+        type: remainingLoss > 0 ? "warning" : "success",
+      });
       return { ok: true };
     } catch (error) {
       console.error("Falha ao compensar prejuízo com o Pool no Supabase.", error);
@@ -1797,4 +1856,13 @@ export function useAppContext() {
   const context = useContext(AppContext);
   if (!context) throw new Error("useAppContext must be used inside AppProvider");
   return context;
+}
+
+function formatPoolNotificationCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }

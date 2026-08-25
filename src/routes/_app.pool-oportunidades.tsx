@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageHeader } from "@/components/app/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowRight, CircleDollarSign, HandCoins, TriangleAlert, WalletCards } from "lucide-react";
+import {
+  ArrowRight,
+  CircleDollarSign,
+  Download,
+  HandCoins,
+  TriangleAlert,
+  WalletCards,
+} from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -33,6 +47,8 @@ import {
   roundCurrency,
 } from "@/features/negotiation-wallets";
 import { toast } from "sonner";
+import { downloadTextFile } from "@/lib/actions";
+import type { NegotiationWallet, OpportunityPoolEntry } from "@/features/negotiation-wallets";
 
 export const Route = createFileRoute("/_app/pool-oportunidades")({
   component: OpportunityPoolPage,
@@ -45,11 +61,47 @@ function OpportunityPoolPage() {
   const [coverageAmount, setCoverageAmount] = useState("");
   const [coverageReason, setCoverageReason] = useState("");
   const [submittingCoverage, setSubmittingCoverage] = useState(false);
+  const [movementSearch, setMovementSearch] = useState("");
+  const [movementStartDate, setMovementStartDate] = useState("");
+  const [movementEndDate, setMovementEndDate] = useState("");
+  const [movementResponsible, setMovementResponsible] = useState("all");
   const canManage = canManageOpportunityPool(auth.user);
   const pools = opportunityPools.length
     ? opportunityPools
     : [createVirtualPool(negotiationWallets)];
   const pool = pools[0];
+  const movementRows = useMemo(
+    () =>
+      pool.entries.map((entry) => {
+        const orderId = getPoolEntryOrderId(entry, negotiationWallets);
+        const order = orders.find((item) => item.id === orderId);
+        return {
+          entry,
+          orderId,
+          orderNumber: order?.number ?? orderId ?? "—",
+          responsible: entry.createdBy ?? "Sistema",
+        };
+      }),
+    [negotiationWallets, orders, pool.entries],
+  );
+  const movementResponsibles = useMemo(
+    () => [...new Set(movementRows.map((row) => row.responsible))].sort(),
+    [movementRows],
+  );
+  const filteredMovementRows = useMemo(() => {
+    const search = movementSearch.trim().toLocaleLowerCase("pt-BR");
+    return movementRows.filter((row) => {
+      const movementDate = row.entry.createdAt.slice(0, 10);
+      if (movementStartDate && movementDate < movementStartDate) return false;
+      if (movementEndDate && movementDate > movementEndDate) return false;
+      if (movementResponsible !== "all" && row.responsible !== movementResponsible) return false;
+      if (!search) return true;
+      return [row.orderNumber, row.entry.description, row.responsible, row.entry.direction]
+        .join(" ")
+        .toLocaleLowerCase("pt-BR")
+        .includes(search);
+    });
+  }, [movementEndDate, movementResponsible, movementRows, movementSearch, movementStartDate]);
   const closedWallets = negotiationWallets.filter(
     (wallet) => wallet.status === "closed" || wallet.status === "transferred",
   );
@@ -89,6 +141,37 @@ function OpportunityPoolPage() {
     }
     toast.success("Compensação registrada no Pool de Oportunidades.");
     setCoverageWalletId(null);
+  };
+
+  const exportMovements = () => {
+    const header = ["Data", "Pedido", "Tipo", "Descrição", "Responsável", "Valor"];
+    const chronologicalRows = [...filteredMovementRows].sort((left, right) =>
+      left.entry.createdAt.localeCompare(right.entry.createdAt),
+    );
+    const lines = chronologicalRows.map((row) => {
+      return [
+        formatDateTime(row.entry.createdAt),
+        row.orderNumber,
+        row.entry.direction === "credit" ? "Entrada" : "Saída",
+        row.entry.description,
+        row.responsible,
+        formatCsvNumber(row.entry.amount),
+      ];
+    });
+    const csv = [header, ...lines].map((line) => line.map(escapeCsvCell).join(";")).join("\r\n");
+    downloadTextFile(
+      `pool-oportunidades-${new Date().toISOString().slice(0, 10)}.csv`,
+      `\uFEFF${csv}`,
+      "text/csv;charset=utf-8",
+    );
+    toast.success(`${lines.length} movimentação(ões) exportada(s).`);
+  };
+
+  const clearMovementFilters = () => {
+    setMovementSearch("");
+    setMovementStartDate("");
+    setMovementEndDate("");
+    setMovementResponsible("all");
   };
   return (
     <div className="space-y-6">
@@ -157,6 +240,11 @@ function OpportunityPoolPage() {
       <PageHeader
         title="Pool de Oportunidades"
         description="Resultado acumulado de carteiras encerradas e transferidas."
+        action={
+          <Button variant="outline" onClick={exportMovements}>
+            <Download /> Exportar relatório
+          </Button>
+        }
       />
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Badge variant="outline">{canManage ? "Gestão do Admin" : "Somente consulta"}</Badge>
@@ -312,42 +400,107 @@ function OpportunityPoolPage() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Histórico de movimentações</CardTitle>
+          <CardTitle>Controle e auditoria do Pool</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Consulte entradas, coberturas de prejuízo e responsáveis por cada movimentação.
+          </p>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Data</TableHead>
-                <TableHead>Negociação</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pool.entries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell>{formatDateTime(entry.createdAt)}</TableCell>
-                  <TableCell>{entry.walletId ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {entry.direction === "credit" ? "Entrada" : "Saída"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{entry.description}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(entry.amount)}</TableCell>
-                </TableRow>
-              ))}
-              {pool.entries.length === 0 ? (
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-2 xl:col-span-2">
+              <Label htmlFor="pool-search">Pedido, descrição ou responsável</Label>
+              <Input
+                id="pool-search"
+                value={movementSearch}
+                onChange={(event) => setMovementSearch(event.target.value)}
+                placeholder="Buscar movimentação"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pool-start-date">Data inicial</Label>
+              <Input
+                id="pool-start-date"
+                type="date"
+                value={movementStartDate}
+                onChange={(event) => setMovementStartDate(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pool-end-date">Data final</Label>
+              <Input
+                id="pool-end-date"
+                type="date"
+                value={movementEndDate}
+                onChange={(event) => setMovementEndDate(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Responsável</Label>
+              <Select value={movementResponsible} onValueChange={setMovementResponsible}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {movementResponsibles.map((responsible) => (
+                    <SelectItem key={responsible} value={responsible}>
+                      {responsible}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+            <span>
+              {filteredMovementRows.length} de {movementRows.length} movimentações
+            </span>
+            <Button variant="ghost" size="sm" onClick={clearMovementFilters}>
+              Limpar filtros
+            </Button>
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    Nenhuma transferência registrada.
-                  </TableCell>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Pedido</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead>Responsável</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
                 </TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredMovementRows.map(({ entry, orderNumber, responsible }) => (
+                  <TableRow key={entry.id}>
+                    <TableCell>{formatDateTime(entry.createdAt)}</TableCell>
+                    <TableCell>{orderNumber}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {entry.direction === "credit" ? "Entrada" : "Saída"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{entry.description}</TableCell>
+                    <TableCell>{responsible}</TableCell>
+                    <TableCell
+                      className={`text-right font-semibold ${entry.direction === "credit" ? "text-success" : "text-destructive"}`}
+                    >
+                      {entry.direction === "credit" ? "+" : "-"}
+                      {formatCurrency(entry.amount)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {filteredMovementRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      Nenhuma movimentação encontrada para os filtros informados.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -365,6 +518,21 @@ function PoolMetric({ label, value }: { label: string; value: string }) {
 
 function parseCurrency(value: string) {
   return roundCurrency(Number(value.replace(/\./g, "").replace(",", ".")) || 0);
+}
+
+function getPoolEntryOrderId(entry: OpportunityPoolEntry, wallets: NegotiationWallet[]) {
+  const metadataOrderId = entry.metadata?.orderId ?? entry.metadata?.order_external_id;
+  if (typeof metadataOrderId === "string" && metadataOrderId) return metadataOrderId;
+  return wallets.find((wallet) => wallet.id === entry.walletId)?.orderId;
+}
+
+function formatCsvNumber(value: number) {
+  return value.toFixed(2).replace(".", ",");
+}
+
+function escapeCsvCell(value: unknown) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function getDecisionLabel(wallet: ReturnType<typeof useAppContext>["negotiationWallets"][number]) {
@@ -391,6 +559,7 @@ function createVirtualPool(wallets: ReturnType<typeof useAppContext>["negotiatio
     amount: wallet.finalBalance ?? wallet.currentBalance,
     direction: "credit" as const,
     description: `Saldo transferido da carteira do pedido ${wallet.orderId}.`,
+    createdBy: "Sistema",
     createdAt: wallet.closedAt ?? wallet.updatedAt,
   }));
   return {

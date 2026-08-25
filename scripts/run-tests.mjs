@@ -2146,6 +2146,14 @@ const walletRepositorySource = readFileSync(
   ),
   "utf8",
 );
+const walletAppContextSource = readFileSync(
+  new URL("../src/features/app/app-context.tsx", import.meta.url),
+  "utf8",
+);
+const opportunityPoolRouteSource = readFileSync(
+  new URL("../src/routes/_app.pool-oportunidades.tsx", import.meta.url),
+  "utf8",
+);
 const walletDecisionSql = readFileSync(
   new URL(
     "../supabase/manual-sql/037_wallet_management_decision_and_pool_transfer.sql",
@@ -2278,6 +2286,31 @@ assert.match(
   walletCoverageSql,
   /v_entry_external_id := 'pool-loss-coverage-' \|\| trim\(p_request_external_id\)/,
   "SQL 038 usa identificação única para não duplicar débito",
+);
+assert.match(
+  walletAppContextSource,
+  /\["Admin", "Gestor", "Financeiro"\] as UserRole\[\]/,
+  "movimentações do Pool notificam os três perfis gerenciais",
+);
+assert.match(
+  walletAppContextSource,
+  /title: "Crédito enviado ao Pool"/,
+  "transferência positiva gera notificação específica",
+);
+assert.match(
+  walletAppContextSource,
+  /title: "Prejuízo coberto pelo Pool"/,
+  "cobertura de prejuízo gera notificação específica",
+);
+assert.match(
+  opportunityPoolRouteSource,
+  /movementStartDate[\s\S]*movementEndDate[\s\S]*movementResponsible/,
+  "relatório do Pool permite filtrar período e responsável",
+);
+assert.match(
+  opportunityPoolRouteSource,
+  /downloadTextFile\([\s\S]*pool-oportunidades-/,
+  "relatório do Pool pode ser exportado em CSV",
 );
 
 console.log("Testes de permissões, conciliação, decisão e cobertura da carteira passaram.");
