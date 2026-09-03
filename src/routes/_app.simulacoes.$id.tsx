@@ -26,6 +26,7 @@ import {
   YAxis,
 } from "recharts";
 import { PageHeader } from "@/components/app/page-header";
+import { ProductCombobox } from "@/components/app/product-combobox";
 import { ProgressStepper } from "@/components/app/progress-stepper";
 import { StatusBadge } from "@/components/app/status-badge";
 import { ViabilityBadge } from "@/components/app/viability-badge";
@@ -59,6 +60,7 @@ import type {
   Client,
   ExpenseAllocation,
   ExpenseItem,
+  Product,
   PurchaseItem,
   Simulation,
   SimulationProduct,
@@ -436,6 +438,7 @@ function SimulationDetailPage() {
     freights,
     clients,
     suppliers,
+    products,
     upsertSimulation,
     upsertOrder,
     upsertFinancialTitle,
@@ -957,7 +960,7 @@ function SimulationDetailPage() {
                 update={update}
               />
             )}
-            {step === 1 && <ProductsStep draft={draft} setDraft={setDraft} />}
+            {step === 1 && <ProductsStep draft={draft} setDraft={setDraft} catalog={products} />}
             {step === 2 && <PurchaseStep draft={draft} setDraft={setDraft} />}
             {step === 3 && <ExpensesStep draft={draft} setDraft={setDraft} />}
             {step === 4 && <FinancialStep draft={draft} setDraft={setDraft} />}
@@ -1440,9 +1443,11 @@ function CatalogEditor({
 function ProductsStep({
   draft,
   setDraft,
+  catalog,
 }: {
   draft: Simulation;
   setDraft: React.Dispatch<React.SetStateAction<Simulation>>;
+  catalog: Product[];
 }) {
   const merchandiseCost = draft.products.reduce((sum, item) => sum + getProductCostTotal(item), 0);
   const purchaseTotal = draft.purchaseItems.length
@@ -1584,6 +1589,16 @@ function ProductsStep({
     setDraft((d) => ({ ...d, products: d.products.filter((p) => p.id !== id) }));
   }
 
+  function selectFromCatalog(id: string, product: Product) {
+    updateProduct(id, {
+      product: product.name,
+      code: product.code,
+      ...(product.defaultUnitsPerBox > 0 ? { unitsPerBox: product.defaultUnitsPerBox } : {}),
+      ...(product.costUnit > 0 ? { costUnit: product.costUnit } : {}),
+      ...(product.saleUnit > 0 ? { saleUnit: product.saleUnit } : {}),
+    });
+  }
+
   return (
     <div className="space-y-4">
       <SectionTitle
@@ -1636,11 +1651,13 @@ function ProductsStep({
                       />
                     </TableCell>
                     <TableCell>
-                      <Input
+                      <ProductCombobox
                         value={p.product}
-                        onChange={(e) => updateProduct(p.id, { product: e.target.value })}
+                        code={p.code}
+                        products={catalog}
+                        onValueChange={(next) => updateProduct(p.id, { product: next })}
+                        onSelect={(product) => selectFromCatalog(p.id, product)}
                         className="min-w-64"
-                        placeholder="Nome do produto"
                       />
                     </TableCell>
                     <TableCell className="text-right">
