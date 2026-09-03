@@ -947,9 +947,12 @@ function SimulationDetailPage() {
 
       <ProgressStepper steps={STEPS} activeStep={step} onStepChange={setStep} />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
-        <Card className="shadow-card">
-          <CardContent className="space-y-6 p-6">
+      {/* min-w-0 nos itens do grid: sem isso o item assume min-width:auto,
+          se recusa a encolher abaixo do conteúdo e a tabela larga de
+          produtos empurra a página inteira em vez de rolar por dentro. */}
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[1fr_320px]">
+        <Card className="min-w-0 shadow-card">
+          <CardContent className="space-y-6 p-4 sm:p-6">
             {step === 0 && (
               <ClientStep
                 draft={draft}
