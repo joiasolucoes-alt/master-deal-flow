@@ -947,7 +947,7 @@ function SimulationDetailPage() {
 
       <ProgressStepper steps={STEPS} activeStep={step} onStepChange={setStep} />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 lg:min-w-[964px] lg:grid-cols-[minmax(640px,1fr)_300px]">
         <Card className="shadow-card">
           <CardContent className="space-y-6 p-6">
             {step === 0 && (
